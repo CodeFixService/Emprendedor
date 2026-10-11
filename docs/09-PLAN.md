@@ -1,7 +1,7 @@
 # 9. Plan de trabajo
 
-## Decisiones pendientes (Josué)
-| # | Decisión | Propuesta por defecto (si no dices nada, se usa esta) |
+## Decisiones (aplicadas con la propuesta por defecto; se cambian en Administración → Ajustes)
+| # | Decisión | Valor usado |
 |---|---|---|
 | 1 | **Nombre** de la app | "Libreta de Cobros". Otras opciones: *MeDebes*, *Fiado Pro*, *CobraFácil*, *Al Día* |
 | 2 | **Precio** de Premium | $4.990 al mes · $49.900 al año. Se cambia después en Ajustes |
@@ -9,6 +9,8 @@
 | 4 | **Límites** del plan Normal | Los de `02-PLANES.md` (20 clientes, 250 movimientos al mes, 2 cuotas, 15 comprobantes) |
 | 5 | **Color** de la marca | Verde esmeralda `#059669` (dinero, "al día"), con rojo para las deudas |
 | 6 | **Ubicación** | Repo propio `CodeFixService/Emprendedor`, con su propio Supabase (decidido: todo independiente) |
+
+## Estado: ✅ versión 1.0.0 construida y probada
 
 ## Orden de construcción (una sola entrega, probada por partes)
 1. **Base de datos**: `instalar.sql` completo (tablas, RLS, funciones, triggers, cron y feriados) más el script de pruebas de abuso.
@@ -26,7 +28,7 @@
 13. **Legal**, ayuda y ping de GitHub.
 14. Revisión final con la lista de abajo y entrega de los pasos B de `08-PREPARATIVOS.md`.
 
-## Lista de pruebas (todas deben pasar antes de entregar)
+## Lista de pruebas (✅ todas pasan: `supabase/pruebas/pruebas.sql` + recorridos en navegador)
 **Reglas y seguridad**
 - [ ] Un negocio no puede ver ni tocar nada de otro, ni siquiera llamando a la API a mano.
 - [ ] El ayudante no puede anular lo de otro ni lo suyo pasados los 10 minutos, ni pasar el límite de crédito, ni ver reportes.

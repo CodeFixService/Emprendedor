@@ -30,25 +30,49 @@ El correo de fábrica de Supabase **solo envía a los miembros de tu equipo** (m
 - ⚠️ **Nunca** mandes la `service_role` ni la `secret key`, ni la contraseña de la base de datos.
 
 ### A5. Decisiones
-- [ ] Responde las **decisiones pendientes** de `09-PLAN.md` (nombre, precio, registro abierto).
+- [x] Se usan las propuestas de `09-PLAN.md` (nombre, precio, límites y color). Todo se cambia después desde Administración → Ajustes.
 
-## B. Cuando el código esté listo (unos 15 minutos)
-Te mandaré cada código con su botón para copiar, igual que en CodeFix.
-1. [ ] **SQL Editor → New query** → pega `supabase/instalar-corto.sql` → **Run**. Si sale un aviso de operación destructiva, toca *Run this query* (es normal). Al final debe decir `Libreta instalada vX`.
-2. [ ] **Authentication → Users → Add user → Create new user**: tu correo `juanjosuecastilloloyola@gmail.com`, una contraseña **distinta** a la de CodeFix, con **Auto Confirm User** marcado.
-3. [ ] **Edge Functions → Deploy a new function → Via Editor** → pega `supabase/functions/enviar/index.ts` → nombre `enviar` → Deploy. Después, en Settings de la función, apaga **Verify JWT** → Save.
-4. [ ] **Database → Extensions**: revisa que **pg_cron** y **pg_net** estén activas (el SQL las activa; si no, actívalas aquí y corre el paso 1 de nuevo).
-5. [ ] **Storage**: revisa que existan los buckets `comprobantes`, `logos` y `pagos` (los crea el SQL).
-6. [ ] **Publicar**: en GitHub, repo `Emprendedor` → **Settings → Pages** → Source: **Deploy from a branch** → rama `main`, carpeta `/ (root)` → Save. En 1–2 minutos queda en `https://codefixservice.github.io/Emprendedor/`.
-7. [ ] Abre `https://codefixservice.github.io/Emprendedor/admin/` → ingresa → **Ajustes → Generar claves push** (una vez) → pon los precios y el link de Mercado Pago.
-8. [ ] Prueba completa con tu celular:
-   - [ ] crear una cuenta de negocio de prueba;
-   - [ ] anotar un fiado y un abono;
-   - [ ] abrir el link del cliente con el PIN;
-   - [ ] subir un comprobante y aprobarlo;
-   - [ ] mandar el recordatorio por WhatsApp;
-   - [ ] activar las notificaciones y recibir una.
-9. [ ] **GitHub → Actions → "Libreta ping"** → **Run workflow** una vez, para ver que queda en verde.
+## B. Instalar y publicar (unos 20 minutos) — el código ya está listo
+Todo en https://supabase.com/dashboard → organización **Emprendedor** → proyecto **libreta-cobros**.
+
+**B1. Base de datos**
+1. [ ] **SQL Editor → + New query** → pega `supabase/instalar-corto.sql` → **Run**.
+   Si aparece un aviso de operación destructiva, toca **Run this query** (es normal).
+   ✅ Debe terminar con `Libreta instalada v1`.
+
+**B2. Tu usuario administrador**
+2. [ ] **Authentication → Users → Add user → Create new user**: correo `juanjosuecastilloloyola@gmail.com`,
+   una contraseña **distinta** a la de CodeFix, con **Auto Confirm User** marcado → **Create user**.
+3. [ ] **SQL Editor → + New query** → pega `select privado.fijar_admin();` → **Run**.
+   ✅ Debe decir `Administrador fijado ✓`. (Esto evita que otra persona se haga admin registrándose con tu correo.)
+
+**B3. Función de avisos y fotos**
+4. [ ] **Edge Functions → Deploy a new function → Via Editor** → borra el ejemplo → pega `supabase/functions/enviar/index.ts`
+   → nombre `enviar` → **Deploy function**.
+5. [ ] En la función: **Details/Settings** → apaga **Verify JWT** (o "Enforce JWT verification") → **Save**.
+
+**B4. Publicar la app**
+6. [ ] Unir la rama del código a `main` (te dejo el Pull Request listo; tú tocas **Merge**).
+7. [ ] GitHub → repo **Emprendedor** → **Settings → Pages** → Source: **Deploy from a branch** → rama `main`, carpeta `/ (root)` → **Save**.
+   ✅ En 1–2 minutos abre `https://codefixservice.github.io/Emprendedor/`.
+
+**B5. Configurar desde tu panel**
+8. [ ] Abre `https://codefixservice.github.io/Emprendedor/#ingresar` → ingresa con el correo del paso 2 → te lleva a **Administración**.
+9. [ ] **Ajustes → Generar claves push** (una sola vez).
+10. [ ] En **Ajustes**: tu WhatsApp de soporte, link de pago (si tienes) y tus datos de transferencia → **Guardar ajustes**.
+11. [ ] **Ajustes → Probar servidor**: debe decir `✅ Función "enviar" v1.0.0`.
+12. [ ] **Resumen**: no debe aparecer el aviso rojo de "tareas automáticas". Si aparece: **Database → Extensions** → activa **pg_cron** y **pg_net** → repite el paso 1.
+
+**B6. Prueba completa con tu celular** (con otro correo, como si fueras un cliente tuyo)
+13. [ ] Crear una libreta de prueba (otro correo) → instalar la app (📲 Instalar).
+14. [ ] Anotar un fiado y un abono → ver que el saldo cambia.
+15. [ ] Enviar el link del cliente a tu WhatsApp → abrirlo → PIN → ver el saldo → enviar un comprobante con foto.
+16. [ ] En la libreta: **Más → Comprobantes** → aprobar.
+17. [ ] **Más → Mi cuenta → Notificaciones** → activar → desde el link del cliente envía otro comprobante → debe llegar el aviso.
+18. [ ] Probar **Cobrar** (lunes a sábado de 08:00 a 20:00; fuera de ese horario la app te dice cuándo se puede).
+
+**B7. Mantener activa la base de datos**
+19. [ ] GitHub → **Actions → "Mantener activa la base de datos" → Run workflow** → debe quedar en verde ✅.
 
 ## C. Antes de vender
 - [ ] Hacer privado el repo y publicar en Cloudflare Pages (gratis), o comprar el dominio. Al cambiar la URL, actualiza las URLs de A2.
