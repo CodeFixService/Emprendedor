@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Libreta de Cobros · Fiado, cuotas y abonos en tu celular</title>
+  <meta name="description" content="Anota el fiado en 3 segundos, tu cliente ve su cuenta con un link y paga por transferencia. Cobra por WhatsApp dentro de la ley. Gratis para empezar.">
+  <meta name="theme-color" content="#059669">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta property="og:title" content="Libreta de Cobros">
+  <meta property="og:description" content="Recupera la plata que te deben. Fiado, cuotas y abonos en tu celular.">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <main class="portada" id="portada">
+    <div class="fila entre">
+      <div class="fila"><div class="logo-mini">LC</div><strong>Libreta de Cobros</strong></div>
+      <div class="fila">
+        <button class="btn chico" id="bInstalarTop" type="button">📲 Instalar</button>
+        <button class="btn chico primario" type="button" data-ir="ingresar">Ingresar</button>
+      </div>
+    </div>
+
+    <section class="hero-portada">
+      <div>
+        <span class="tag marca">Para almacenes, ferias, venta por catálogo y emprendedores</span>
+        <h1 class="mt">Recupera la plata que te deben.</h1>
+        <p>Anota el fiado en <strong>3 segundos</strong>. Tu cliente ve su cuenta con un link —sin descargar nada— y te paga por
+          <strong>transferencia</strong>. Cobra por WhatsApp con un toque y <strong>dentro de la ley</strong>.</p>
+        <div class="fila envolver">
+          <button class="btn primario" type="button" data-ir="crear">Crear mi libreta gratis</button>
+          <button class="btn" type="button" data-ir="ingresar">Ya tengo cuenta</button>
+        </div>
+        <p class="sutil mt" id="txtPrueba">Incluye 14 días de Premium. Sin tarjeta.</p>
+      </div>
+      <div class="mock" aria-hidden="true">
+        <div class="kpi hero"><div class="t">Te deben en total</div><div class="grande">$184.300</div></div>
+        <div class="lista mt">
+          <div class="item"><div class="avatar" style="background:#2563eb">JP</div><div class="crece"><div class="nom">Juan Pérez</div><div class="sub">Vence hoy</div></div><div class="monto rojo">$12.500</div></div>
+          <div class="item"><div class="avatar" style="background:#db2777">MS</div><div class="crece"><div class="nom">María Soto</div><div class="sub">Cuota 2 de 3 · al día</div></div><div class="monto rojo">$33.333</div></div>
+          <div class="item"><div class="avatar" style="background:#059669">LR</div><div class="crece"><div class="nom">Luis Rojas</div><div class="sub">Pagó ayer ✓</div></div><div class="monto verde">Al día</div></div>
+        </div>
+        <button class="btn wsp ancho" type="button" tabindex="-1">💬 Cobrar por WhatsApp</button>
+      </div>
+    </section>
+
+    <section class="beneficios">
+      <div class="tarjeta"><div class="ico">⚡</div><h3>Anota en 3 segundos</h3><p class="sutil">Teclado grande, productos frecuentes y funciona sin internet. Ideal para la feria o el almacén.</p></div>
+      <div class="tarjeta"><div class="ico">🔗</div><h3>Tu cliente ve su cuenta</h3><p class="sutil">Un link privado con PIN: ve cuánto debe, sus cuotas y tus datos para transferir. Sube el comprobante ahí mismo.</p></div>
+      <div class="tarjeta"><div class="ico">⚖️</div><h3>Cobra dentro de la ley</h3><p class="sutil">Mensajes amables, en horario permitido y máximo 2 por semana, como pide la ley chilena de cobranza.</p></div>
+      <div class="tarjeta"><div class="ico">📆</div><h3>Ventas en cuotas</h3><p class="sutil">"$60.000 en 3 cuotas": la app arma el calendario y te avisa quién se atrasó.</p></div>
+      <div class="tarjeta"><div class="ico">✅</div><h3>Se acabó el "yo no te debía tanto"</h3><p class="sutil">El cliente confirma cada cargo desde su link. Todo queda registrado y nada se borra.</p></div>
+      <div class="tarjeta"><div class="ico">📊</div><h3>Sabes cuánto te deben</h3><p class="sutil">Total por cobrar, lo que vence hoy, los atrasados y lo que recuperaste este mes.</p></div>
+    </section>
+
+    <section class="tarjeta" id="precios">
+      <h2>Planes</h2>
+      <div class="dos-col">
+        <div class="tarjeta plana">
+          <h3>Normal · Gratis</h3>
+          <ul class="sutil" id="listaNormal">
+            <li>Hasta 20 clientes activos</li><li>250 movimientos al mes</li><li>2 ventas en cuotas activas</li>
+            <li>Link del cliente con PIN y comprobantes</li><li>Cobro por WhatsApp</li><li>Exportar a CSV</li>
+          </ul>
+        </div>
+        <div class="tarjeta plana" style="border-color:var(--marca)">
+          <h3>Premium <span class="tag premium" id="precioPremium">$4.990/mes</span></h3>
+          <ul class="sutil">
+            <li>Clientes, movimientos y cuotas <strong>ilimitados</strong></li><li>Avisos automáticos al cliente</li>
+            <li>Puntaje de buen pagador y límite por cliente</li><li>Reportes, Excel y estado de cuenta PDF</li>
+            <li>Hasta 3 ayudantes</li><li>Tu logo y color en el link del cliente</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="tarjeta">
+      <h2>Preguntas frecuentes</h2>
+      <h3>¿Mis clientes tienen que descargar algo?</h3><p class="sutil">No. Reciben un link por WhatsApp y entran con un PIN de 4 números.</p>
+      <h3>¿Cobran comisión por los pagos?</h3><p class="sutil">No. El cliente te transfiere directo a tu cuenta. La app solo lleva la cuenta.</p>
+      <h3>¿Y si no tengo señal?</h3><p class="sutil">Puedes anotar igual: se guarda en el celular y se sube solo cuando vuelve internet.</p>
+      <h3>¿Quién ve mis datos?</h3><p class="sutil">Solo tú y tus ayudantes. Ni siquiera el administrador de la plataforma ve los nombres ni las deudas de tus clientes.</p>
+    </section>
+
+    <footer class="pie">
+      <a href="legal/#terminos">Términos</a> · <a href="legal/#privacidad">Privacidad</a> · <a href="legal/#uso">Uso aceptable</a><br>
+      © CodeFix · Josué Castillo · v<span id="ver"></span>
+    </footer>
+  </main>
+
+  <main class="app oculto" id="cuenta" style="max-width:480px;padding-top:24px"></main>
+
+  <script src="vendor/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/core.js"></script>
+  <script src="js/inicio.js"></script>
+</body>
+</html>

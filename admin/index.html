@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Administración · Libreta de Cobros</title>
+  <meta name="theme-color" content="#334155">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="manifest" href="../manifest.webmanifest">
+  <link rel="icon" href="../icons/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../css/app.css">
+</head>
+<body>
+  <div class="app con-nav">
+    <header class="barra-sup"><div class="logo-mini" style="background:#334155">🛡️</div><h1>Administración</h1><a class="btn chico" href="../app/">Ir a la app</a></header>
+    <main id="vista"><div class="vacio"><div class="spinner" style="margin:40px auto"></div></div></main>
+    <footer class="pie">Libreta de Cobros v<span id="ver"></span></footer>
+  </div>
+  <nav class="nav" id="nav" aria-label="Menú de administración">
+    <a href="#resumen" data-v="resumen"><span class="ico">📈</span>Resumen</a>
+    <a href="#negocios" data-v="negocios"><span class="ico">🏪</span>Negocios</a>
+    <a href="#pagos" data-v="pagos"><span class="ico">💳</span>Pagos<span id="badgePagos" class="punto oculto"></span></a>
+    <a href="#ajustes" data-v="ajustes"><span class="ico">⚙️</span>Ajustes</a>
+  </nav>
+  <script src="../vendor/supabase.js"></script>
+  <script src="../js/config.js"></script>
+  <script src="../js/core.js"></script>
+  <script src="../js/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,198 @@
+<title>Instalar Libreta de Cobros</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Figtree:wght@400;600;700&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+/* Layout: una columna de lectura con un progreso fijo arriba; cada grupo es una hoja del cuaderno */
+:root{
+  --bg:#f2f5f3; --paper:#ffffff; --ink:#14231d; --muted:#5b6d65; --line:#d9e3de;
+  --accent:#047857; --accent-soft:#d6efe4; --code-bg:#0f1d18; --code-fg:#d7efe4; --warn:#9a3412;
+  --display:"Fraunces", Georgia, serif; --body:"Figtree", system-ui, sans-serif; --mono:"JetBrains Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0c1512;--paper:#13201b;--ink:#e4efe9;--muted:#9bb0a7;--line:#25362f;--accent:#34d399;--accent-soft:#123629;--code-bg:#07100d;--code-fg:#cfeadd;--warn:#fdba74;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0c1512;--paper:#13201b;--ink:#e4efe9;--muted:#9bb0a7;--line:#25362f;--accent:#34d399;--accent-soft:#123629;--code-bg:#07100d;--code-fg:#cfeadd;--warn:#fdba74;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:16px/1.55 var(--body);padding-inline:16px;padding-block:0 48px}
+.wrap{max-width:760px;margin:0 auto}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:14px 12px;border-bottom:1px solid var(--line);margin-bottom:24px}
+.top .row{display:flex;gap:12px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}
+h1{font-family:var(--display);font-weight:600;font-size:clamp(1.6rem,4vw,2.2rem);margin:0;text-wrap:balance}
+.count{font-variant-numeric:tabular-nums;color:var(--muted);font-weight:600}
+.bar{height:6px;background:var(--line);border-radius:3px;margin-top:10px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+.intro{color:var(--muted);max-width:62ch;margin:0 0 28px}
+.group{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:20px;margin-bottom:18px}
+.group header{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;justify-content:space-between;margin-bottom:8px}
+h2{font-family:var(--display);font-weight:600;font-size:1.3rem;margin:0}
+.where{font-size:.78rem;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);font-weight:700}
+ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.step{display:flex;gap:14px;padding-block:14px;border-top:1px dashed var(--line)}
+.step:first-child{border-top:0}
+.body{flex:1;min-width:0}
+.body p{margin:0 0 8px}
+.note{font-size:.9rem;color:var(--muted)}
+code{font-family:var(--mono);font-size:.88em;background:var(--accent-soft);padding:1px 5px;border-radius:4px}
+.tick{flex:none;cursor:pointer;margin-top:2px}
+.tick input{position:absolute;opacity:0;width:1px;height:1px}
+.tick span{display:block;width:26px;height:26px;border:2px solid var(--accent);border-radius:6px;transition:background .15s}
+.tick input:checked + span{background:var(--accent);box-shadow:inset 0 0 0 4px var(--paper)}
+.tick input:focus-visible + span{outline:3px solid var(--accent);outline-offset:2px}
+.step.done .body > p:first-child{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line)}
+.code{border-radius:8px;overflow:hidden;background:var(--code-bg);margin:6px 0 8px}
+.code-bar{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 8px 6px 12px;border-bottom:1px solid rgba(255,255,255,.08)}
+.code-bar span{font-family:var(--mono);font-size:.75rem;color:var(--code-fg);opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.copy{flex:none;font:600 .85rem var(--body);background:var(--accent);color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer;min-height:36px}
+.copy.ok{background:#16a34a}
+pre{margin:0;padding:12px;color:var(--code-fg);font:13px/1.5 var(--mono);overflow:auto;max-height:240px;white-space:pre}
+.link{font-weight:600;color:var(--accent);word-break:break-all}
+.warn{border-left:3px solid var(--warn);padding:10px 14px;background:var(--paper);border-radius:6px;color:var(--ink);margin-bottom:24px}
+.reset{background:none;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:6px 12px;font:inherit;font-size:.85rem;cursor:pointer}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+<div class="wrap">
+  <div class="top"><div class="row"><h1>Instalar Libreta de Cobros</h1><span class="count" id="count">0 de 19</span></div><div class="bar"><i id="fill"></i></div></div>
+  <p class="intro">Copia, pega y marca cada paso. Las casillas quedan guardadas en este navegador. Unos 20 minutos en total. Ya están hechos el proyecto de Supabase, el inicio de sesión, Gmail y las claves.</p>
+  <p class="warn">Nunca compartas la <b>service_role</b>, la <b>secret key</b> ni la contraseña de la base de datos. La app no las necesita.</p>
+  <section class="group" id="bd"><header><h2>Base de datos</h2><span class="where">Supabase → proyecto libreta-cobros</span></header><ol><li class="step"><label class="tick"><input type="checkbox" id="b1"><span></span></label><div class="body"><p>Abre <b>SQL Editor → + New query</b>, pega este código y toca <b>Run</b>. Si sale un aviso de operación destructiva, toca <b>Run this query</b> (es normal).</p><div class="code"><div class="code-bar"><span>instalar-corto.sql</span><button type="button" class="copy" data-for="c1">Copiar</button></div><pre id="c1">-- Libreta de Cobros · instalación corta (para pegar desde el celular).
+-- Descarga y ejecuta supabase/instalar.sql de la versión publicada. Se puede correr de nuevo para actualizar.
+create extension if not exists http with schema extensions;
+do $$ begin
+  execute (select content from extensions.http_get(&#x27;https://raw.githubusercontent.com/CodeFixService/Emprendedor/95169687d9fffd3a36121dab7696cb6ca766e6bd/supabase/instalar.sql&#x27;));
+end $$;
+select &#x27;Libreta instalada v&#x27; || valor as resultado from privado.config where clave = &#x27;version_bd&#x27;;</pre></div><p class=note>Debe terminar con <code>Libreta instalada v1</code>.</p></div></li></ol></section><section class="group" id="admin"><header><h2>Tu usuario administrador</h2><span class="where">Supabase → Authentication</span></header><ol><li class="step"><label class="tick"><input type="checkbox" id="b2"><span></span></label><div class="body"><p><b>Authentication → Users → Add user → Create new user</b>. Correo:</p><div class="code"><div class="code-bar"><span>correo</span><button type="button" class="copy" data-for="c2">Copiar</button></div><pre id="c2">juanjosuecastilloloyola@gmail.com</pre></div><p class=note>Usa una contraseña <b>distinta</b> a la de CodeFix y marca <b>Auto Confirm User</b> → <b>Create user</b>.</p></div></li><li class="step"><label class="tick"><input type="checkbox" id="b3"><span></span></label><div class="body"><p><b>SQL Editor → + New query</b>, pega esto y toca <b>Run</b>:</p><div class="code"><div class="code-bar"><span>SQL</span><button type="button" class="copy" data-for="c3">Copiar</button></div><pre id="c3">select privado.fijar_admin();</pre></div><p class=note>Debe decir <code>Administrador fijado ✓</code>. Así nadie más puede hacerse admin registrándose con tu correo.</p></div></li></ol></section><section class="group" id="fn"><header><h2>Función de avisos y fotos</h2><span class="where">Supabase → Edge Functions</span></header><ol><li class="step"><label class="tick"><input type="checkbox" id="b4"><span></span></label><div class="body"><p><b>Edge Functions → Deploy a new function → Via Editor</b>. Borra el ejemplo, pega todo este código, ponle de nombre <code>enviar</code> y toca <b>Deploy function</b>.</p><div class="code"><div class="code-bar"><span>supabase/functions/enviar/index.ts</span><button type="button" class="copy" data-for="c4">Copiar</button></div><pre id="c4">// Edge Function &quot;enviar&quot; · Libreta de Cobros
+//  - Sin &quot;accion&quot;: envía las notificaciones push pendientes (la llama la base de datos cada minuto si hay algo).
+//  - accion &quot;foto&quot;: recibe la foto del comprobante que sube un cliente desde su link (con token de un solo uso).
+//  - accion &quot;limpiar&quot;: borra archivos viejos (fotos de más de 90 días y cuentas eliminadas).
+//  - accion &quot;ping&quot;: diagnóstico.
+// Se despliega en Supabase → Edge Functions → nombre &quot;enviar&quot; (con &quot;Verify JWT&quot; apagado).
+import webpush from &#x27;npm:web-push@3.6.7&#x27;;
+import { createClient } from &#x27;npm:@supabase/supabase-js@2.45.4&#x27;;
+
+const VERSION = &#x27;1.0.0&#x27;;
+const CORS = {
+  &#x27;Access-Control-Allow-Origin&#x27;: &#x27;*&#x27;,
+  &#x27;Access-Control-Allow-Headers&#x27;: &#x27;authorization, x-client-info, apikey, content-type&#x27;,
+  &#x27;Access-Control-Allow-Methods&#x27;: &#x27;POST, OPTIONS&#x27;,
+};
+const json = (o: unknown, status = 200) =&gt;
+  new Response(JSON.stringify(o), { status, headers: { ...CORS, &#x27;Content-Type&#x27;: &#x27;application/json&#x27; } });
+
+function db() {
+  return createClient(Deno.env.get(&#x27;SUPABASE_URL&#x27;)!, Deno.env.get(&#x27;SUPABASE_SERVICE_ROLE_KEY&#x27;)!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+type Envio = { id: number; titulo: string; cuerpo: string; url: string | null; tag: string | null; endpoint: string; p256dh: string; auth: string };
+
+async function enviarCola() {
+  const sb = db();
+  const { data: sec } = await sb.rpc(&#x27;srv_secretos&#x27;);
+  if (!sec?.vapid_public || !sec?.vapid_private) {
+    await sb.rpc(&#x27;srv_cola_tomar&#x27;, { p_max: 1000 }); // sin claves no se puede enviar: se descarta
+    return { enviados: 0, error: &#x27;Faltan las claves push (Admin → Ajustes)&#x27; };
+  }
+  webpush.setVapidDetails(&#x27;mailto:soporte@libretadecobros.cl&#x27;, sec.vapid_public, sec.vapid_private);
+  let enviados = 0, fallidos = 0;
+  for (let vuelta = 0; vuelta &lt; 5; vuelta++) {
+    const { data, error } = await sb.rpc(&#x27;srv_cola_tomar&#x27;, { p_max: 200 });
+    if (error) throw error;
+    const lista = (data || []) as Envio[];
+    if (!lista.length) break;
+    for (let i = 0; i &lt; lista.length; i += 50) {
+      const grupo = lista.slice(i, i + 50);
+      const res = await Promise.allSettled(grupo.map((e) =&gt; webpush.sendNotification(
+        { endpoint: e.endpoint, keys: { p256dh: e.p256dh, auth: e.auth } },
+        JSON.stringify({ title: e.titulo, body: e.cuerpo, url: e.url || &#x27;app/&#x27;, tag: e.tag || (&#x27;lc-&#x27; + e.id) }),
+        { TTL: 86400 },
+      )));
+      for (let j = 0; j &lt; res.length; j++) {
+        const r = res[j];
+        if (r.status === &#x27;fulfilled&#x27;) { enviados++; continue; }
+        fallidos++;
+        const code = (r.reason as { statusCode?: number })?.statusCode;
+        if (code === 404 || code === 410) await sb.rpc(&#x27;srv_quitar_endpoint&#x27;, { p_endpoint: grupo[j].endpoint });
+      }
+    }
+  }
+  return { enviados, fallidos };
+}
+
+function tipoImagen(b: Uint8Array): string | null {
+  if (b.length &gt; 12 &amp;&amp; b[0] === 0x52 &amp;&amp; b[1] === 0x49 &amp;&amp; b[2] === 0x46 &amp;&amp; b[3] === 0x46 &amp;&amp; b[8] === 0x57 &amp;&amp; b[9] === 0x45 &amp;&amp; b[10] === 0x42 &amp;&amp; b[11] === 0x50) return &#x27;image/webp&#x27;;
+  if (b.length &gt; 3 &amp;&amp; b[0] === 0xff &amp;&amp; b[1] === 0xd8 &amp;&amp; b[2] === 0xff) return &#x27;image/jpeg&#x27;;
+  if (b.length &gt; 8 &amp;&amp; b[0] === 0x89 &amp;&amp; b[1] === 0x50 &amp;&amp; b[2] === 0x4e &amp;&amp; b[3] === 0x47) return &#x27;image/png&#x27;;
+  return null;
+}
+
+async function subirFoto(body: { id?: string; token?: string; data?: string }) {
+  const id = String(body.id || &#x27;&#x27;);
+  if (!/^[0-9a-f-]{36}$/i.test(id) || typeof body.token !== &#x27;string&#x27; || typeof body.data !== &#x27;string&#x27;) return { ok: false, error: &#x27;Datos inválidos&#x27; };
+  if (body.data.length &gt; 1_500_000) return { ok: false, error: &#x27;La foto es muy grande (máximo 1 MB)&#x27; };
+  const sb = db();
+  const { data: v, error } = await sb.rpc(&#x27;srv_foto_validar&#x27;, { p_id: id, p_token: body.token });
+  if (error) throw error;
+  if (!v?.ok) return { ok: false, error: &#x27;El permiso para subir la foto venció. Vuelve a enviar el comprobante.&#x27; };
+  const b64 = body.data.replace(/^data:[^,]*,/, &#x27;&#x27;);
+  let bytes: Uint8Array;
+  try { bytes = Uint8Array.from(atob(b64), (c) =&gt; c.charCodeAt(0)); } catch { return { ok: false, error: &#x27;Archivo inválido&#x27; }; }
+  if (bytes.length &gt; 1_048_576) return { ok: false, error: &#x27;La foto es muy grande (máximo 1 MB)&#x27; };
+  const tipo = tipoImagen(bytes);
+  if (!tipo) return { ok: false, error: &#x27;El archivo no es una imagen&#x27; };
+  const { error: e2 } = await sb.storage.from(&#x27;comprobantes&#x27;).upload(v.ruta, bytes, { contentType: tipo, upsert: true });
+  if (e2) return { ok: false, error: &#x27;No se pudo guardar la foto: &#x27; + e2.message };
+  await sb.rpc(&#x27;srv_foto_lista&#x27;, { p_id: id, p_ruta: v.ruta });
+  return { ok: true };
+}
+
+async function limpiar() {
+  const sb = db();
+  let borrados = 0;
+  for (let vuelta = 0; vuelta &lt; 10; vuelta++) {
+    const { data } = await sb.rpc(&#x27;srv_archivos_por_borrar&#x27;, { p_max: 500 });
+    const lista = (data || []) as { id: number; bucket: string; ruta: string }[];
+    if (!lista.length) break;
+    const porBucket = new Map&lt;string, string[]&gt;();
+    for (const a of lista) porBucket.set(a.bucket, [...(porBucket.get(a.bucket) || []), a.ruta]);
+    for (const [bucket, rutas] of porBucket) await sb.storage.from(bucket).remove(rutas);
+    await sb.rpc(&#x27;srv_archivos_borrados&#x27;, { p_ids: lista.map((a) =&gt; a.id) });
+    borrados += lista.length;
+  }
+  return { borrados };
+}
+
+Deno.serve(async (req) =&gt; {
+  if (req.method === &#x27;OPTIONS&#x27;) return new Response(&#x27;ok&#x27;, { headers: CORS });
+  try {
+    const body = req.method === &#x27;POST&#x27; ? await req.json().catch(() =&gt; ({})) : {};
+    if (body?.accion === &#x27;ping&#x27;) return json({ ok: true, version: VERSION, servicio: !!Deno.env.get(&#x27;SUPABASE_SERVICE_ROLE_KEY&#x27;) });
+    if (body?.accion === &#x27;foto&#x27;) return json(await subirFoto(body));
+    if (body?.accion === &#x27;limpiar&#x27;) return json(await limpiar());
+    return json(await enviarCola());
+  } catch (e) {
+    return json({ ok: false, error: String((e as Error)?.message || e) }, 500);
+  }
+});</pre></div><p class=note>El nombre tiene que ser exactamente <code>enviar</code>.</p></div></li><li class="step"><label class="tick"><input type="checkbox" id="b5"><span></span></label><div class="body"><p>Dentro de la función: <b>Details</b> o <b>Settings</b> → apaga <b>Verify JWT</b> (o “Enforce JWT verification”) → <b>Save</b>.</p></div></li></ol></section><section class="group" id="pub"><header><h2>Publicar la app</h2><span class="where">GitHub → repo Emprendedor</span></header><ol><li class="step"><label class="tick"><input type="checkbox" id="b6"><span></span></label><div class="body"><p>Abre este link, toca <b>Create pull request</b> dos veces y luego <b>Merge pull request → Confirm merge</b>. Une el código a la rama <code>main</code>.</p><a class="link" href="https://github.com/CodeFixService/Emprendedor/compare/main...ccr-f008a2db-6j8axe" target="_blank" rel="noopener">github.com/CodeFixService/Emprendedor/compare/main…ccr-f008a2db-6j8axe</a><p class=note>Si prefieres, pídeme que abra el pull request por ti.</p></div></li><li class="step"><label class="tick"><input type="checkbox" id="b7"><span></span></label><div class="body"><p><b>Settings → Pages</b> → Source: <b>Deploy from a branch</b> → rama <code>main</code>, carpeta <code>/ (root)</code> → <b>Save</b>.</p><p class=note>En 1–2 minutos abre <code>codefixservice.github.io/Emprendedor/</code>.</p></div></li></ol></section><section class="group" id="panel"><header><h2>Configurar desde tu panel</h2><span class="where">La app publicada</span></header><ol><li class="step"><label class="tick"><input type="checkbox" id="b8"><span></span></label><div class="body"><p>Abre la app e ingresa con el correo del paso de administrador. Te lleva a <b>Administración</b>.</p><a class="link" href="https://codefixservice.github.io/Emprendedor/#ingresar" target="_blank" rel="noopener">codefixservice.github.io/Emprendedor/#ingresar</a></div></li><li class="step"><label class="tick"><input type="checkbox" id="b9"><span></span></label><div class="body"><p><b>Ajustes → Generar claves push</b> (una sola vez).</p></div></li><li class="step"><label class="tick"><input type="checkbox" id="b10"><span></span></label><div class="body"><p>En <b>Ajustes</b>: tu WhatsApp de soporte, el link de pago (si tienes) y tus datos de transferencia → <b>Guardar ajustes</b>.</p><p class=note>Precios iniciales: $4.990 al mes · $49.900 al año. Los puedes cambiar ahí mismo.</p></div></li><li class="step"><label class="tick"><input type="checkbox" id="b11"><span></span></label><div class="body"><p><b>Ajustes → Probar servidor</b>.</p><p class=note>Debe decir <code>✅ Función "enviar" v1.0.0</code>.</p></div></li><li class="step"><label class="tick"><input type="checkbox" id="b12"><span></span></label><div class="body"><p>Mira <b>Resumen</b>: no debe salir el aviso rojo de “tareas automáticas”.</p><p class=note>Si sale: Supabase → <b>Database → Extensions</b> → activa <b>pg_cron</b> y <b>pg_net</b> → repite el primer paso.</p></div></li></ol></section><section class="group" id="prueba"><header><h2>Prueba completa en tu celular</h2><span class="where">Con otro correo, como si fueras un negocio</span></header><ol><li class="step"><label class="tick"><input type="checkbox" id="b13"><span></span></label><div class="body"><p>Crea una libreta de prueba con otro correo e instala la app (botón <b>Instalar</b>).</p></div></li><li class="step"><label class="tick"><input type="checkbox" id="b14"><span></span></label><div class="body"><p>Anota un fiado y un abono. El saldo tiene que cambiar.</p></div></li><li class="step"><label class="tick"><input type="checkbox" id="b15"><span></span></label><div class="body"><p>En el cliente toca <b>Link</b>, envíatelo por WhatsApp, ábrelo, pon el PIN y envía un comprobante con foto.</p><p class=note>El PIN son los últimos 4 números del teléfono del cliente.</p></div></li><li class="step"><label class="tick"><input type="checkbox" id="b16"><span></span></label><div class="body"><p>En la libreta: <b>Más → Comprobantes → Aprobar</b>.</p></div></li><li class="step"><label class="tick"><input type="checkbox" id="b17"><span></span></label><div class="body"><p><b>Más → Mi cuenta → Notificaciones</b> → activar. Envía otro comprobante desde el link: debe llegar el aviso.</p></div></li><li class="step"><label class="tick"><input type="checkbox" id="b18"><span></span></label><div class="body"><p>Prueba <b>Cobrar</b>.</p><p class=note>Solo funciona de lunes a sábado entre 08:00 y 20:00, sin feriados (lo pide la ley). Fuera de ese horario la app te dice cuándo se puede.</p></div></li></ol></section><section class="group" id="ping"><header><h2>Mantener activa la base de datos</h2><span class="where">GitHub → Actions</span></header><ol><li class="step"><label class="tick"><input type="checkbox" id="b19"><span></span></label><div class="body"><p><b>Actions → “Mantener activa la base de datos” → Run workflow</b>.</p><p class=note>Debe quedar en verde. Desde ahí corre sola cada 3 días para que Supabase gratis no se pause.</p></div></li></ol></section>
+  <p><button type="button" class="reset" id="reset">Desmarcar todo</button></p>
+</div>
+<script>
+(function(){
+  var K='lc-guia-v1', st={};
+  try{st=JSON.parse(localStorage.getItem(K)||'{}')}catch(e){}
+  var boxes=[].slice.call(document.querySelectorAll('.tick input'));
+  function upd(){
+    var n=0;boxes.forEach(function(b){if(b.checked)n++;b.closest('.step').classList.toggle('done',b.checked)});
+    document.getElementById('count').textContent=n+' de '+boxes.length;
+    document.getElementById('fill').style.width=(n*100/boxes.length)+'%';
+  }
+  boxes.forEach(function(b){b.checked=!!st[b.id];b.addEventListener('change',function(){st[b.id]=b.checked;try{localStorage.setItem(K,JSON.stringify(st))}catch(e){}upd()})});
+  document.getElementById('reset').addEventListener('click',function(){boxes.forEach(function(b){b.checked=false});st={};try{localStorage.removeItem(K)}catch(e){}upd()});
+  document.querySelectorAll('.copy').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var pre=document.getElementById(btn.dataset.for),t=pre.textContent;
+      function ok(){btn.textContent='Copiado ✓';btn.classList.add('ok');setTimeout(function(){btn.textContent='Copiar';btn.classList.remove('ok')},1800)}
+      function sel(){var r=document.createRange();r.selectNodeContents(pre);var s=getSelection();s.removeAllRanges();s.addRange(r);btn.textContent='Seleccionado: copia con el menú'}
+      try{navigator.clipboard.writeText(t).then(ok,sel)}catch(e){sel()}
+    });
+  });
+  upd();
+})();
+</script>

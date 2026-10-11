@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Mi libreta · Libreta de Cobros</title>
+  <meta name="theme-color" content="#059669">
+  <meta name="robots" content="noindex">
+  <link rel="manifest" href="../manifest.webmanifest">
+  <link rel="icon" href="../icons/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="../icons/icon-192.png">
+  <link rel="stylesheet" href="../css/app.css">
+</head>
+<body>
+  <div class="app con-nav">
+    <header class="barra-sup">
+      <div class="logo-mini" id="logoNeg">LC</div>
+      <h1 id="titulo">Libreta</h1>
+      <span id="estadoRed" class="tag oculto">Sin internet</span>
+      <a class="btn-icono" href="#avisos" aria-label="Avisos" style="position:relative;text-decoration:none">🔔<span id="badgeAvisos" class="punto oculto" style="right:-4px;top:-4px"></span></a>
+    </header>
+    <div id="bandas"></div>
+    <main id="vista"><div class="vacio"><div class="spinner" style="margin:40px auto"></div></div></main>
+    <footer class="pie">Libreta de Cobros v<span id="ver"></span> · © CodeFix · Josué Castillo</footer>
+  </div>
+  <nav class="nav" id="nav" aria-label="Menú principal">
+    <a href="#inicio" data-v="inicio"><span class="ico">🏠</span>Inicio</a>
+    <a href="#clientes" data-v="clientes"><span class="ico">👥</span>Clientes</a>
+    <a href="#anotar" data-v="anotar" class="mas-grande"><span class="ico">＋</span>Anotar</a>
+    <a href="#mas" data-v="mas"><span class="ico">☰</span>Más<span id="badgeMas" class="punto oculto"></span></a>
+  </nav>
+  <script src="../vendor/supabase.js"></script>
+  <script src="../js/config.js"></script>
+  <script src="../js/core.js"></script>
+  <script src="../js/app.js"></script>
+</body>
+</html>

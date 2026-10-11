@@ -1,0 +1,23 @@
+name: Mantener activa la base de datos
+
+# El plan gratis de Supabase se pausa tras 7 días sin uso. Esto lo "toca" cada 3 días.
+on:
+  schedule:
+    - cron: '17 12 */3 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llamar a ping()
+        run: |
+          code=$(curl -s -o /tmp/r.txt -w '%{http_code}' -X POST \
+            'https://zbgfvxsqajtixjzxoxeu.supabase.co/rest/v1/rpc/ping' \
+            -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiZ2Z2eHNxYWp0aXhqenhveGV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3NDQ0NzUsImV4cCI6MjEwNzMyMDQ3NX0._JyVta9bPzX56iHb-e9lcdy6-NTm16WGaqEZAGbszGE' \
+            -H 'Content-Type: application/json' -d '{}')
+          cat /tmp/r.txt; echo
+          test "$code" = "200"
