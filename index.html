@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Libreta de Cobros · Fiado, cuotas y abonos en tu celular</title>
-  <meta name="description" content="Anota el fiado en 3 segundos, tu cliente ve su cuenta con un link y paga por transferencia. Cobra por WhatsApp dentro de la ley. Gratis para empezar.">
+  <meta name="description" content="Tu billetera de negocio: ventas, gastos, fiado y cuotas en el celular. Tu cliente ve su cuenta con un link y paga por transferencia. Prueba 7 días gratis.">
   <meta name="theme-color" content="#059669">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
@@ -26,14 +26,14 @@
     <section class="hero-portada">
       <div>
         <span class="tag marca">Para almacenes, ferias, venta por catálogo y emprendedores</span>
-        <h1 class="mt">Recupera la plata que te deben.</h1>
-        <p>Anota el fiado en <strong>3 segundos</strong>. Tu cliente ve su cuenta con un link —sin descargar nada— y te paga por
-          <strong>transferencia</strong>. Cobra por WhatsApp con un toque y <strong>dentro de la ley</strong>.</p>
+        <h1 class="mt">Sabe en qué se va tu plata y recupera la que te deben.</h1>
+        <p>Anota ventas, gastos y fiados en <strong>3 segundos</strong>. Ve tu balance del mes por categoría. Tu cliente ve lo que te debe con un link
+          —sin descargar nada— y te paga por <strong>transferencia</strong>. Cobra por WhatsApp <strong>dentro de la ley</strong>.</p>
         <div class="fila envolver">
           <button class="btn primario" type="button" data-ir="crear">Crear mi libreta gratis</button>
           <button class="btn" type="button" data-ir="ingresar">Ya tengo cuenta</button>
         </div>
-        <p class="sutil mt" id="txtPrueba">Incluye 14 días de Premium. Sin tarjeta.</p>
+        <p class="sutil mt" id="txtPrueba">Prueba 7 días gratis. Sin tarjeta.</p>
       </div>
       <div class="mock" aria-hidden="true">
         <div class="kpi hero"><div class="t">Te deben en total</div><div class="grande">$184.300</div></div>
@@ -52,25 +52,26 @@
       <div class="tarjeta"><div class="ico">⚖️</div><h3>Cobra dentro de la ley</h3><p class="sutil">Mensajes amables, en horario permitido y máximo 2 por semana, como pide la ley chilena de cobranza.</p></div>
       <div class="tarjeta"><div class="ico">📆</div><h3>Ventas en cuotas</h3><p class="sutil">"$60.000 en 3 cuotas": la app arma el calendario y te avisa quién se atrasó.</p></div>
       <div class="tarjeta"><div class="ico">✅</div><h3>Se acabó el "yo no te debía tanto"</h3><p class="sutil">El cliente confirma cada cargo desde su link. Todo queda registrado y nada se borra.</p></div>
-      <div class="tarjeta"><div class="ico">📊</div><h3>Sabes cuánto te deben</h3><p class="sutil">Total por cobrar, lo que vence hoy, los atrasados y lo que recuperaste este mes.</p></div>
+      <div class="tarjeta"><div class="ico">💰</div><h3>Tu caja al día</h3><p class="sutil">Ventas, gastos y consumo por categoría: cuánto entró, cuánto salió y en qué se fue la plata cada mes.</p></div>
     </section>
 
     <section class="tarjeta" id="precios">
       <h2>Planes</h2>
       <div class="dos-col">
         <div class="tarjeta plana">
-          <h3>Normal · Gratis</h3>
+          <h3>Prueba gratis · <span id="diasPrueba">7</span> días</h3>
           <ul class="sutil" id="listaNormal">
-            <li>Hasta 20 clientes activos</li><li>250 movimientos al mes</li><li>2 ventas en cuotas activas</li>
-            <li>Link del cliente con PIN y comprobantes</li><li>Cobro por WhatsApp</li><li>Exportar a CSV</li>
+            <li>Todo funcionando, con límites amplios</li><li>Ventas, gastos y fiado</li><li>Link del cliente con PIN y comprobantes</li>
+            <li>Cobro por WhatsApp</li><li>Al terminar puedes ver y exportar tus datos</li>
           </ul>
         </div>
         <div class="tarjeta plana" style="border-color:var(--marca)">
-          <h3>Premium <span class="tag premium" id="precioPremium">$4.990/mes</span></h3>
+          <h3>Pro <span class="tag premium" id="precioPremium">$4.990/mes</span></h3>
+          <p class="sutil" id="precioActivacion">Activación $10.000 (una vez)</p>
           <ul class="sutil">
-            <li>Clientes, movimientos y cuotas <strong>ilimitados</strong></li><li>Avisos automáticos al cliente</li>
+            <li>Todo <strong>sin límites</strong>: clientes, fiados, cuotas, ventas y gastos</li><li>Avisos automáticos a tus clientes</li>
             <li>Puntaje de buen pagador y límite por cliente</li><li>Reportes, Excel y estado de cuenta PDF</li>
-            <li>Hasta 3 ayudantes</li><li>Tu logo y color en el link del cliente</li>
+            <li>Tu logo y tus colores · chat directo de soporte</li>
           </ul>
         </div>
       </div>
@@ -81,7 +82,8 @@
       <h3>¿Mis clientes tienen que descargar algo?</h3><p class="sutil">No. Reciben un link por WhatsApp y entran con un PIN de 4 números.</p>
       <h3>¿Cobran comisión por los pagos?</h3><p class="sutil">No. El cliente te transfiere directo a tu cuenta. La app solo lleva la cuenta.</p>
       <h3>¿Y si no tengo señal?</h3><p class="sutil">Puedes anotar igual: se guarda en el celular y se sube solo cuando vuelve internet.</p>
-      <h3>¿Quién ve mis datos?</h3><p class="sutil">Solo tú y tus ayudantes. Ni siquiera el administrador de la plataforma ve los nombres ni las deudas de tus clientes.</p>
+      <h3>¿Quién ve mis datos?</h3><p class="sutil">Solo tú: cada billetera es personal. Ni siquiera el administrador de la plataforma ve tus ventas, gastos ni las deudas de tus clientes.</p>
+      <h3>¿Qué pasa después de la prueba?</h3><p class="sutil">Tu billetera queda bloqueada para anotar, pero puedes ver y exportar todo. Al activar Pro sigues donde quedaste: no se borra nada.</p>
     </section>
 
     <footer class="pie">

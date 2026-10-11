@@ -1,7 +1,7 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.1.1';
+  const VERSION = '1.2.0';
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
   const sb = global.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, {
@@ -110,9 +110,9 @@
     if (error) throw traducir(error);
     return data;
   }
-  async function funcion(body) {
+  async function funcion(body, token) {
     const r = await fetch(C.SUPABASE_URL + '/functions/v1/enviar', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', apikey: C.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + C.SUPABASE_ANON_KEY },
+      method: 'POST', headers: { 'Content-Type': 'application/json', apikey: C.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + (token || C.SUPABASE_ANON_KEY) },
       body: JSON.stringify(body),
     }).catch(() => { throw new ErrorApp('No se pudo conectar con la función "enviar". Revisa tu internet o que la función esté desplegada.', 'RED'); });
     const j = await r.json().catch(() => ({}));
@@ -188,6 +188,7 @@
     const x = e instanceof ErrorApp ? e : traducir(e);
     console.warn(x);
     if (x.pista === 'PLAN' && global.LC.alPlan) { global.LC.alPlan(x.message); return; }
+    if (x.pista === 'BLOQUEADO' && global.LC.alBloqueo) { global.LC.alBloqueo(x.message); return; }
     if (x.pista === 'SESION' && global.LC.alSesion) { global.LC.alSesion(); return; }
     toast(x.message, { error: true, ms: 5500 });
   }
@@ -320,6 +321,6 @@
     VERSION, C, RAIZ, sb, $, el, vaciar, pesos, fechaCorta, fechaLarga, hora, fechaHora, hoyISO, sumarDias, diasEntre, relativo, iniciales, colorDe, norm,
     V, ErrorApp, traducir, rpc, funcion, uuid, toast, cargando, conCarga, dialogo, confirmar, pedirTexto, error, copiar, wa, abrir,
     achicarImagen, blobADataURL, pushSoportado, suscribirPush, pushActual, esIOS, instalada, instalar, registrarSW, versionMenor, revisarVersion, actualizarAhora,
-    local, descargar, csv, excel, alPlan: null, alSesion: null,
+    local, descargar, csv, excel, alPlan: null, alSesion: null, alBloqueo: null,
   };
 })(window);

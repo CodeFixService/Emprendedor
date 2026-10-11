@@ -3,7 +3,7 @@
 \set ON_ERROR_STOP 1
 \set QUIET 1
 create schema if not exists pruebas;
-grant usage on schema pruebas to authenticated, anon;
+grant usage on schema pruebas to authenticated, anon, service_role;
 create or replace function pruebas.falla(p_sql text, p_contiene text) returns void language plpgsql as $$
 begin
   execute p_sql;
@@ -14,7 +14,7 @@ exception when others then
 end $$;
 create or replace function pruebas.ok(c boolean, msg text) returns void language plpgsql as $$
 begin if not coalesce(c, false) then raise exception 'FALLÓ: %', msg; end if; end $$;
-grant execute on all functions in schema pruebas to authenticated, anon;
+grant execute on all functions in schema pruebas to authenticated, anon, service_role;
 
 insert into auth.users (id, email, email_confirmed_at) values
   ('00000000-0000-0000-0000-0000000000a1', 'juanjosuecastilloloyola@gmail.com', now()),
@@ -31,13 +31,14 @@ select pruebas.ok(not (public.mi_estado() ->> 'es_admin')::boolean, 'impostor co
 select pruebas.falla($$select public.admin_resumen()$$, 'administrador');
 reset role;
 
--- ===== Dueño 1 crea su libreta (con prueba Premium) =====
+-- ===== Dueño 1 crea su billetera (prueba gratis de 7 días) =====
 set role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d1', false);
 select pruebas.falla($$select public.crear_negocio('Almacén Rosita', 'almacen', false)$$, 'Términos');
-select pruebas.ok((public.crear_negocio('Almacén Rosita', 'almacen', true) ->> 'prueba')::boolean, 'prueba de 14 días');
-select pruebas.falla($$select public.crear_negocio('Otro', 'almacen', true)$$, 'ya tiene una libreta');
-select pruebas.ok((public.mi_estado() -> 'plan' ->> 'premium')::boolean, 'parte en premium');
+select pruebas.ok((public.crear_negocio('Almacén Rosita', 'almacen', true) ->> 'prueba')::boolean, 'prueba gratis');
+select pruebas.falla($$select public.crear_negocio('Otro', 'almacen', true)$$, 'ya tiene una billetera');
+select pruebas.ok(public.mi_estado() -> 'plan' ->> 'estado' = 'prueba', 'parte en prueba gratis');
+select pruebas.ok((select prueba_hasta between now() + interval '6 days' and now() + interval '8 days' from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d1'), 'prueba de 7 días');
 select pruebas.falla($$select public.guardar_negocio('{"nombre":"Almacén Rosita","banco":{"rut":"12.345.678-0"}}')$$, 'RUT inválido');
 select public.guardar_negocio('{"nombre":"Almacén Rosita","whatsapp":"9 8765 4321","banco":{"banco":"BancoEstado","tipo":"Cuenta RUT","numero":"12345678","rut":"12.345.678-5","titular":"Rosa Pérez"}}');
 select pruebas.ok((select whatsapp = '+56987654321' and banco ->> 'rut' = '12345678-5' from public.negocios), 'normaliza teléfono y RUT');
@@ -63,7 +64,11 @@ select pruebas.falla($$select public.anular_movimiento('10000000-0000-0000-0000-
 select pruebas.ok((public.anular_movimiento('10000000-0000-0000-0000-000000000003', 'Me equivoqué de cliente') ->> 'saldo')::int = 3500, 'anular recalcula');
 select pruebas.falla($$select public.estado_cliente(current_setting('t.c1')::uuid, 'archivar')$$, 'saldo $0');
 
--- Límite de fiado (Premium por cliente)
+-- Límite de fiado por cliente (Pro)
+reset role;
+update public.negocios set premium_hasta = now() + interval '30 days' where dueno = '00000000-0000-0000-0000-0000000000d1';
+set role authenticated;
+select pruebas.ok(public.mi_estado() -> 'plan' ->> 'estado' = 'pro', 'pasa a Pro');
 select public.editar_cliente(current_setting('t.c1')::uuid, 'Juan Pérez', 'vecino', '+56911112222', null, null, 5000);
 select pruebas.ok((public.registrar_movimiento(gen_random_uuid(), current_setting('t.c1')::uuid, 'cargo', 2000, null, null, null, null, null, false, false) ->> 'limite')::int = 5000, 'avisa límite');
 select pruebas.ok((public.registrar_movimiento(gen_random_uuid(), current_setting('t.c1')::uuid, 'cargo', 2000, null, null, null, null, null, true, false) ->> 'ok')::boolean, 'dueño fuerza límite');
@@ -101,11 +106,8 @@ select pruebas.falla($$select public.admin_resumen()$$, 'administrador');
 select pruebas.falla($$select * from privado.secretos$$, 'permission denied');
 select pruebas.falla($$select privado.fijar_admin()$$, 'permission denied');
 
--- ===== Plan Normal: límite de 20 clientes y 250 movimientos =====
-reset role;
-update public.negocios set premium_hasta = now() - interval '30 days', en_prueba = false where dueno = '00000000-0000-0000-0000-0000000000d2';
-set role authenticated;
-select pruebas.ok(not (public.mi_estado() -> 'plan' ->> 'premium')::boolean, 'baja a normal');
+-- ===== Prueba gratis (límites del plan gratis): 20 clientes y 250 movimientos =====
+select pruebas.ok(public.mi_estado() -> 'plan' ->> 'estado' = 'prueba', 'dueño 2 en prueba');
 do $$ begin for i in 1..20 loop perform public.crear_cliente('Cliente ' || i, null, null, null, null, null, '1111', 0, false, true); end loop; end $$;
 select pruebas.falla($$select public.crear_cliente('Cliente 21', null, null, null, null, null, '1111', 0, false, true)$$, '20 clientes');
 select set_config('t.f1', (select id::text from public.clientes where nombre = 'Cliente 1'), false);
@@ -117,47 +119,76 @@ reset role;
 update public.uso_mensual set movimientos = 0 where negocio = (select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d2');
 set role authenticated;
 select public.registrar_movimiento(gen_random_uuid(), current_setting('t.f1')::uuid, 'cargo', 100, null, null, null, null, null, false, false);
-reset role;
-update public.uso_mensual set movimientos = 250 where negocio = (select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d2');
-set role authenticated;
-select pruebas.ok((public.registrar_movimiento(gen_random_uuid(), current_setting('t.f1')::uuid, 'abono', 100, null, 'efectivo', null, null, null, false, false) ->> 'ok')::boolean, 'abono siempre pasa');
 select pruebas.falla($$select public.registrar_recordatorio(current_setting('t.f1')::uuid, 'whatsapp', 'firme', '')$$, 'Premium');
-select pruebas.falla($$select public.invitar_ayudante()$$, 'Premium');
+select pruebas.falla($$select public.invitar_ayudante()$$, 'personal');
 select pruebas.falla($$select public.solicitar_pago(12, null, null)$$, 'mes a mes');
-
--- ===== Bajada de plan: los clientes sobre el cupo quedan en "solo cobro" =====
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d1', false);
 reset role;
-do $$ begin for i in 1..20 loop
-  insert into public.clientes (negocio, nombre, nombre_norm, link_codigo) select id, 'Extra ' || i, 'extra ' || i, md5(random()::text) from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d1';
-end loop; end $$;
-update public.negocios set premium_hasta = now() - interval '1 day', en_prueba = true where dueno = '00000000-0000-0000-0000-0000000000d1';
+update public.uso_mensual set caja = 300 where negocio = (select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d2');
 set role authenticated;
-select public.mi_estado();
-select pruebas.ok((select count(*) = 20 from public.clientes where estado = 'activo' and not fuera_de_plan), 'quedan 20 activos');
-select pruebas.ok((select count(*) = 2 from public.clientes where fuera_de_plan), '2 en solo cobro');
-select pruebas.ok((select count(*) >= 1 from public.notificaciones where titulo = 'Tu Premium terminó'), 'avisa bajada');
+select pruebas.falla($$select public.registrar_caja(gen_random_uuid(), 'gasto', 1000, 'Arriendo', null, 'efectivo', null, false)$$, 'ingresos y gastos de este mes');
 
--- ===== Admin =====
+-- ===== Fin de la prueba: billetera bloqueada (ver y exportar sí; anotar no) =====
+reset role;
+update public.negocios set prueba_hasta = now() - interval '1 minute' where dueno = '00000000-0000-0000-0000-0000000000d2';
+select set_config('t.codf', (select link_codigo from public.clientes where id = current_setting('t.f1')::uuid), false);
+set role authenticated;
+select pruebas.ok(public.mi_estado() -> 'plan' ->> 'estado' = 'bloqueado', 'se bloquea al terminar la prueba');
+select pruebas.ok((select count(*) >= 1 from public.notificaciones where titulo = 'Terminó tu prueba gratis'), 'avisa el bloqueo');
+select pruebas.falla($$select public.crear_cliente('Nuevo', null, null, null, null, null, '1111', 0, false, true)$$, 'Terminó tu prueba gratis');
+select pruebas.falla($$select public.registrar_movimiento(gen_random_uuid(), current_setting('t.f1')::uuid, 'abono', 50, null, 'efectivo', null, null, null, false, false)$$, 'Terminó tu prueba gratis');
+select pruebas.ok((public.tablero() ->> 'por_cobrar')::int >= 0, 'bloqueado puede ver el tablero');
+select pruebas.ok(public.exportar_datos() ? 'clientes', 'bloqueado puede exportar');
+select public.soporte_enviar('Hola, quiero activar Pro');
+select public.solicitar_pago(1, null, 'transferí');
+select pruebas.ok((select monto = 14990 from public.solicitudes_pago where negocio = (select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d2')), 'primer pago = activación + mes');
+reset role;
+set role anon;
+select pruebas.falla($$select public.portal_entrar(current_setting('t.codf'), '1111')$$, 'en pausa');
+reset role;
+set role authenticated;
+
+-- ===== Admin: aprueba el pago, soporte y keys =====
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
 select pruebas.ok((public.admin_resumen() ->> 'negocios')::int = 2, 'admin ve resumen');
+select pruebas.ok((public.admin_resumen() ->> 'bloqueados')::int = 1, 'admin ve bloqueados');
+select pruebas.ok((public.admin_resumen() ->> 'soporte_sin_leer')::int = 1, 'admin ve soporte sin leer');
 select pruebas.ok((select count(*) = 0 from public.clientes), 'admin no ve clientes');
+select pruebas.ok((select count(*) = 0 from public.caja), 'admin no ve la caja');
+select public.admin_resolver_pago((select id from public.solicitudes_pago where estado = 'pendiente' limit 1), true, null);
+select public.admin_soporte_enviar((select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d2'), '¡Listo, activado!');
 select set_config('t.key', (public.admin_crear_keys(1, 1, 4990) ->> 0), false);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d2', false);
+select pruebas.ok(public.mi_estado() -> 'plan' ->> 'estado' = 'pro', 'pago aprobado: Pro');
+select pruebas.ok((public.mi_estado() -> 'plan' ->> 'activado')::boolean, 'queda activado');
+select pruebas.ok((public.mi_estado() -> 'pendientes' ->> 'soporte')::int = 1, 've respuesta de soporte');
+select pruebas.ok(jsonb_array_length(public.soporte_leer()) = 2, 'conversación de soporte');
+select pruebas.ok((public.mi_estado() -> 'pendientes' ->> 'soporte')::int = 0, 'soporte leído');
+select public.solicitar_pago(1, null, null);
+select pruebas.ok((select monto = 4990 from public.solicitudes_pago where estado = 'pendiente'), 'mensualidad sin activación');
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d1', false);
+select pruebas.ok((select count(*) = 0 from public.soporte), 'no ve el soporte de otro');
 select pruebas.ok((public.usar_key(current_setting('t.key')) ->> 'ok')::boolean, 'usar key');
 select pruebas.falla($$select public.usar_key(current_setting('t.key'))$$, 'ya usada');
-select public.mi_estado();
-select pruebas.ok((select count(*) = 0 from public.clientes where fuera_de_plan), 'al volver a Premium se liberan');
 
--- ===== Ayudante =====
-select set_config('t.inv', public.invitar_ayudante(), false);
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000e1', false);
-select public.aceptar_invitacion(current_setting('t.inv'), 'Pedro');
-select pruebas.ok(public.mi_estado() ->> 'rol' = 'ayudante', 'ayudante entra');
-select pruebas.falla($$select public.anular_movimiento('10000000-0000-0000-0000-000000000001', 'Ayudante intenta anular')$$, 'solo puedes anular lo tuyo');
-select pruebas.falla($$select public.registrar_movimiento(gen_random_uuid(), current_setting('t.c1')::uuid, 'cargo', 50000, null, null, null, null, null, true, false)$$, 'Solo el dueño puede autorizarlo');
-select pruebas.falla($$select public.reporte(current_date, current_date)$$, 'Solo el dueño');
-select pruebas.falla($$select public.registrar_movimiento(gen_random_uuid(), current_setting('t.c1')::uuid, 'cargo', 10, null, null, now() - interval '5 days', null, null, false, false)$$, '3 días');
+-- ===== Caja: ingresos y gastos =====
+select pruebas.ok((public.registrar_caja('30000000-0000-0000-0000-000000000001', 'ingreso', 10000, 'Ventas', 'Ventas del día', 'efectivo', null, false) ->> 'ok')::boolean, 'ingreso');
+select pruebas.ok((public.registrar_caja('30000000-0000-0000-0000-000000000001', 'ingreso', 10000, 'Ventas', null, 'efectivo', null, false) ->> 'repetido')::boolean, 'ingreso repetido no duplica');
+select pruebas.ok((public.registrar_caja(gen_random_uuid(), 'ingreso', 10000, 'Ventas', null, 'efectivo', null, false) ->> 'duplicado')::boolean, 'doble toque en caja');
+select public.registrar_caja('30000000-0000-0000-0000-000000000002', 'gasto', 3000, 'Arriendo', null, 'transferencia', null, false);
+select pruebas.falla($$select public.registrar_caja(gen_random_uuid(), 'gasto', 0, 'Arriendo', null, null, null, false)$$, 'entre $1');
+select pruebas.falla($$select public.registrar_caja(gen_random_uuid(), 'gasto', 10, 'X', null, null, null, false)$$, 'categoría');
+select pruebas.falla($$select public.registrar_caja(gen_random_uuid(), 'gasto', 10, 'Arriendo', null, null, now() + interval '1 day', false)$$, 'futura');
+select pruebas.ok((public.resumen_caja(null) ->> 'ingresos')::int = 10000 and (public.resumen_caja(null) ->> 'gastos')::int = 3000, 'resumen de caja');
+select pruebas.ok((public.resumen_caja(null) ->> 'cobros')::int > 0, 'los abonos cuentan como cobros');
+select public.anular_caja('30000000-0000-0000-0000-000000000002', 'Me equivoqué de monto');
+select pruebas.ok((public.resumen_caja(null) ->> 'gastos')::int = 0, 'anular gasto');
+select public.guardar_categoria('gasto', 'Bencina camioneta');
+select pruebas.ok((select count(*) = 1 from public.categorias), 'categoría propia');
+select pruebas.ok(jsonb_array_length(public.exportar_datos() -> 'caja') = 2, 'exportar incluye caja');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d2', false);
+select pruebas.ok((select count(*) = 0 from public.caja), 'aislamiento de caja');
+select pruebas.falla($$select public.anular_caja('30000000-0000-0000-0000-000000000001', 'Ataque de otro negocio')$$, 'no encontrado');
+select pruebas.falla($$select public.srv_crear_negocio(auth.uid(), 'x', 'otro', 999)$$, 'permission denied');
 
 -- ===== Link del cliente =====
 reset role;
@@ -187,6 +218,15 @@ select pruebas.ok((public.tablero() ->> 'por_cobrar')::int > 0, 'tablero');
 select pruebas.ok((public.reporte(current_date - 30, current_date) ->> 'cobrado')::int >= 20000, 'reporte');
 select pruebas.ok(jsonb_array_length(public.exportar_datos() -> 'movimientos') > 0, 'exportar');
 reset role;
+
+-- ===== El admin crea una cuenta desde su panel (función del servidor) =====
+reset role;
+insert into auth.users (id, email, email_confirmed_at) values ('00000000-0000-0000-0000-0000000000c1', 'creada@prueba.cl', now());
+set role service_role;
+select pruebas.ok(public.srv_es_admin('00000000-0000-0000-0000-0000000000a1') and not public.srv_es_admin('00000000-0000-0000-0000-0000000000c1'), 'srv_es_admin');
+select public.srv_crear_negocio('00000000-0000-0000-0000-0000000000c1', 'Creado por Josué', 'feria', 30);
+reset role;
+select pruebas.ok((select privado.estado_plan(id) = 'pro' and activado from public.negocios where dueno = '00000000-0000-0000-0000-0000000000c1'), 'cuenta creada con Pro');
 
 -- Tareas automáticas no fallan
 select privado.tarea_horaria();

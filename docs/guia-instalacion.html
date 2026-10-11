@@ -55,18 +55,19 @@ pre{margin:0;padding:12px;color:var(--code-fg);font:13px/1.5 var(--mono);overflo
 -- Descarga y ejecuta supabase/instalar.sql de la versión publicada. Se puede correr de nuevo para actualizar.
 create extension if not exists http with schema extensions;
 do $$ begin
-  execute (select content from extensions.http_get(&#x27;https://raw.githubusercontent.com/CodeFixService/Emprendedor/0e801e84b4fe2e17edf63be2912026358f5922db/supabase/instalar.sql&#x27;));
+  execute (select content from extensions.http_get(&#x27;https://raw.githubusercontent.com/CodeFixService/Emprendedor/c81cb04339382937069e83b631d37cceb7866081/supabase/instalar.sql&#x27;));
 end $$;
 select &#x27;Libreta instalada v&#x27; || valor as resultado from privado.config where clave = &#x27;version_bd&#x27;;</pre></div><p class=note>Debe terminar con <code>Libreta instalada v1</code>.</p></div></li></ol></section><section class="group" id="admin"><header><h2>Tu usuario administrador</h2><span class="where">Supabase → Authentication</span></header><ol><li class="step"><label class="tick"><input type="checkbox" id="b2"><span></span></label><div class="body"><p><b>Authentication → Users → Add user → Create new user</b>. Correo:</p><div class="code"><div class="code-bar"><span>correo</span><button type="button" class="copy" data-for="c2">Copiar</button></div><pre id="c2">juanjosuecastilloloyola@gmail.com</pre></div><p class=note>Usa una contraseña <b>distinta</b> a la de CodeFix y marca <b>Auto Confirm User</b> → <b>Create user</b>.</p></div></li><li class="step"><label class="tick"><input type="checkbox" id="b3"><span></span></label><div class="body"><p><b>SQL Editor → + New query</b>, pega esto y toca <b>Run</b>:</p><div class="code"><div class="code-bar"><span>SQL</span><button type="button" class="copy" data-for="c3">Copiar</button></div><pre id="c3">select privado.fijar_admin();</pre></div><p class=note>Debe decir <code>Administrador fijado ✓</code>. Así nadie más puede hacerse admin registrándose con tu correo.</p></div></li></ol></section><section class="group" id="fn"><header><h2>Función de avisos y fotos</h2><span class="where">Supabase → Edge Functions</span></header><ol><li class="step"><label class="tick"><input type="checkbox" id="b4"><span></span></label><div class="body"><p><b>Edge Functions → Deploy a new function → Via Editor</b>. Borra el ejemplo, pega todo este código, ponle de nombre <code>enviar</code> y toca <b>Deploy function</b>.</p><div class="code"><div class="code-bar"><span>supabase/functions/enviar/index.ts</span><button type="button" class="copy" data-for="c4">Copiar</button></div><pre id="c4">// Edge Function &quot;enviar&quot; · Libreta de Cobros
 //  - Sin &quot;accion&quot;: envía las notificaciones push pendientes (la llama la base de datos cada minuto si hay algo).
 //  - accion &quot;foto&quot;: recibe la foto del comprobante que sube un cliente desde su link (con token de un solo uso).
 //  - accion &quot;limpiar&quot;: borra archivos viejos (fotos de más de 90 días y cuentas eliminadas).
+//  - accion &quot;crear_usuario&quot;: el administrador crea una cuenta con su billetera (solo con la sesión del admin).
 //  - accion &quot;ping&quot;: diagnóstico.
 // Se despliega en Supabase → Edge Functions → nombre &quot;enviar&quot; (con &quot;Verify JWT&quot; apagado).
 import webpush from &#x27;npm:web-push@3.6.7&#x27;;
 import { createClient } from &#x27;npm:@supabase/supabase-js@2.45.4&#x27;;
 
-const VERSION = &#x27;1.0.0&#x27;;
+const VERSION = &#x27;1.2.0&#x27;;
 const CORS = {
   &#x27;Access-Control-Allow-Origin&#x27;: &#x27;*&#x27;,
   &#x27;Access-Control-Allow-Headers&#x27;: &#x27;authorization, x-client-info, apikey, content-type&#x27;,
@@ -159,6 +160,32 @@ async function limpiar() {
   return { borrados };
 }
 
+const RUBROS = [&#x27;almacen&#x27;, &#x27;feria&#x27;, &#x27;catalogo&#x27;, &#x27;emprendimiento&#x27;, &#x27;servicios&#x27;, &#x27;educacion&#x27;, &#x27;club&#x27;, &#x27;personal&#x27;, &#x27;otro&#x27;];
+async function crearUsuario(req: Request, b: { email?: string; clave?: string; nombre?: string; rubro?: string; dias_pro?: number }) {
+  const jwt = (req.headers.get(&#x27;Authorization&#x27;) || &#x27;&#x27;).replace(/^Bearer\s+/i, &#x27;&#x27;);
+  const sb = db();
+  const { data: who } = await sb.auth.getUser(jwt);
+  if (!who?.user) return { ok: false, error: &#x27;Tu sesión terminó. Ingresa de nuevo.&#x27; };
+  const { data: esAdmin } = await sb.rpc(&#x27;srv_es_admin&#x27;, { p_uid: who.user.id });
+  if (!esAdmin) return { ok: false, error: &#x27;Solo el administrador puede crear cuentas.&#x27; };
+  const email = String(b.email || &#x27;&#x27;).trim().toLowerCase();
+  const clave = String(b.clave || &#x27;&#x27;);
+  const nombre = String(b.nombre || &#x27;&#x27;).trim().replace(/\s+/g, &#x27; &#x27;);
+  const rubro = RUBROS.includes(String(b.rubro)) ? String(b.rubro) : &#x27;otro&#x27;;
+  const dias = Math.max(0, Math.min(3660, Math.round(Number(b.dias_pro) || 0)));
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { ok: false, error: &#x27;Correo inválido&#x27; };
+  if (clave.length &lt; 8 || !/[a-zA-Z]/.test(clave) || !/\d/.test(clave)) return { ok: false, error: &#x27;La contraseña debe tener 8 caracteres o más, con letras y números&#x27; };
+  if (nombre.length &lt; 2 || nombre.length &gt; 50) return { ok: false, error: &#x27;El nombre del negocio debe tener entre 2 y 50 letras&#x27; };
+  const { data: nu, error: e1 } = await sb.auth.admin.createUser({ email, password: clave, email_confirm: true, user_metadata: { nombre } });
+  if (e1 || !nu?.user) {
+    const m = e1?.message || &#x27;No se pudo crear la cuenta&#x27;;
+    return { ok: false, error: /already|registered|exists/i.test(m) ? &#x27;Ese correo ya tiene cuenta&#x27; : m };
+  }
+  const { error: e2 } = await sb.rpc(&#x27;srv_crear_negocio&#x27;, { p_uid: nu.user.id, p_nombre: nombre, p_rubro: rubro, p_pro_dias: dias });
+  if (e2) { await sb.auth.admin.deleteUser(nu.user.id); return { ok: false, error: e2.message }; }
+  return { ok: true };
+}
+
 Deno.serve(async (req) =&gt; {
   if (req.method === &#x27;OPTIONS&#x27;) return new Response(&#x27;ok&#x27;, { headers: CORS });
   try {
@@ -166,6 +193,7 @@ Deno.serve(async (req) =&gt; {
     if (body?.accion === &#x27;ping&#x27;) return json({ ok: true, version: VERSION, servicio: !!Deno.env.get(&#x27;SUPABASE_SERVICE_ROLE_KEY&#x27;) });
     if (body?.accion === &#x27;foto&#x27;) return json(await subirFoto(body));
     if (body?.accion === &#x27;limpiar&#x27;) return json(await limpiar());
+    if (body?.accion === &#x27;crear_usuario&#x27;) return json(await crearUsuario(req, body));
     return json(await enviarCola());
   } catch (e) {
     return json({ ok: false, error: String((e as Error)?.message || e) }, 500);

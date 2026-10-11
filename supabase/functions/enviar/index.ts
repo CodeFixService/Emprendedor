@@ -2,12 +2,13 @@
 //  - Sin "accion": envía las notificaciones push pendientes (la llama la base de datos cada minuto si hay algo).
 //  - accion "foto": recibe la foto del comprobante que sube un cliente desde su link (con token de un solo uso).
 //  - accion "limpiar": borra archivos viejos (fotos de más de 90 días y cuentas eliminadas).
+//  - accion "crear_usuario": el administrador crea una cuenta con su billetera (solo con la sesión del admin).
 //  - accion "ping": diagnóstico.
 // Se despliega en Supabase → Edge Functions → nombre "enviar" (con "Verify JWT" apagado).
 import webpush from 'npm:web-push@3.6.7';
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
-const VERSION = '1.0.0';
+const VERSION = '1.2.0';
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -100,6 +101,32 @@ async function limpiar() {
   return { borrados };
 }
 
+const RUBROS = ['almacen', 'feria', 'catalogo', 'emprendimiento', 'servicios', 'educacion', 'club', 'personal', 'otro'];
+async function crearUsuario(req: Request, b: { email?: string; clave?: string; nombre?: string; rubro?: string; dias_pro?: number }) {
+  const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  const sb = db();
+  const { data: who } = await sb.auth.getUser(jwt);
+  if (!who?.user) return { ok: false, error: 'Tu sesión terminó. Ingresa de nuevo.' };
+  const { data: esAdmin } = await sb.rpc('srv_es_admin', { p_uid: who.user.id });
+  if (!esAdmin) return { ok: false, error: 'Solo el administrador puede crear cuentas.' };
+  const email = String(b.email || '').trim().toLowerCase();
+  const clave = String(b.clave || '');
+  const nombre = String(b.nombre || '').trim().replace(/\s+/g, ' ');
+  const rubro = RUBROS.includes(String(b.rubro)) ? String(b.rubro) : 'otro';
+  const dias = Math.max(0, Math.min(3660, Math.round(Number(b.dias_pro) || 0)));
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { ok: false, error: 'Correo inválido' };
+  if (clave.length < 8 || !/[a-zA-Z]/.test(clave) || !/\d/.test(clave)) return { ok: false, error: 'La contraseña debe tener 8 caracteres o más, con letras y números' };
+  if (nombre.length < 2 || nombre.length > 50) return { ok: false, error: 'El nombre del negocio debe tener entre 2 y 50 letras' };
+  const { data: nu, error: e1 } = await sb.auth.admin.createUser({ email, password: clave, email_confirm: true, user_metadata: { nombre } });
+  if (e1 || !nu?.user) {
+    const m = e1?.message || 'No se pudo crear la cuenta';
+    return { ok: false, error: /already|registered|exists/i.test(m) ? 'Ese correo ya tiene cuenta' : m };
+  }
+  const { error: e2 } = await sb.rpc('srv_crear_negocio', { p_uid: nu.user.id, p_nombre: nombre, p_rubro: rubro, p_pro_dias: dias });
+  if (e2) { await sb.auth.admin.deleteUser(nu.user.id); return { ok: false, error: e2.message }; }
+  return { ok: true };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   try {
@@ -107,6 +134,7 @@ Deno.serve(async (req) => {
     if (body?.accion === 'ping') return json({ ok: true, version: VERSION, servicio: !!Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') });
     if (body?.accion === 'foto') return json(await subirFoto(body));
     if (body?.accion === 'limpiar') return json(await limpiar());
+    if (body?.accion === 'crear_usuario') return json(await crearUsuario(req, body));
     return json(await enviarCola());
   } catch (e) {
     return json({ ok: false, error: String((e as Error)?.message || e) }, 500);
