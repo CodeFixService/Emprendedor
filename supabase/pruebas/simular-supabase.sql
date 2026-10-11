@@ -7,8 +7,13 @@ create table auth.users (
   id uuid primary key default gen_random_uuid(), email text, email_confirmed_at timestamptz,
   raw_user_meta_data jsonb default '{}'::jsonb, created_at timestamptz default now()
 );
-create function auth.uid() returns uuid language sql stable as
-  $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+create function auth.uid() returns uuid language sql stable as $$
+  select coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''),
+    nullif(current_setting('request.jwt.claims', true), '')::json ->> 'sub')::uuid $$;
+grant usage on schema auth to anon, authenticated, service_role;
+grant execute on function auth.uid() to anon, authenticated, service_role;
+do $$ begin create role authenticator login noinherit password 'local'; exception when others then null; end $$;
+grant anon, authenticated, service_role to authenticator;
 create schema extensions;
 create extension pgcrypto with schema extensions;
 create schema storage;

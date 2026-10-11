@@ -1,0 +1,24 @@
+{
+  "id": "./app/",
+  "name": "Libreta de Cobros",
+  "short_name": "Libreta",
+  "description": "Fiado, cuotas y abonos: anota en 3 segundos y cobra por WhatsApp dentro de la ley.",
+  "lang": "es-CL",
+  "start_url": "./app/",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f3f5f4",
+  "theme_color": "#059669",
+  "categories": ["business", "finance", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Anotar", "url": "./app/#anotar", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Clientes", "url": "./app/#clientes", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Comprobantes", "url": "./app/#comprobantes", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

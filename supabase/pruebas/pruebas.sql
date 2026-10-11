@@ -22,6 +22,14 @@ insert into auth.users (id, email, email_confirmed_at) values
   ('00000000-0000-0000-0000-0000000000d2', 'dueno2@prueba.cl', now()),
   ('00000000-0000-0000-0000-0000000000e1', 'ayudante@prueba.cl', now())
 on conflict do nothing;
+select pruebas.ok(not exists (select 1 from privado.config where clave = 'admin_id' and valor <> ''), 'sin admin fijado al instalar');
+select pruebas.ok(privado.fijar_admin() like 'Administrador fijado%', 'fijar admin');
+insert into auth.users (id, email, email_confirmed_at) values ('00000000-0000-0000-0000-0000000000f1', 'juanjosuecastilloloyola@gmail.com', now());
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', false);
+select pruebas.ok(not (public.mi_estado() ->> 'es_admin')::boolean, 'impostor con el mismo correo no es admin');
+select pruebas.falla($$select public.admin_resumen()$$, 'administrador');
+reset role;
 
 -- ===== Dueño 1 crea su libreta (con prueba Premium) =====
 set role authenticated;
@@ -91,6 +99,7 @@ select pruebas.falla($$select pin_hash from public.clientes$$, 'permission denie
 select pruebas.falla($$select nota_admin from public.negocios$$, 'permission denied');
 select pruebas.falla($$select public.admin_resumen()$$, 'administrador');
 select pruebas.falla($$select * from privado.secretos$$, 'permission denied');
+select pruebas.falla($$select privado.fijar_admin()$$, 'permission denied');
 
 -- ===== Plan Normal: límite de 20 clientes y 250 movimientos =====
 reset role;

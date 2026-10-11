@@ -22,6 +22,7 @@ insert into privado.config values
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago')
 on conflict (clave) do update set valor = excluded.valor;
+insert into privado.config values ('admin_id', '') on conflict (clave) do nothing;
 
 create table if not exists privado.secretos (nombre text primary key, valor text not null);
 create table if not exists privado.pruebas_usadas (email_hash text primary key, at timestamptz default now());
@@ -381,10 +382,21 @@ end $$;
 create or replace function privado.sha(t text) returns text language sql immutable as
   $$ select encode(extensions.digest(t, 'sha256'), 'hex') $$;
 
+-- El administrador queda fijado por su id con privado.fijar_admin() (solo desde el SQL Editor de Supabase).
+-- Así nadie puede volverse admin registrándose con el mismo correo.
 create or replace function privado.es_admin() returns boolean language sql stable security definer set search_path = public, pg_temp as $$
-  select exists (select 1 from auth.users u where u.id = auth.uid() and u.email_confirmed_at is not null
-    and lower(u.email) = (select valor from privado.config where clave = 'admin_email'))
+  select auth.uid() is not null and auth.uid()::text = (select valor from privado.config where clave = 'admin_id')
 $$;
+
+create or replace function privado.fijar_admin() returns text language plpgsql security definer set search_path = public, pg_temp as $$
+declare v uuid;
+begin
+  select id into v from auth.users where lower(email) = (select valor from privado.config where clave = 'admin_email') and email_confirmed_at is not null
+   order by created_at limit 1;
+  if v is null then return 'ERROR: primero crea el usuario ' || (select valor from privado.config where clave = 'admin_email') || ' en Authentication → Users (con Auto Confirm User).'; end if;
+  insert into privado.config values ('admin_id', v::text) on conflict (clave) do update set valor = excluded.valor;
+  return 'Administrador fijado ✓ (' || v || ')';
+end $$;
 
 create or replace function privado.es_premium(p_neg uuid) returns boolean language sql stable security definer set search_path = public, pg_temp as $$
   select coalesce((select n.premium_hasta + make_interval(days => case when n.en_prueba then 0 else a.dias_gracia end) > now()
@@ -466,6 +478,7 @@ end $$;
 create or replace function privado.avisar_usuario(p_usr uuid, p_titulo text, p_cuerpo text, p_url text, p_push boolean default true)
 returns void language plpgsql security definer set search_path = public, pg_temp as $$
 begin
+  if p_usr is null then return; end if;
   insert into public.notificaciones (usuario, titulo, cuerpo, url) values (p_usr, p_titulo, coalesce(p_cuerpo, ''), p_url);
   if p_push then perform privado.push(p_usr, null, null, p_titulo, p_cuerpo, coalesce(p_url, 'app/')); end if;
 end $$;
@@ -747,7 +760,7 @@ begin
   returning id into v_id;
   insert into public.miembros (negocio, usuario, rol, nombre) values (v_id, auth.uid(), 'dueno', v_nombre);
   perform public.aceptar_terminos();
-  perform privado.avisar_usuario((select u.id from auth.users u where lower(u.email) = (select valor from privado.config where clave = 'admin_email') limit 1),
+  perform privado.avisar_usuario((select nullif(valor, '')::uuid from privado.config where clave = 'admin_id'),
     'Nueva libreta: ' || v_nombre, 'Rubro: ' || coalesce(p_rubro, 'otro') || coalesce(' · ' || v_email, ''), 'admin/', true);
   return jsonb_build_object('ok', true, 'id', v_id, 'prueba', v_prueba, 'dias', case when v_prueba then v_dias else 0 end);
 end $$;
@@ -1187,7 +1200,7 @@ begin
   select nombre into n from public.negocios where id = v_neg;
   insert into public.solicitudes_pago (negocio, meses, monto, comprobante_path, nota)
   values (v_neg, p_meses, case when p_meses = 12 then a.precio_anual else a.precio_mensual end, p_path, privado.limpio(p_nota, 200));
-  perform privado.avisar_usuario((select u.id from auth.users u where lower(u.email) = (select valor from privado.config where clave = 'admin_email') limit 1),
+  perform privado.avisar_usuario((select nullif(valor, '')::uuid from privado.config where clave = 'admin_id'),
     'Pago por revisar', n.nombre || ' dice que pagó Premium ' || case when p_meses = 12 then 'anual' else 'mensual' end || '.', 'admin/#pagos', true);
 end $$;
 
@@ -1311,6 +1324,18 @@ begin
   if not found then perform privado.fallo('Tu sesión terminó. Vuelve a abrir el link que te mandó el negocio.', 'SESION'); end if;
   if s.visto < now() - interval '10 minutes' then update public.sesiones_cliente set visto = now() where id = s.id; end if;
   return s.cliente;
+end $$;
+
+create or replace function public.portal_info(p_codigo text) returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare c record; n record; v_ip text;
+begin
+  begin v_ip := split_part(coalesce(current_setting('request.headers', true)::json ->> 'x-forwarded-for', ''), ',', 1); exception when others then v_ip := ''; end;
+  if v_ip <> '' then perform privado.limitar('ipinfo:' || v_ip, 120, 3600); end if;
+  select * into c from public.clientes where link_codigo = coalesce(p_codigo, '') and estado <> 'borrado';
+  if not found then return jsonb_build_object('ok', false); end if;
+  select * into n from public.negocios where id = c.negocio;
+  return jsonb_build_object('ok', n.estado = 'activo', 'negocio', n.nombre, 'pin', n.pin_activo, 'bloqueado', c.link_bloqueado,
+    'logo_url', case when privado.es_premium(n.id) then n.logo_url end, 'color', case when privado.es_premium(n.id) then n.color end);
 end $$;
 
 create or replace function public.portal_entrar(p_codigo text, p_pin text) returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
@@ -1832,7 +1857,7 @@ grant all on all sequences in schema public to service_role;
 revoke all on all functions in schema public from public, anon, authenticated;
 revoke all on all functions in schema privado from public, anon, authenticated;
 grant execute on function privado.mi_negocio(), privado.mi_rol(), privado.mi_premium(), privado.es_admin(), privado.es_premium(uuid) to authenticated;
-grant execute on function public.ping(), public.config_publica(), public.portal_entrar(text, text), public.portal_ver(text),
+grant execute on function public.ping(), public.config_publica(), public.portal_info(text), public.portal_entrar(text, text), public.portal_ver(text),
   public.portal_confirmar(text, uuid, boolean, text), public.portal_comprobante(text, int, date, text, boolean),
   public.portal_push(text, text, text, text), public.portal_salir(text) to anon, authenticated;
 grant execute on function public.mi_estado(), public.aceptar_terminos(), public.crear_negocio(text, text, boolean), public.guardar_negocio(jsonb),
@@ -1889,7 +1914,7 @@ create policy lc_pagos_ver on storage.objects for select to authenticated
 --  TIEMPO REAL Y TAREAS PROGRAMADAS
 -- =====================================================================
 do $$ declare t text; begin
-  foreach t in array array['movimientos','comprobantes','notificaciones','clientes'] loop
+  foreach t in array array['movimientos','notificaciones'] loop
     begin execute format('alter publication supabase_realtime add table public.%I', t);
     exception when others then null; end;
   end loop;

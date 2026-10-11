@@ -79,10 +79,10 @@ La libreta funciona **como un libro contable: nunca se edita ni se borra un movi
 | Datos | Descripción (obligatoria, 2–80), total ($1.000–$9.999.999), pie opcional (menor que el total), número de cuotas (2–24), frecuencia (semanal, quincenal o mensual) y fecha de la primera cuota (hoy o hasta 60 días más) |
 | Cálculo | Cuota = (total − pie) ÷ n, en pesos enteros. **La diferencia por redondeo va en la última cuota**, para que la suma sea exacta. Se muestra el calendario completo antes de confirmar |
 | Mensual | Si el día no existe en un mes (por ejemplo el 31), se usa el último día de ese mes |
-| Cómo se registra | Un fiado por el total (y, si hay pie, un abono por el pie). Las cuotas son un **calendario de vencimientos**, no deudas separadas |
+| Cómo se registra | Un solo fiado por lo que queda por pagar (total − pie). El total y el pie quedan escritos en la descripción. Las cuotas son un **calendario de vencimientos**, no deudas separadas |
 | Cómo se pagan | Cada abono se aplica **a la cuota más antigua sin pagar**. Una cuota puede quedar pagada en parte |
 | Estados | Pendiente, por vencer (3 días o menos), **atrasada** (vencida y sin pagar completa) y pagada. Una tarea diaria en el servidor los actualiza |
-| Anular la venta | Anula el fiado y el calendario. Si ya hubo abonos, quedan como saldo a favor o se anulan aparte (la app pregunta) |
+| Anular la venta | Anula el fiado y el calendario. Si ya hubo abonos, pagan otras deudas del cliente o quedan como saldo a favor (y se pueden anular aparte) |
 | Plan | Normal: 2 ventas en cuotas activas (con cuotas por pagar) |
 
 ## 3.6 Link del cliente y PIN

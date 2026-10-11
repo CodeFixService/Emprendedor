@@ -55,7 +55,7 @@ Mismo sistema que CodeFix Apps, pero en su propia base de datos:
 5. Avisos de vencimiento: 7, 3 y 1 día antes, y el mismo día.
 6. **Tres días de gracia** después de vencer, con Premium activo y un aviso en rojo. Al día 4 la cuenta pasa a Normal.
 
-Precio: **pendiente de que tú lo definas.** Para referencia: Premium a $4.990 al mes o $49.900 al año (2 meses gratis).
+Precio inicial: **$4.990 al mes o $49.900 al año** (2 meses gratis).
 Se cambia desde **Administración → Ajustes** sin tocar código.
 
 ## Qué pasa al bajar a Normal (al terminar la prueba o el Premium)

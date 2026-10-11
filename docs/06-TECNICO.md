@@ -22,39 +22,36 @@ Para un dominio propio después, basta con apuntarlo a este repo y cambiar las U
 ## Archivos
 ```
 (raíz del repo)
-  index.html            portada, crear cuenta e ingresar
-  app/index.html        app del negocio (con rutas por #)
-  c/index.html          link del cliente (página aparte y muy liviana)
+  index.html            portada, crear cuenta, ingresar, recuperar contraseña e invitaciones de ayudante
+  app/index.html        app del negocio (rutas con #)
+  c/index.html          link del cliente (página aparte y liviana) + c/manifest.webmanifest
   admin/index.html      superadmin
-  legal/index.html      términos y privacidad
+  legal/index.html      términos, privacidad, aviso al cliente y uso aceptable
   js/
-    config.js           URL y clave pública del Supabase nuevo, correo admin y marca
-    api.js              llamadas a Supabase y a las funciones del servidor
-    offline.js          cola de movimientos sin internet (IndexedDB) y sincronización
-    ui.js               componentes: teclado numérico, avisos, diálogos, chips y formato de pesos
-    validar.js          RUT, teléfono, montos, textos y palabras prohibidas (mismas reglas que el servidor)
-    negocio.js · clientes.js · anotar.js · cuotas.js · cobrar.js · comprobantes.js · reportes.js · ajustes.js · plan.js
-    portal.js           lógica del link del cliente
-    admin.js
-    imagen.js           achicar fotos a webp en el celular
-    pdf.js              estado de cuenta (Premium), generado en el navegador
-    push.js             activar notificaciones
-  css/app.css           estilos con variables (colores, modo oscuro)
-  vendor/supabase.js
-  icons/                icon-192.png, icon-512.png, maskable
-  manifest.webmanifest
-  sw.js
-  version.json
+    config.js           URL y clave pública del Supabase propio, correo admin y marca
+    core.js             herramientas comunes: llamadas al servidor, validaciones (RUT, teléfono, montos),
+                        avisos, diálogos, imágenes, push, instalación, CSV/Excel
+    inicio.js           portada y cuentas
+    app.js              todo el negocio: inicio, clientes, anotar, cuotas, cobrar, comprobantes, reportes,
+                        productos, ayudantes, ajustes, plan, avisos, cuenta, ayuda y cola sin internet
+    portal.js           link del cliente
+    admin.js            panel del administrador
+  css/app.css           estilos con variables (modo claro/oscuro, letra grande)
+  vendor/supabase.js    cliente oficial de Supabase (copiado, sin CDN)
+  icons/                íconos de la app
+  manifest.webmanifest · sw.js · version.json · robots.txt · .nojekyll
+  .github/workflows/ping.yml   mantiene activo el Supabase gratis
   supabase/
     instalar.sql        tablas, reglas, funciones, tareas y feriados (todo en uno, se puede correr de nuevo)
     instalar-corto.sql  versión corta para pegar (descarga e instala la larga)
-    functions/enviar/index.ts   envío de push
+    functions/enviar/index.ts   push, fotos de comprobantes y limpieza
+    pruebas/            simulación de Supabase + 70 pruebas de reglas y abusos (solo para desarrollo)
   docs/                 esta documentación
 ```
 
 ## Sin internet (clave en ferias y almacenes con mala señal)
 - La app abre sin internet: el service worker guarda los archivos.
-- Los últimos datos (clientes, saldos y los 100 movimientos recientes por cliente) quedan guardados en el celular (IndexedDB) y se ven sin conexión.
+- La lista de clientes, sus saldos y el tablero quedan guardados en el celular (almacenamiento local) y se ven sin conexión.
 - **Anotar sin internet**: el movimiento queda en una **cola** con su id único y el saldo se muestra "estimado".
   Al volver la conexión se envía en orden. Si el servidor lo rechaza (por ejemplo, porque el plan llegó al tope o el cliente quedó en solo cobro),
   queda marcado en rojo para que la persona decida.
@@ -63,7 +60,7 @@ Para un dominio propio después, basta con apuntarlo a este repo y cambiar las U
 - El link del cliente necesita internet (los datos siempre vienen del servidor).
 
 ## Tiempo real
-- Supabase Realtime en `comprobantes`, `movimientos` y `notificaciones` del negocio: si el ayudante anota algo, el dueño lo ve al instante.
+- Supabase Realtime en `movimientos` y `notificaciones` del negocio: si el ayudante anota algo o llega un comprobante, el dueño lo ve al instante.
 - Cuando la app vuelve a primer plano, se refresca sola.
 
 ## Actualizaciones
@@ -74,9 +71,11 @@ Mismo sistema que CodeFix: `version.json`, aviso de "Hay una versión nueva" y b
 El plan gratis **se pausa después de 7 días sin uso**. Un GitHub Action (`.github/workflows/ping.yml`) llama a `ping()`
 cada 3 días. Ojo: GitHub apaga las tareas programadas si el repo pasa 60 días sin cambios. El inicio del admin lo avisa.
 
-## Calidad antes de entregar
-- Revisar todos los archivos JavaScript con `node --check`.
-- Pruebas de las reglas del servidor con un script SQL que intenta cada abuso y debe fallar
-  (ver lo de otro negocio, pasar el límite, anular como ayudante pasados los 10 minutos, entrar al portal sin PIN, PIN con fuerza bruta, etc.).
-- Revisar las pantallas en Chrome con 360, 768 y 1280 px de ancho.
-- Lighthouse: PWA instalable y accesibilidad de 90 o más.
+## Calidad comprobada antes de entregar
+- Todos los archivos JavaScript pasan `node --check` y la función del servidor pasa `deno check`.
+- `supabase/pruebas/pruebas.sql`: 70 pruebas de reglas y abusos sobre Postgres real (aislamiento entre negocios, límites del plan,
+  PIN con bloqueo, cuotas, cobranza legal, ayudantes, admin, escritura directa prohibida). Todas pasan.
+- Recorridos completos en Chrome (celular y escritorio) contra la base de datos: crear cuenta, ajustes, clientes, fiado, abono,
+  doble toque, cuotas, cobro legal, link del cliente con PIN, confirmar y reclamar cargos, comprobante con foto, aprobarlo,
+  sin internet y sincronizar, ayudante, límite del plan Normal, "Ya pagué" y aprobación del admin. Sin errores.
+- La función "enviar" se probó corriendo: diagnóstico, cola, limpieza y subida de fotos (token de un solo uso, rechaza no-imágenes).
