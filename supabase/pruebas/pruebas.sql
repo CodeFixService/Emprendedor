@@ -123,6 +123,7 @@ set role authenticated;
 select pruebas.ok((public.registrar_movimiento(gen_random_uuid(), current_setting('t.f1')::uuid, 'abono', 100, null, 'efectivo', null, null, null, false, false) ->> 'ok')::boolean, 'abono siempre pasa');
 select pruebas.falla($$select public.registrar_recordatorio(current_setting('t.f1')::uuid, 'whatsapp', 'firme', '')$$, 'Premium');
 select pruebas.falla($$select public.invitar_ayudante()$$, 'Premium');
+select pruebas.falla($$select public.solicitar_pago(12, null, null)$$, 'mes a mes');
 
 -- ===== Bajada de plan: los clientes sobre el cupo quedan en "solo cobro" =====
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d1', false);

@@ -63,9 +63,13 @@ Para un dominio propio después, basta con apuntarlo a este repo y cambiar las U
 - Supabase Realtime en `movimientos` y `notificaciones` del negocio: si el ayudante anota algo o llega un comprobante, el dueño lo ve al instante.
 - Cuando la app vuelve a primer plano, se refresca sola.
 
-## Actualizaciones
-Mismo sistema que CodeFix: `version.json`, aviso de "Hay una versión nueva" y botón **Actualizar**. Si el admin sube la
-"versión mínima" en Ajustes, la app obliga a actualizar (por ejemplo, después de un cambio en la base de datos).
+## Actualizaciones (las apruebas tú)
+Igual que en CodeFix: la app **no se actualiza sola**. Cada celular usa la versión que tiene guardada hasta que la persona toca **Actualizar**,
+y ese botón aparece solo cuando tú liberas la versión nueva.
+1. Se publica una versión nueva en GitHub (sube `version.json` y la constante `VERSION` de `js/core.js`).
+2. Tú la pruebas: **Administración → Ajustes → Actualizaciones → Actualizar mi celular** no aplica todavía; abre la app en una ventana privada para ver lo publicado.
+3. Cuando esté bien: **Liberar vX para todos**. A cada negocio y cliente le aparece "✨ Hay una versión nueva" con el botón **Actualizar**.
+4. "Versión mínima obligatoria" (en Avanzado) muestra un aviso rojo a quien tenga una versión más vieja. Úsalo solo si algo dejó de funcionar.
 
 ## Mantener vivo el Supabase gratis
 El plan gratis **se pausa después de 7 días sin uso**. Un GitHub Action (`.github/workflows/ping.yml`) llama a `ping()`

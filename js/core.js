@@ -1,7 +1,7 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
   const sb = global.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, {
@@ -249,19 +249,31 @@
         : el('p', null, 'En el menú del navegador (⋮) elige "Instalar app" o "Agregar a la pantalla principal". En el computador, busca el ícono de instalar en la barra de direcciones.')));
     return false;
   }
-  function registrarSW(alActualizar) {
+  // La app NO se actualiza sola: usa la versión guardada en el celular hasta que la persona toca "Actualizar",
+  // y ese botón aparece solo cuando el administrador libera una versión nueva (igual que en CodeFix).
+  function registrarSW() {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register(RAIZ + 'sw.js', { scope: RAIZ }).then((reg) => {
-      const avisar = () => reg.waiting && alActualizar && alActualizar(() => { reg.waiting.postMessage('activar'); });
-      if (reg.waiting) avisar();
-      reg.addEventListener('updatefound', () => {
-        const n = reg.installing; if (!n) return;
-        n.addEventListener('statechange', () => { if (n.state === 'installed' && navigator.serviceWorker.controller) avisar(); });
-      });
-      setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
-    }).catch(() => {});
-    let recargando = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!recargando) { recargando = true; location.reload(); } });
+    navigator.serviceWorker.register(RAIZ + 'sw.js', { scope: RAIZ }).catch(() => {});
+  }
+  function actualizarAhora() {
+    cargando(true);
+    const listo = () => location.reload();
+    navigator.serviceWorker && navigator.serviceWorker.ready.then((reg) => {
+      const sw = reg.active; if (!sw) return listo();
+      const ch = new MessageChannel();
+      ch.port1.onmessage = (e) => { cargando(false); if (e.data && e.data.ok) listo(); else toast('No se pudo actualizar: ' + ((e.data && e.data.error) || 'sin internet'), { error: true }); };
+      sw.postMessage({ tipo: 'actualizar' }, [ch.port2]);
+      setTimeout(() => { cargando(false); }, 30000);
+    }).catch(listo);
+    if (!navigator.serviceWorker) listo();
+  }
+  // Llama a mostrar(texto, accion, forzada) si hay una versión liberada más nueva que la de este celular.
+  function revisarVersion(cfg, mostrar) {
+    if (!cfg) return;
+    const lib = cfg.version_liberada, min = cfg.version_min;
+    if (min && versionMenor(VERSION, min)) return mostrar('Esta versión de la app ya no funciona bien. Actualízala para seguir.', actualizarAhora, true);
+    if (lib && versionMenor(VERSION, lib)) return mostrar('✨ Hay una versión nueva (v' + lib + ').', actualizarAhora, false);
+    mostrar(null);
   }
   const versionMenor = (a, b) => { const x = String(a).split('.').map(Number), y = String(b).split('.').map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 
@@ -300,7 +312,7 @@
   global.LC = {
     VERSION, C, RAIZ, sb, $, el, vaciar, pesos, fechaCorta, fechaLarga, hora, fechaHora, hoyISO, sumarDias, diasEntre, relativo, iniciales, colorDe, norm,
     V, ErrorApp, traducir, rpc, funcion, uuid, toast, cargando, conCarga, dialogo, confirmar, pedirTexto, error, copiar, wa, abrir,
-    achicarImagen, blobADataURL, pushSoportado, suscribirPush, pushActual, esIOS, instalada, instalar, registrarSW, versionMenor,
+    achicarImagen, blobADataURL, pushSoportado, suscribirPush, pushActual, esIOS, instalada, instalar, registrarSW, versionMenor, revisarVersion, actualizarAhora,
     local, descargar, csv, excel, alPlan: null, alSesion: null,
   };
 })(window);

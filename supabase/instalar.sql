@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '1'),
+  ('version_bd', '2'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago')
@@ -50,6 +50,7 @@ create table if not exists public.ajustes (
   actualizado timestamptz default now()
 );
 insert into public.ajustes (id) values (1) on conflict do nothing;
+alter table public.ajustes add column if not exists version_liberada text not null default '1.0.0';
 
 create table if not exists public.perfiles (
   id uuid primary key references auth.users (id) on delete cascade,
@@ -675,6 +676,7 @@ create or replace function public.config_publica() returns jsonb language sql st
   select jsonb_build_object('precio_mensual', a.precio_mensual, 'precio_anual', a.precio_anual, 'link_pago', a.link_pago,
     'transferencia', a.transferencia, 'contacto_whatsapp', a.contacto_whatsapp, 'dias_prueba', a.dias_prueba,
     'lim_normal', a.lim_normal, 'lim_premium', a.lim_premium, 'version_legal', a.version_legal, 'version_min', a.version_min,
+    'version_liberada', a.version_liberada,
     'vapid_public', (select valor from privado.secretos where nombre = 'vapid_public'))
   from public.ajustes a where a.id = 1
 $$;
@@ -1191,7 +1193,7 @@ end $$;
 create or replace function public.solicitar_pago(p_meses int, p_path text, p_nota text) returns void language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_neg uuid := privado.exigir(true); a record; n record;
 begin
-  if p_meses not in (1, 12) then perform privado.fallo('Elige mensual o anual'); end if;
+  if p_meses is distinct from 1 then perform privado.fallo('Premium se paga mes a mes'); end if;
   if exists (select 1 from public.solicitudes_pago where negocio = v_neg and estado = 'pendiente') then
     perform privado.fallo('Ya tienes un pago en revisión. Te avisaremos apenas se apruebe.');
   end if;
@@ -1199,9 +1201,9 @@ begin
   select * into a from public.ajustes where id = 1;
   select nombre into n from public.negocios where id = v_neg;
   insert into public.solicitudes_pago (negocio, meses, monto, comprobante_path, nota)
-  values (v_neg, p_meses, case when p_meses = 12 then a.precio_anual else a.precio_mensual end, p_path, privado.limpio(p_nota, 200));
+  values (v_neg, 1, a.precio_mensual, p_path, privado.limpio(p_nota, 200));
   perform privado.avisar_usuario((select nullif(valor, '')::uuid from privado.config where clave = 'admin_id'),
-    'Pago por revisar', n.nombre || ' dice que pagó Premium ' || case when p_meses = 12 then 'anual' else 'mensual' end || '.', 'admin/#pagos', true);
+    'Pago por revisar', n.nombre || ' dice que pagó 1 mes de Premium.', 'admin/#pagos', true);
 end $$;
 
 -- ---------- Notificaciones y push ----------
@@ -1615,6 +1617,8 @@ begin
       if not (ln ? k) or (ln ->> k)::int < 1 or (ln ->> k)::int > 100000 then perform privado.fallo('Límite inválido: ' || k); end if;
     end loop;
   end if;
+  if coalesce(p ->> 'version_liberada', '') <> '' and p ->> 'version_liberada' !~ '^\d{1,3}\.\d{1,3}\.\d{1,3}$' then perform privado.fallo('Versión inválida'); end if;
+  if coalesce(p ->> 'version_min', '') <> '' and p ->> 'version_min' !~ '^\d{1,3}\.\d{1,3}\.\d{1,3}$' then perform privado.fallo('Versión mínima inválida'); end if;
   if coalesce(p ->> 'link_pago', '') <> '' and p ->> 'link_pago' !~ '^https://' then perform privado.fallo('El link de pago debe empezar con https://'); end if;
   update public.ajustes set
     precio_mensual = coalesce((p ->> 'precio_mensual')::int, precio_mensual),
@@ -1627,6 +1631,7 @@ begin
     lim_normal = coalesce(ln, lim_normal),
     version_legal = coalesce((p ->> 'version_legal')::int, version_legal),
     version_min = coalesce(nullif(p ->> 'version_min', ''), version_min),
+    version_liberada = coalesce(nullif(p ->> 'version_liberada', ''), version_liberada),
     actualizado = now()
    where id = 1;
 end $$;

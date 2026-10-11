@@ -4,6 +4,10 @@
   const { el, $, vaciar, rpc, error, toast, conCarga, dialogo, pesos, fechaCorta, fechaLarga, fechaHora, hoyISO, sumarDias, relativo, local, copiar, wa, abrir, V } = LC;
   const raiz = $('#portal');
   LC.registrarSW();
+  rpc('config_publica').then((cfg) => LC.revisarVersion(cfg, (txt, fn) => {
+    const v = document.getElementById('lcUpd'); if (v) v.remove();
+    if (txt) document.body.prepend(el('div', { id: 'lcUpd', class: 'banda info', style: 'margin:12px 16px 0' }, el('span', null, txt), el('button', { class: 'btn chico', type: 'button', onclick: fn }, 'Actualizar')));
+  })).catch(() => {});
   const guardado = local.get('lc-portal', null);
   const codigo = (location.hash.slice(1) || (guardado && guardado.codigo) || '').replace(/[^A-Za-z0-9]/g, '');
   let sesion = guardado && guardado.codigo === codigo ? guardado.sesion : null;
