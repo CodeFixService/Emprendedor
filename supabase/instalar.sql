@@ -1636,7 +1636,7 @@ begin
   perform privado.solo_admin();
   if p_nombre not in ('vapid_public','vapid_private') then perform privado.fallo('Secreto inválido'); end if;
   insert into privado.secretos (nombre, valor) values (p_nombre, p_valor) on conflict (nombre) do update set valor = excluded.valor;
-  if p_nombre = 'vapid_public' then delete from public.push_subs; end if;
+  if p_nombre = 'vapid_public' then delete from public.push_subs where endpoint is not null; end if;
 end $$;
 
 create or replace function public.admin_feriado(p_fecha date, p_nombre text, p_borrar boolean) returns void language plpgsql security definer set search_path = public, pg_temp as $$
