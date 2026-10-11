@@ -1,7 +1,7 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.1.0';
+  const VERSION = '1.1.1';
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
   const sb = global.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, {
@@ -112,10 +112,17 @@
   }
   async function funcion(body) {
     const r = await fetch(C.SUPABASE_URL + '/functions/v1/enviar', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', apikey: C.SUPABASE_ANON_KEY }, body: JSON.stringify(body),
-    }).catch((e) => { throw traducir(e); });
+      method: 'POST', headers: { 'Content-Type': 'application/json', apikey: C.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + C.SUPABASE_ANON_KEY },
+      body: JSON.stringify(body),
+    }).catch(() => { throw new ErrorApp('No se pudo conectar con la función "enviar". Revisa tu internet o que la función esté desplegada.', 'RED'); });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok && !j.error) throw new ErrorApp('El servidor de avisos no responde (función "enviar").');
+    if (!r.ok && !j.error) {
+      const m = { 401: 'Supabase rechazó la llamada (401). En la función "enviar" apaga "Verify JWT" y guarda.',
+        404: 'No existe una función llamada "enviar" (404). Revisa el nombre en Edge Functions.',
+        500: 'La función "enviar" tuvo un error interno (500). Revisa que el código pegado esté completo.',
+        503: 'La función "enviar" está arrancando o caída (503). Espera un minuto y prueba de nuevo.' }[r.status];
+      throw new ErrorApp(m || 'La función "enviar" respondió con error ' + r.status + '.');
+    }
     return j;
   }
   const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, (c) => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)));
