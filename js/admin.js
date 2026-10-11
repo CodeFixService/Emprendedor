@@ -185,14 +185,15 @@
     pintar(el('h2', null, 'Ajustes'),
       el('div', { class: 'dos-col' },
         el('div', null,
-          el('div', { class: 'tarjeta' }, el('h2', null, 'Venta de Premium'), el('div', { class: 'grid2' }, campo('Precio mensual', f.mensual), campo('Precio anual', f.anual)),
+          el('div', { class: 'tarjeta' }, el('h2', null, 'Venta de Premium'), campo('Precio mensual de Premium', f.mensual, 'Premium se paga solo mes a mes.'),
             campo('Link de pago (Mercado Pago u otro)', f.link), campo('Tu WhatsApp de soporte', f.wsp), el('div', { class: 'grid2' }, campo('Días de prueba', f.prueba), campo('Días de gracia', f.gracia))),
           el('div', { class: 'tarjeta' }, el('h2', null, 'Tus datos para transferencias de Premium'), campo('Banco', f.tb), campo('Tipo de cuenta', f.tt), campo('Número', f.tn), campo('RUT', f.tr), campo('Titular', f.ttit), campo('Correo', f.te))),
         el('div', null,
           el('div', { class: 'tarjeta' }, el('h2', null, 'Límites del plan Normal'),
             el('div', { class: 'grid2' }, campo('Clientes activos', f.lc), campo('Movimientos/mes', f.lm), campo('Cuotas activas', f.lq), campo('Productos', f.lp), campo('Comprobantes/mes', f.lk), campo('Historial (meses)', f.lh))),
-          el('div', { class: 'tarjeta' }, el('h2', null, 'Versiones'), campo('Versión de los textos legales', f.vlegal, 'Súbela si cambias los Términos: todos deberán aceptarlos de nuevo.'),
-            campo('Versión mínima de la app', f.vmin, 'Obliga a actualizar a quienes tengan una versión menor. Actual: ' + LC.VERSION)),
+          tarjetaVersiones(a),
+          el('div', { class: 'tarjeta' }, el('h2', null, 'Avanzado'), campo('Versión de los textos legales', f.vlegal, 'Súbela si cambias los Términos: todos deberán aceptarlos de nuevo.'),
+            campo('Versión mínima obligatoria', f.vmin, 'Quien tenga una versión menor ve un aviso rojo para actualizar. Úsalo solo si una versión vieja deja de funcionar.')),
           el('div', { class: 'tarjeta' }, el('h2', null, 'Notificaciones push'), el('p', null, cfg.vapid_public ? '✅ Claves push configuradas' : '⚠️ Falta generar las claves push'),
             el('button', { class: 'btn', type: 'button', onclick: generarVapid }, cfg.vapid_public ? 'Regenerar claves push' : 'Generar claves push'),
             el('button', { class: 'btn texto', type: 'button', onclick: probar }, 'Probar servidor')),
@@ -201,7 +202,7 @@
       el('button', { class: 'btn primario ancho', type: 'button', onclick: async () => {
         try {
           const num = (i) => Math.round(Number(i.value));
-          const datos = { precio_mensual: num(f.mensual), precio_anual: num(f.anual), link_pago: f.link.value.trim(), contacto_whatsapp: f.wsp.value.trim() ? V.telefono(f.wsp.value) : '',
+          const datos = { precio_mensual: num(f.mensual), link_pago: f.link.value.trim(), contacto_whatsapp: f.wsp.value.trim() ? V.telefono(f.wsp.value) : '',
             dias_prueba: num(f.prueba), dias_gracia: num(f.gracia),
             transferencia: { banco: f.tb.value.trim(), tipo: f.tt.value.trim(), numero: f.tn.value.replace(/\D/g, ''), rut: f.tr.value ? V.rutBonito(V.rut(f.tr.value)) : '', titular: f.ttit.value.trim(), email: f.te.value.trim() },
             lim_normal: { clientes: num(f.lc), movimientos: num(f.lm), cuotas: num(f.lq), productos: num(f.lp), comprobantes: num(f.lk), historial_meses: num(f.lh) },
@@ -209,6 +210,27 @@
           await conCarga(() => rpc('admin_guardar_ajustes', { p: datos })); toast('Ajustes guardados ✓');
         } catch (er) { error(er); }
       } }, 'Guardar ajustes'));
+  }
+  function tarjetaVersiones(a) {
+    const estado = el('p', null, 'Revisando…'), btn = el('button', { class: 'btn primario', type: 'button', disabled: true }, 'Liberar actualización');
+    const tuyo = el('div');
+    let pub = '';
+    fetch('../version.json', { cache: 'no-store' }).then((r) => r.json()).then((j) => {
+      pub = String(j.version || '');
+      vaciar(estado).append('Tu celular: ', el('strong', null, 'v' + LC.VERSION), ' · Publicada en GitHub: ', el('strong', null, 'v' + (pub || '?')),
+        ' · Liberada para todos: ', el('strong', null, 'v' + a.version_liberada));
+      btn.textContent = 'Liberar v' + pub + ' para todos';
+      btn.disabled = !pub || !LC.versionMenor(a.version_liberada, pub);
+      if (pub && !LC.versionMenor(a.version_liberada, pub)) btn.textContent = '✓ La última versión ya está liberada';
+    }).catch(() => { estado.textContent = 'No se pudo leer la versión publicada.'; });
+    LC.revisarVersion({ version_liberada: a.version_liberada }, (txt, fn) => { vaciar(tuyo); if (txt) tuyo.append(el('button', { class: 'btn ancho mt', type: 'button', onclick: fn }, 'Actualizar mi celular a la versión liberada')); });
+    btn.onclick = async () => {
+      if (!await confirmar('Liberar actualización', '¿Liberar la v' + pub + '? A todos les aparecerá el botón "Actualizar" y la tendrán al tocarlo.', 'Liberar')) return;
+      try { await conCarga(() => rpc('admin_guardar_ajustes', { p: { version_liberada: pub } })); toast('✅ v' + pub + ' liberada para todos'); vAjustes(); } catch (e) { error(e); }
+    };
+    return el('div', { class: 'tarjeta' }, el('h2', null, 'Actualizaciones'),
+      el('p', { class: 'sutil' }, 'Cuando se publique una versión nueva en GitHub, pruébala en tu celular y después libérala. Nadie recibe cambios hasta que tú los apruebas.'),
+      estado, btn, tuyo);
   }
   const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   async function generarVapid() {

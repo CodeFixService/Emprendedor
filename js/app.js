@@ -16,7 +16,7 @@
     if (!data.session) { location.replace('../#ingresar'); return; }
     S.uid = data.session.user.id; S.email = data.session.user.email;
     await bloqueoLocal();
-    LC.registrarSW((activar) => banda('actualizar', 'info', '✨ Hay una versión nueva de la app.', 'Actualizar', activar));
+    LC.registrarSW();
     LC.alPlan = alPlan;
     LC.alSesion = () => { toast('Tu sesión terminó. Ingresa de nuevo.', { error: true }); setTimeout(() => location.replace('../#ingresar'), 1200); };
     S.clientes = local.get('lc-clientes-' + S.uid, []);
@@ -61,8 +61,7 @@
     banda('prueba', 'info', pl.en_prueba && dias != null ? '🎁 Premium de prueba: te quedan ' + Math.max(dias, 0) + ' días.' : null, 'Ver planes', () => { location.hash = 'plan'; });
     banda('gracia', 'error', pl.en_gracia ? '⚠️ Tu Premium venció. Renueva antes de ' + (pl.dias_gracia) + ' días para no pasar a Normal.' : null, 'Renovar', () => { location.hash = 'plan'; });
     banda('fuera', 'aviso', st.uso && st.uso.fuera_de_plan ? '🔒 ' + st.uso.fuera_de_plan + ' clientes quedaron en "solo cobro" por el plan Normal.' : null, 'Ver', () => { location.hash = 'clientes/fuera'; });
-    const minV = st.config && st.config.version_min;
-    banda('vieja', 'error', minV && LC.versionMenor(LC.VERSION, minV) ? 'Esta versión de la app es antigua. Actualízala para seguir.' : null, 'Actualizar', () => location.reload());
+    LC.revisarVersion(st.config, (txt, fn, forzada) => banda('actualizar', forzada ? 'error' : 'info', txt, txt ? 'Actualizar' : null, fn));
   }
 
   function banda(id, tipo, texto, boton, fn) {
@@ -192,7 +191,7 @@
       el('div', { class: 'tarjeta plana' }, el('strong', null, '⭐ Con Premium'), el('ul', { class: 'sutil' },
         el('li', null, 'Clientes, movimientos y cuotas ilimitados'), el('li', null, 'Avisos automáticos a tus clientes'),
         el('li', null, 'Puntaje de buen pagador, reportes y PDF'), el('li', null, 'Ayudantes, tu logo y tus colores')),
-        el('p', { class: 'mt' }, el('strong', null, pesos(S.st.config.precio_mensual) + ' al mes'), ' · o ' + pesos(S.st.config.precio_anual) + ' al año'))),
+        el('p', { class: 'mt' }, el('strong', null, pesos(S.st.config.precio_mensual) + ' al mes'), ' · sin contrato, renuevas cuando quieras'))),
     [{ texto: 'Ahora no', valor: null }, { texto: 'Hazte Premium', clase: 'primario', valor: 1 }]).then((v) => { if (v) location.hash = 'plan'; });
   }
 
@@ -1092,7 +1091,7 @@
         barra('Clientes activos', u.clientes, l.clientes), barra('Movimientos', u.movimientos, l.movimientos), barra('Ventas en cuotas activas', u.cuotas, l.cuotas),
         barra('Comprobantes recibidos', u.comprobantes, l.comprobantes), barra('Productos frecuentes', u.productos, l.productos)),
       el('div', { class: 'tarjeta' }, el('h2', null, pl.premium ? 'Renovar Premium' : 'Hazte Premium'),
-        el('p', null, el('strong', { style: 'font-size:1.4em' }, pesos(cfg.precio_mensual)), ' al mes · o ', el('strong', null, pesos(cfg.precio_anual)), ' al año (2 meses gratis)'),
+        el('p', null, el('strong', { style: 'font-size:1.4em' }, pesos(cfg.precio_mensual)), ' al mes · sin contrato, pagas mes a mes'),
         el('ul', { class: 'sutil' }, el('li', null, 'Sin límite de clientes (Normal: ' + ln.clientes + '), movimientos (' + ln.movimientos + ') ni cuotas (' + ln.cuotas + ')'),
           el('li', null, 'Avisos automáticos a tus clientes y resumen diario al celular'), el('li', null, 'Puntaje de buen pagador y límite por cliente'),
           el('li', null, 'Reportes históricos, Excel y estado de cuenta en PDF'), el('li', null, 'Hasta 3 ayudantes, tu logo y tus colores')),
@@ -1106,9 +1105,9 @@
       el('p', { class: 'sutil' }, 'Si no renuevas, tu libreta pasa a Normal: no se borra nada y siempre puedes registrar abonos y cobrar.'));
   }
   async function yaPague() {
-    const meses = el('select', null, el('option', { value: 1 }, 'Mensual · ' + pesos(S.st.config.precio_mensual)), el('option', { value: 12 }, 'Anual · ' + pesos(S.st.config.precio_anual)));
+    const meses = el('p', null, el('strong', null, 'Premium mensual · ' + pesos(S.st.config.precio_mensual)));
     const foto = el('input', { type: 'file', accept: 'image/*' }); const nota = el('input', { maxlength: 200, placeholder: 'Ej: transferí desde la cuenta de mi esposa' });
-    const ok = await dialogo('Avisar pago', el('div', null, el('div', { class: 'campo' }, el('label', null, 'Plan'), meses), el('div', { class: 'campo' }, el('label', null, 'Comprobante (opcional)'), foto), el('div', { class: 'campo' }, el('label', null, 'Nota'), nota)),
+    const ok = await dialogo('Avisar pago', el('div', null, meses, el('div', { class: 'campo' }, el('label', null, 'Comprobante (opcional)'), foto), el('div', { class: 'campo' }, el('label', null, 'Nota'), nota)),
       [{ texto: 'Cancelar', valor: null }, { texto: 'Enviar', clase: 'primario', valor: true }]);
     if (!ok) return;
     try {
@@ -1119,7 +1118,7 @@
         const { error: e } = await conCarga(() => sb.storage.from('pagos').upload(ruta, blob, { contentType: blob.type }));
         if (e) throw e;
       }
-      await conCarga(() => rpc('solicitar_pago', { p_meses: Number(meses.value), p_path: ruta, p_nota: nota.value }));
+      await conCarga(() => rpc('solicitar_pago', { p_meses: 1, p_path: ruta, p_nota: nota.value }));
       toast('¡Gracias! Te avisaremos apenas se apruebe.'); vPlan();
     } catch (e) { error(e); }
   }

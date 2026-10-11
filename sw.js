@@ -1,47 +1,63 @@
 /* Service worker · Libreta de Cobros
-   Guarda la app para abrirla sin internet. Una versión nueva se instala en segundo plano y se activa
-   cuando la persona toca "Actualizar" (o sola, si es la primera vez). Recibe las notificaciones push. */
-const VERSION = '1.0.0';
-const CACHE = 'lc-' + VERSION;
+   La app NO se actualiza sola: sigue usando la versión guardada en el celular hasta que la persona toca
+   "Actualizar" (el botón aparece cuando el administrador libera una versión). Cada versión vive en su propio
+   caché "lc-app-<versión>" y "lc-meta" guarda cuál se está usando. También recibe las notificaciones push. */
 const ARCHIVOS = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'vendor/supabase.js', 'js/config.js', 'js/core.js', 'js/inicio.js', 'js/app.js', 'js/portal.js', 'js/admin.js',
   'app/', 'app/index.html', 'c/', 'c/index.html', 'c/manifest.webmanifest', 'admin/', 'admin/index.html', 'legal/', 'legal/index.html',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/favicon.svg',
 ];
+const META = 'lc-meta';
+const pedirVersion = () => fetch('version.json', { cache: 'no-store' }).then((r) => r.json()).then((j) => String(j.version));
+
+async function versionActual() {
+  const r = await (await caches.open(META)).match('actual');
+  return r ? r.text() : null;
+}
+
+// Descarga todos los archivos de una versión y la deja como la actual.
+async function instalarVersion(v) {
+  const c = await caches.open('lc-app-' + v);
+  await c.addAll(ARCHIVOS.map((f) => new Request(f, { cache: 'reload' })));
+  await (await caches.open(META)).put('actual', new Response(v));
+  for (const k of await caches.keys()) if (k.startsWith('lc-') && k !== META && k !== 'lc-app-' + v) await caches.delete(k);
+  return v;
+}
 
 self.addEventListener('install', (e) => {
-  e.waitUntil((async () => {
-    const previas = (await caches.keys()).filter((k) => k.startsWith('lc-'));
-    const c = await caches.open(CACHE);
-    await c.addAll(ARCHIVOS.map((f) => new Request(f, { cache: 'reload' })));
-    if (!previas.length) await self.skipWaiting(); // primera instalación: se activa al tiro
-  })());
+  // Primera vez en este celular: guarda la versión publicada hoy. Si ya había una, la conserva.
+  e.waitUntil(versionActual().then((v) => v || pedirVersion().then(instalarVersion)).catch(() => {}).then(() => self.skipWaiting()));
 });
 
-self.addEventListener('activate', (e) => {
-  e.waitUntil((async () => {
-    for (const k of await caches.keys()) if (k.startsWith('lc-') && k !== CACHE) await caches.delete(k);
-    await self.clients.claim();
-  })());
+self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+
+// Botón "Actualizar": baja la versión nueva y avisa cuando está lista.
+self.addEventListener('message', (e) => {
+  if (!e.data || e.data.tipo !== 'actualizar') return;
+  const port = e.ports && e.ports[0];
+  e.waitUntil(pedirVersion().then(instalarVersion)
+    .then((v) => port && port.postMessage({ ok: true, version: v }))
+    .catch((err) => port && port.postMessage({ ok: false, error: String(err) })));
 });
 
-self.addEventListener('message', (e) => { if (e.data === 'activar') self.skipWaiting(); });
-
+// Primero la versión guardada; si falta un archivo, se pide a internet.
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return; // Supabase y otros: siempre a internet
+  if (/\/(version\.json|sw\.js)$/.test(url.pathname)) return;          // siempre desde internet
   e.respondWith((async () => {
-    const c = await caches.open(CACHE);
-    const hit = await c.match(req, { ignoreSearch: true });
+    const v = await versionActual();
+    const c = v ? await caches.open('lc-app-' + v) : null;
+    const hit = c && await c.match(req, { ignoreSearch: true });
     if (hit) return hit;
     try {
       const res = await fetch(req);
-      if (res.ok && url.pathname.startsWith(new URL(self.registration.scope).pathname)) c.put(req, res.clone());
+      if (res.ok && c && url.pathname.startsWith(new URL(self.registration.scope).pathname)) c.put(req, res.clone());
       return res;
     } catch (err) {
-      if (req.mode === 'navigate') return (await c.match('index.html')) || Response.error();
+      if (req.mode === 'navigate' && c) return (await c.match('index.html')) || Response.error();
       return Response.error();
     }
   })());

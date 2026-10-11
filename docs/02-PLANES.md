@@ -1,4 +1,4 @@
-# 2. Planes: Normal (gratis) y Premium (mensual)
+# 2. Planes: Normal (gratis, siempre abierto) y Premium (solo mensual)
 
 ## Cómo se pensaron los límites
 - El plan **Normal sirve de verdad** para un negocio chico, así el negocio se acostumbra y le cuenta a otros.
@@ -49,13 +49,13 @@
 Mismo sistema que CodeFix Apps, pero en su propia base de datos:
 1. El negocio toca **Hazte Premium** y ve el precio, el link de pago (Mercado Pago) y tus datos para transferir.
 2. Paga y toca **Ya pagué**. Puede subir el comprobante.
-3. Te llega aviso en **Administración**. Apruebas con un toque y se suman **30 días** desde la fecha de vencimiento,
+3. Te llega aviso en **Administración**. Apruebas con un toque y se suma **1 mes** desde la fecha de vencimiento,
    o desde hoy si ya había vencido.
 4. También puedes generar **keys** de 1, 3, 6 o 12 meses (de un solo uso) para vender en persona.
 5. Avisos de vencimiento: 7, 3 y 1 día antes, y el mismo día.
 6. **Tres días de gracia** después de vencer, con Premium activo y un aviso en rojo. Al día 4 la cuenta pasa a Normal.
 
-Precio inicial: **$4.990 al mes o $49.900 al año** (2 meses gratis).
+Precio inicial: **$4.990 al mes**. Premium se vende **solo mes a mes** (sin plan anual). Las keys del admin pueden dar 1, 3, 6 o 12 meses como regalo o venta en persona.
 Se cambia desde **Administración → Ajustes** sin tocar código.
 
 ## Qué pasa al bajar a Normal (al terminar la prueba o el Premium)
