@@ -69,7 +69,10 @@ y ese botón aparece solo cuando tú liberas la versión nueva.
 1. Se publica una versión nueva en GitHub (sube `version.json` y la constante `VERSION` de `js/core.js`).
 2. Tú la pruebas: **Administración → Ajustes → Actualizaciones → Actualizar mi celular** no aplica todavía; abre la app en una ventana privada para ver lo publicado.
 3. Cuando esté bien: **Liberar vX para todos**. A cada negocio y cliente le aparece "✨ Hay una versión nueva" con el botón **Actualizar**.
-4. "Versión mínima obligatoria" (en Avanzado) muestra un aviso rojo a quien tenga una versión más vieja. Úsalo solo si algo dejó de funcionar.
+4. La descarga siempre pide los archivos nuevos (evita las copias de hasta 10 minutos de GitHub) y revisa que la versión esté completa;
+   si GitHub aún está publicando, avisa "prueba en unos minutos" y la app sigue estable en la versión anterior.
+5. Si un celular queda raro: **Mi cuenta → Reparar la app** (o en el panel: **Reparar la app en este celular**). No borra datos.
+6. "Versión mínima obligatoria" (en Avanzado) muestra un aviso rojo a quien tenga una versión más vieja. Úsalo solo si algo dejó de funcionar.
 
 ## Mantener vivo el Supabase gratis
 El plan gratis **se pausa después de 7 días sin uso**. Un GitHub Action (`.github/workflows/ping.yml`) llama a `ping()`

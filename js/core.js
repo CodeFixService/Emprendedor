@@ -1,7 +1,7 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.2.0';
+  const VERSION = '1.3.0';
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
   const sb = global.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, {
@@ -263,13 +263,23 @@
     if (!('serviceWorker' in navigator)) return;
     navigator.serviceWorker.register(RAIZ + 'sw.js', { scope: RAIZ }).catch(() => {});
   }
+  // Borra solo la copia guardada de esta app (no toca CodeFix ni tus datos) y la vuelve a descargar.
+  async function repararApp() {
+    cargando(true);
+    try {
+      for (const k of await caches.keys()) if (k.startsWith('lc-')) await caches.delete(k);
+      const regs = navigator.serviceWorker ? await navigator.serviceWorker.getRegistrations() : [];
+      for (const r of regs) if (r.scope === RAIZ) await r.unregister();
+    } catch (e) { /* nada */ }
+    location.reload();
+  }
   function actualizarAhora() {
     cargando(true);
     const listo = () => location.reload();
     navigator.serviceWorker && navigator.serviceWorker.ready.then((reg) => {
       const sw = reg.active; if (!sw) return listo();
       const ch = new MessageChannel();
-      ch.port1.onmessage = (e) => { cargando(false); if (e.data && e.data.ok) listo(); else toast('No se pudo actualizar: ' + ((e.data && e.data.error) || 'sin internet'), { error: true }); };
+      ch.port1.onmessage = (e) => { cargando(false); if (e.data && e.data.ok) listo(); else toast((e.data && e.data.error) || 'No se pudo actualizar: revisa tu internet.', { error: true, ms: 8000 }); };
       sw.postMessage({ tipo: 'actualizar' }, [ch.port2]);
       setTimeout(() => { cargando(false); }, 30000);
     }).catch(listo);
@@ -320,7 +330,7 @@
   global.LC = {
     VERSION, C, RAIZ, sb, $, el, vaciar, pesos, fechaCorta, fechaLarga, hora, fechaHora, hoyISO, sumarDias, diasEntre, relativo, iniciales, colorDe, norm,
     V, ErrorApp, traducir, rpc, funcion, uuid, toast, cargando, conCarga, dialogo, confirmar, pedirTexto, error, copiar, wa, abrir,
-    achicarImagen, blobADataURL, pushSoportado, suscribirPush, pushActual, esIOS, instalada, instalar, registrarSW, versionMenor, revisarVersion, actualizarAhora,
+    achicarImagen, blobADataURL, pushSoportado, suscribirPush, pushActual, esIOS, instalada, instalar, registrarSW, versionMenor, revisarVersion, actualizarAhora, repararApp,
     local, descargar, csv, excel, alPlan: null, alSesion: null, alBloqueo: null,
   };
 })(window);
