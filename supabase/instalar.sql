@@ -20,7 +20,8 @@ insert into privado.config values
   ('version_bd', '2'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
-  ('zona', 'America/Santiago')
+  ('zona', 'America/Santiago'),
+  ('anon_key', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiZ2Z2eHNxYWp0aXhqenhveGV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3NDQ0NzUsImV4cCI6MjEwNzMyMDQ3NX0._JyVta9bPzX56iHb-e9lcdy6-NTm16WGaqEZAGbszGE')
 on conflict (clave) do update set valor = excluded.valor;
 insert into privado.config values ('admin_id', '') on conflict (clave) do nothing;
 
@@ -1708,7 +1709,9 @@ $$;
 create or replace function privado.llamar_funcion(p_body jsonb) returns void language plpgsql security definer set search_path = public, extensions, pg_temp as $$
 begin
   perform net.http_post(url := (select valor from privado.config where clave = 'url_proyecto') || '/functions/v1/enviar',
-    body := p_body, headers := '{"Content-Type": "application/json"}'::jsonb);
+    body := p_body, headers := jsonb_build_object('Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || (select valor from privado.config where clave = 'anon_key'),
+      'apikey', (select valor from privado.config where clave = 'anon_key')));
 exception when others then raise notice 'llamar_funcion: %', sqlerrm;
 end $$;
 

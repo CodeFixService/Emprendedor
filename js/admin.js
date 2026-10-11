@@ -40,11 +40,12 @@
         pct >= 70 ? el('p', { class: 'naranjo mt' }, 'Pasaste el 70%: es momento de pasar a Supabase Pro.') : null,
         el('p', { class: 'sutil mt' }, 'Avisos en cola: ' + r.cola_push)),
       el('div', { class: 'grid2' }, el('a', { class: 'btn', href: '#keys' }, '🔑 Keys'), el('a', { class: 'btn', href: '#avisos' }, '📣 Avisos a negocios')),
-      el('button', { class: 'btn ancho mt', type: 'button', onclick: probar }, '🩺 Probar servidor de avisos'));
+      el('button', { class: 'btn ancho mt', type: 'button', onclick: probar }, '🩺 Probar servidor de avisos'),
+      el('button', { class: 'btn texto ancho mt', type: 'button', onclick: async () => { await sb.auth.signOut().catch(() => {}); location.replace('../#ingresar'); } }, '🚪 Cerrar sesión'));
   }
   async function probar() {
     try { const r = await conCarga(() => LC.funcion({ accion: 'ping' })); toast(r.ok ? '✅ Función "enviar" v' + r.version + (r.servicio ? '' : ' · falta clave de servicio') : '❌ ' + (r.error || 'Sin respuesta')); }
-    catch (e) { toast('❌ La función "enviar" no responde. Revisa que esté desplegada.', { error: true }); }
+    catch (e) { toast('❌ ' + e.message, { error: true, ms: 9000 }); }
   }
 
   // ---------- Negocios ----------
