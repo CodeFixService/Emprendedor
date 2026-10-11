@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '2'),
+  ('version_bd', '3'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -322,6 +322,61 @@ create table if not exists public.auditoria (
 );
 create index if not exists audit_neg on public.auditoria (negocio, at desc);
 
+-- ---------- v3: prueba de 7 días + bloqueo, activación, caja (ingresos y gastos), soporte, billetera personal ----------
+alter table public.negocios add column if not exists prueba_hasta timestamptz;
+alter table public.negocios add column if not exists activado boolean not null default false;
+alter table public.ajustes add column if not exists precio_activacion int not null default 10000;
+alter table public.uso_mensual add column if not exists caja int not null default 0;
+alter table public.negocios drop constraint if exists negocios_plan_aplicado_check;
+alter table public.negocios add constraint negocios_plan_aplicado_check check (plan_aplicado in ('normal','premium','bloqueado'));
+do $$ begin
+  if not exists (select 1 from privado.config where clave = 'migracion_v3') then
+    update public.negocios set prueba_hasta = premium_hasta, premium_hasta = null, en_prueba = false, plan_aplicado = 'normal' where en_prueba;
+    update public.negocios set prueba_hasta = creado + interval '7 days' where prueba_hasta is null;
+    update public.ajustes set dias_prueba = 7,
+      lim_normal = lim_normal || '{"caja":300,"categorias":5}'::jsonb,
+      lim_premium = lim_premium || '{"ayudantes":0,"categorias":50}'::jsonb where id = 1;
+    delete from public.miembros where rol = 'ayudante';
+    insert into privado.config values ('migracion_v3', '1');
+  end if;
+end $$;
+
+create table if not exists public.caja (
+  id uuid primary key,
+  negocio uuid not null references public.negocios (id) on delete cascade,
+  tipo text not null check (tipo in ('ingreso','gasto')),
+  monto int not null check (monto between 1 and 99999999),
+  categoria text not null check (char_length(categoria) between 2 and 24),
+  descripcion text check (descripcion is null or char_length(descripcion) <= 120),
+  medio text not null default 'efectivo' check (medio in ('efectivo','transferencia','tarjeta','otro')),
+  fecha timestamptz not null default now(),
+  creado_por uuid,
+  creado_at timestamptz not null default now(),
+  anulado_at timestamptz,
+  anulado_por uuid,
+  motivo_anulacion text
+);
+create index if not exists caja_neg on public.caja (negocio, fecha desc);
+
+create table if not exists public.categorias (
+  id uuid primary key default gen_random_uuid(),
+  negocio uuid not null references public.negocios (id) on delete cascade,
+  tipo text not null check (tipo in ('ingreso','gasto')),
+  nombre text not null check (char_length(nombre) between 2 and 24),
+  creado timestamptz not null default now()
+);
+create unique index if not exists categorias_unica on public.categorias (negocio, tipo, lower(nombre));
+
+create table if not exists public.soporte (
+  id bigserial primary key,
+  negocio uuid not null references public.negocios (id) on delete cascade,
+  de text not null check (de in ('negocio','admin')),
+  texto text not null check (char_length(texto) between 1 and 1000),
+  leido boolean not null default false,
+  creado timestamptz not null default now()
+);
+create index if not exists soporte_neg on public.soporte (negocio, creado);
+
 -- =====================================================================
 --  AYUDANTES INTERNOS (esquema privado: no se pueden llamar desde la app)
 -- =====================================================================
@@ -405,6 +460,15 @@ create or replace function privado.es_premium(p_neg uuid) returns boolean langua
     from public.negocios n, public.ajustes a where n.id = p_neg and a.id = 1), false)
 $$;
 
+-- 'pro' (pagado o regalado), 'prueba' (gratis los primeros días) o 'bloqueado' (puede ver y exportar, no anotar).
+create or replace function privado.estado_plan(p_neg uuid) returns text language sql stable security definer set search_path = public, pg_temp as $$
+  select case when privado.es_premium(p_neg) then 'pro'
+    when (select prueba_hasta from public.negocios where id = p_neg) > now() then 'prueba' else 'bloqueado' end
+$$;
+
+create or replace function privado.admin_id() returns uuid language sql stable security definer set search_path = public, pg_temp as
+  $$ select nullif((select valor from privado.config where clave = 'admin_id'), '')::uuid $$;
+
 -- Negocio de la sesión (para las reglas de lectura). El ayudante solo entra si el negocio es Premium.
 create or replace function privado.mi_negocio() returns uuid language sql stable security definer set search_path = public, pg_temp as $$
   select m.negocio from public.miembros m join public.negocios n on n.id = m.negocio
@@ -421,7 +485,8 @@ create or replace function privado.mi_premium() returns boolean language sql sta
   $$ select privado.es_premium(privado.mi_negocio()) $$;
 
 -- Exige sesión y libreta activa. Devuelve el id del negocio.
-create or replace function privado.exigir(p_dueno boolean default false) returns uuid language plpgsql security definer set search_path = public, pg_temp as $$
+drop function if exists privado.exigir(boolean);
+create or replace function privado.exigir(p_dueno boolean default false, p_lectura boolean default false) returns uuid language plpgsql security definer set search_path = public, pg_temp as $$
 declare v uuid; n record;
 begin
   if auth.uid() is null then perform privado.fallo('Tu sesión terminó. Ingresa de nuevo.', 'SESION'); end if;
@@ -432,6 +497,11 @@ begin
     perform privado.fallo('Tu cuenta está suspendida' || coalesce(': ' || n.motivo_suspension, '') || '. Puedes exportar tus datos desde Más → Ajustes.', 'SUSPENDIDO');
   end if;
   if p_dueno and privado.mi_rol() <> 'dueno' then perform privado.fallo('Solo el dueño puede hacer esto.'); end if;
+  if not p_lectura and privado.estado_plan(v) = 'bloqueado' then
+    perform privado.fallo(case when n.activado
+      then 'Tu Pro venció y tu billetera quedó bloqueada. Puedes ver y exportar tus datos; para seguir anotando, renueva en Más → Mi plan.'
+      else 'Terminó tu prueba gratis. Puedes ver y exportar tus datos; para seguir usando tu billetera, activa Pro en Más → Mi plan.' end, 'BLOQUEADO');
+  end if;
   if n.ultimo_uso is null or n.ultimo_uso < now() - interval '1 hour' then
     update public.negocios set ultimo_uso = now() where id = v;
   end if;
@@ -532,21 +602,19 @@ end $$;
 
 -- ---------- Planes: aplica la subida o bajada de plan ----------
 create or replace function privado.aplicar_plan(p_neg uuid) returns void language plpgsql security definer set search_path = public, pg_temp as $$
-declare n record; prem boolean := privado.es_premium(p_neg); lim int;
+declare n record; est text := privado.estado_plan(p_neg); nuevo text;
 begin
   select * into n from public.negocios where id = p_neg for update;
   if not found then return; end if;
-  if prem and n.plan_aplicado = 'normal' then
-    update public.clientes set fuera_de_plan = false where negocio = p_neg and fuera_de_plan;
-    update public.negocios set plan_aplicado = 'premium' where id = p_neg;
-  elsif not prem and n.plan_aplicado = 'premium' then
-    lim := (select (lim_normal ->> 'clientes')::int from public.ajustes where id = 1);
-    update public.clientes c set fuera_de_plan = true
-     where c.id in (select id from public.clientes where negocio = p_neg and estado = 'activo' and not fuera_de_plan
-                     order by ultimo_mov desc nulls last, creado desc offset lim);
-    update public.negocios set plan_aplicado = 'normal', en_prueba = false where id = p_neg;
-    perform privado.avisar_negocio(p_neg, 'Tu Premium terminó',
-      'Tu libreta pasó al plan Normal. No se borró nada y puedes seguir cobrando. Hazte Premium para volver a tener todo.', 'app/#plan');
+  nuevo := case est when 'pro' then 'premium' when 'prueba' then 'normal' else 'bloqueado' end;
+  if nuevo = n.plan_aplicado then return; end if;
+  if nuevo = 'premium' then update public.clientes set fuera_de_plan = false where negocio = p_neg and fuera_de_plan; end if;
+  update public.negocios set plan_aplicado = nuevo where id = p_neg;
+  if nuevo = 'bloqueado' then
+    perform privado.avisar_negocio(p_neg, case when n.activado then 'Tu Pro venció' else 'Terminó tu prueba gratis' end,
+      'Tu billetera quedó bloqueada: puedes ver y exportar tus datos. Activa Pro para seguir anotando.', 'app/#plan', true);
+    perform privado.avisar_usuario(privado.admin_id(), 'Billetera bloqueada: ' || n.nombre,
+      case when n.activado then 'Venció su Pro.' else 'Terminó su prueba gratis.' end, 'admin/#negocios', false);
   end if;
 end $$;
 
@@ -674,7 +742,7 @@ end $$;
 create or replace function public.ping() returns text language sql stable as $$ select 'ok' $$;
 
 create or replace function public.config_publica() returns jsonb language sql stable security definer set search_path = public, pg_temp as $$
-  select jsonb_build_object('precio_mensual', a.precio_mensual, 'precio_anual', a.precio_anual, 'link_pago', a.link_pago,
+  select jsonb_build_object('precio_mensual', a.precio_mensual, 'precio_activacion', a.precio_activacion, 'link_pago', a.link_pago,
     'transferencia', a.transferencia, 'contacto_whatsapp', a.contacto_whatsapp, 'dias_prueba', a.dias_prueba,
     'lim_normal', a.lim_normal, 'lim_premium', a.lim_premium, 'version_legal', a.version_legal, 'version_min', a.version_min,
     'version_liberada', a.version_liberada,
@@ -712,8 +780,9 @@ begin
       'venc_defecto', n.venc_defecto, 'limite_general', n.limite_general, 'pin_activo', n.pin_activo, 'saldo_a_favor', n.saldo_a_favor,
       'logo_url', n.logo_url, 'color', n.color, 'plantilla_propia', n.plantilla_propia, 'estado', n.estado,
       'motivo_suspension', n.motivo_suspension, 'creado', n.creado),
-    'plan', jsonb_build_object('premium', prem, 'hasta', n.premium_hasta, 'en_prueba', n.en_prueba and prem,
-      'en_gracia', prem and not n.en_prueba and n.premium_hasta < now(), 'dias_gracia', a.dias_gracia,
+    'plan', jsonb_build_object('estado', privado.estado_plan(v_neg), 'premium', prem, 'hasta', n.premium_hasta,
+      'en_prueba', privado.estado_plan(v_neg) = 'prueba', 'prueba_hasta', n.prueba_hasta, 'activado', n.activado,
+      'en_gracia', prem and n.premium_hasta < now(), 'dias_gracia', a.dias_gracia,
       'pago_pendiente', exists (select 1 from public.solicitudes_pago where negocio = v_neg and estado = 'pendiente')),
     'limites', case when prem then a.lim_premium else a.lim_normal end,
     'uso', jsonb_build_object('movimientos', u.movimientos, 'comprobantes', u.comprobantes,
@@ -721,11 +790,14 @@ begin
       'fuera_de_plan', (select count(*) from public.clientes where negocio = v_neg and estado = 'activo' and fuera_de_plan),
       'cuotas', (select count(*) from public.ventas_cuotas where negocio = v_neg and estado = 'activa'),
       'productos', (select count(*) from public.productos where negocio = v_neg),
-      'ayudantes', (select count(*) from public.miembros where negocio = v_neg and rol = 'ayudante')),
+      'caja', u.caja,
+      'categorias', (select count(*) from public.categorias where negocio = v_neg),
+      'ayudantes', 0),
     'pendientes', jsonb_build_object(
       'comprobantes', (select count(*) from public.comprobantes where negocio = v_neg and estado = 'pendiente'),
       'reclamos', (select count(*) from public.movimientos where negocio = v_neg and confirmacion = 'reclamado' and respuesta is null and anulado_at is null),
-      'avisos', (select count(*) from public.notificaciones where (negocio = v_neg or usuario = auth.uid()) and not leido)),
+      'avisos', (select count(*) from public.notificaciones where (negocio = v_neg or usuario = auth.uid()) and not leido),
+      'soporte', (select count(*) from public.soporte where negocio = v_neg and de = 'admin' and not leido)),
     'config', public.config_publica());
 end $$;
 
@@ -736,40 +808,47 @@ begin
   on conflict (id) do update set terminos_version = excluded.terminos_version, terminos_at = now();
 end $$;
 
-create or replace function public.crear_negocio(p_nombre text, p_rubro text, p_acepta boolean) returns jsonb
+create or replace function privado.crear_negocio_para(p_uid uuid, p_nombre text, p_rubro text) returns jsonb
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_id uuid; v_email text; v_hash text; v_dias int; v_nombre text := privado.limpio(p_nombre, 50); v_prueba boolean := false;
 begin
-  if auth.uid() is null then perform privado.fallo('Ingresa de nuevo.'); end if;
-  if not coalesce(p_acepta, false) then perform privado.fallo('Debes aceptar los Términos y la Privacidad'); end if;
-  if exists (select 1 from public.miembros where usuario = auth.uid()) or exists (select 1 from public.negocios where dueno = auth.uid()) then
-    perform privado.fallo('Tu cuenta ya tiene una libreta');
+  if exists (select 1 from public.miembros where usuario = p_uid) or exists (select 1 from public.negocios where dueno = p_uid) then
+    perform privado.fallo('Esta cuenta ya tiene una billetera');
   end if;
   if v_nombre is null or char_length(v_nombre) < 2 then perform privado.fallo('El nombre del negocio debe tener entre 2 y 50 letras'); end if;
   if coalesce(p_rubro, 'otro') not in ('almacen','feria','catalogo','emprendimiento','servicios','educacion','club','personal','otro') then
     perform privado.fallo('Rubro inválido');
   end if;
   perform privado.limitar('crear_neg', 200, 3600);
-  select lower(email) into v_email from auth.users where id = auth.uid();
-  v_hash := privado.sha(coalesce(v_email, auth.uid()::text));
+  select lower(email) into v_email from auth.users where id = p_uid;
+  v_hash := privado.sha(coalesce(v_email, p_uid::text));
   select dias_prueba into v_dias from public.ajustes where id = 1;
   if v_dias > 0 and not exists (select 1 from privado.pruebas_usadas where email_hash = v_hash) then
     insert into privado.pruebas_usadas (email_hash) values (v_hash);
     v_prueba := true;
   end if;
-  insert into public.negocios (dueno, nombre, rubro, premium_hasta, en_prueba, plan_aplicado)
-  values (auth.uid(), v_nombre, coalesce(p_rubro, 'otro'), case when v_prueba then now() + make_interval(days => v_dias) end, v_prueba,
-    case when v_prueba then 'premium' else 'normal' end)
+  insert into public.negocios (dueno, nombre, rubro, prueba_hasta, en_prueba, plan_aplicado)
+  values (p_uid, v_nombre, coalesce(p_rubro, 'otro'), case when v_prueba then now() + make_interval(days => v_dias) else now() end, false,
+    case when v_prueba then 'normal' else 'bloqueado' end)
   returning id into v_id;
-  insert into public.miembros (negocio, usuario, rol, nombre) values (v_id, auth.uid(), 'dueno', v_nombre);
-  perform public.aceptar_terminos();
-  perform privado.avisar_usuario((select nullif(valor, '')::uuid from privado.config where clave = 'admin_id'),
-    'Nueva libreta: ' || v_nombre, 'Rubro: ' || coalesce(p_rubro, 'otro') || coalesce(' · ' || v_email, ''), 'admin/', true);
+  insert into public.miembros (negocio, usuario, rol, nombre) values (v_id, p_uid, 'dueno', v_nombre);
+  perform privado.avisar_usuario(privado.admin_id(), 'Nueva billetera: ' || v_nombre, 'Rubro: ' || coalesce(p_rubro, 'otro') || coalesce(' · ' || v_email, ''), 'admin/#negocios', true);
   return jsonb_build_object('ok', true, 'id', v_id, 'prueba', v_prueba, 'dias', case when v_prueba then v_dias else 0 end);
 end $$;
 
+create or replace function public.crear_negocio(p_nombre text, p_rubro text, p_acepta boolean) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare r jsonb;
+begin
+  if auth.uid() is null then perform privado.fallo('Ingresa de nuevo.'); end if;
+  if not coalesce(p_acepta, false) then perform privado.fallo('Debes aceptar los Términos y la Privacidad'); end if;
+  r := privado.crear_negocio_para(auth.uid(), p_nombre, p_rubro);
+  perform public.aceptar_terminos();
+  return r;
+end $$;
+
 create or replace function public.guardar_negocio(p jsonb) returns void language plpgsql security definer set search_path = public, pg_temp as $$
-declare v_neg uuid := privado.exigir(true); prem boolean := privado.es_premium(v_neg); b jsonb := coalesce(p -> 'banco', '{}'::jsonb);
+declare v_neg uuid := privado.exigir(true, true); prem boolean := privado.es_premium(v_neg); b jsonb := coalesce(p -> 'banco', '{}'::jsonb);
   v_nombre text := privado.limpio(p ->> 'nombre', 50); v_banco jsonb; v_lim int; v_logo text := nullif(p ->> 'logo_url', '');
   v_plant text := privado.limpio(p ->> 'plantilla_propia', 500); v_bad text;
 begin
@@ -1127,16 +1206,8 @@ end $$;
 
 -- ---------- Ayudantes ----------
 create or replace function public.invitar_ayudante() returns text language plpgsql security definer set search_path = public, pg_temp as $$
-declare v_neg uuid := privado.exigir(true); v_cod text := privado.codigo(20); v_lim int;
 begin
-  if not privado.es_premium(v_neg) then perform privado.fallo('Los ayudantes son Premium', 'PLAN'); end if;
-  v_lim := privado.limite(v_neg, 'ayudantes');
-  if (select count(*) from public.miembros where negocio = v_neg and rol = 'ayudante') >= v_lim then
-    perform privado.fallo('Puedes tener hasta ' || v_lim || ' ayudantes');
-  end if;
-  delete from public.invitaciones where negocio = v_neg and (vence < now() or usada_por is not null);
-  insert into public.invitaciones (codigo, negocio, vence) values (v_cod, v_neg, now() + interval '48 hours');
-  return v_cod;
+  perform privado.fallo('Cada billetera es personal: no se pueden agregar ayudantes.');
 end $$;
 
 create or replace function public.aceptar_invitacion(p_codigo text, p_nombre text) returns void language plpgsql security definer set search_path = public, pg_temp as $$
@@ -1178,12 +1249,12 @@ end $$;
 
 -- ---------- Plan Premium ----------
 create or replace function public.usar_key(p_codigo text) returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
-declare v_neg uuid := privado.exigir(true); k record; v_hasta timestamptz;
+declare v_neg uuid := privado.exigir(true, true); k record; v_hasta timestamptz;
 begin
   perform privado.limitar('key:' || v_neg, 10, 3600);
   select * into k from public.keys where codigo = upper(btrim(p_codigo)) for update;
   if not found or k.revocada or k.usada_por is not null then perform privado.fallo('Key inválida o ya usada'); end if;
-  update public.negocios set premium_hasta = greatest(coalesce(premium_hasta, now()), now()) + make_interval(months => k.meses), en_prueba = false
+  update public.negocios set premium_hasta = greatest(coalesce(premium_hasta, now()), now()) + make_interval(months => k.meses), en_prueba = false, activado = true
    where id = v_neg returning premium_hasta into v_hasta;
   update public.keys set usada_por = v_neg, usada_at = now() where codigo = k.codigo;
   perform privado.aplicar_plan(v_neg);
@@ -1192,19 +1263,19 @@ begin
 end $$;
 
 create or replace function public.solicitar_pago(p_meses int, p_path text, p_nota text) returns void language plpgsql security definer set search_path = public, pg_temp as $$
-declare v_neg uuid := privado.exigir(true); a record; n record;
+declare v_neg uuid := privado.exigir(true, true); a record; n record; v_monto int;
 begin
-  if p_meses is distinct from 1 then perform privado.fallo('Premium se paga mes a mes'); end if;
+  if p_meses is distinct from 1 then perform privado.fallo('Pro se paga mes a mes'); end if;
   if exists (select 1 from public.solicitudes_pago where negocio = v_neg and estado = 'pendiente') then
     perform privado.fallo('Ya tienes un pago en revisión. Te avisaremos apenas se apruebe.');
   end if;
   if p_path is not null and p_path not like v_neg || '/%' then perform privado.fallo('Archivo inválido'); end if;
   select * into a from public.ajustes where id = 1;
-  select nombre into n from public.negocios where id = v_neg;
-  insert into public.solicitudes_pago (negocio, meses, monto, comprobante_path, nota)
-  values (v_neg, 1, a.precio_mensual, p_path, privado.limpio(p_nota, 200));
-  perform privado.avisar_usuario((select nullif(valor, '')::uuid from privado.config where clave = 'admin_id'),
-    'Pago por revisar', n.nombre || ' dice que pagó 1 mes de Premium.', 'admin/#pagos', true);
+  select nombre, activado into n from public.negocios where id = v_neg;
+  v_monto := a.precio_mensual + case when n.activado then 0 else a.precio_activacion end;
+  insert into public.solicitudes_pago (negocio, meses, monto, comprobante_path, nota) values (v_neg, 1, v_monto, p_path, privado.limpio(p_nota, 200));
+  perform privado.avisar_usuario(privado.admin_id(), 'Pago por revisar', n.nombre || ' dice que pagó ' || privado.pesos(v_monto)
+    || case when n.activado then ' (mensualidad).' else ' (activación + primer mes).' end, 'admin/#pagos', true);
 end $$;
 
 -- ---------- Notificaciones y push ----------
@@ -1227,7 +1298,7 @@ $$;
 
 -- ---------- Tablero y reportes ----------
 create or replace function public.tablero() returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
-declare v_neg uuid := privado.exigir(); hoy date := privado.hoy(); m0 timestamptz; m1 timestamptz;
+declare v_neg uuid := privado.exigir(false, true); hoy date := privado.hoy(); m0 timestamptz; m1 timestamptz;
 begin
   m0 := (date_trunc('month', hoy)::timestamp) at time zone 'America/Santiago';
   m1 := ((date_trunc('month', hoy) - interval '1 month')::timestamp) at time zone 'America/Santiago';
@@ -1244,7 +1315,7 @@ begin
 end $$;
 
 create or replace function public.reporte(p_desde date, p_hasta date) returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
-declare v_neg uuid := privado.exigir(true); prem boolean := privado.es_premium(v_neg); d date := p_desde; h date := p_hasta;
+declare v_neg uuid := privado.exigir(true, true); prem boolean := privado.es_premium(v_neg); d date := p_desde; h date := p_hasta;
   t0 timestamptz; t1 timestamptz; limitado boolean := false;
 begin
   if d is null or h is null or h < d then perform privado.fallo('Rango de fechas inválido'); end if;
@@ -1286,7 +1357,10 @@ begin
         from public.movimientos m join public.clientes c on c.id = m.cliente where m.negocio = v_neg), '[]'::jsonb),
     'cuotas', coalesce((select jsonb_agg(jsonb_build_object('venta', v.descripcion, 'cliente', c.nombre, 'numero', q.numero, 'monto', q.monto,
         'vence', q.vence, 'pagado', q.pagado, 'estado_venta', v.estado) order by v.creado, q.numero)
-        from public.cuotas q join public.ventas_cuotas v on v.id = q.venta join public.clientes c on c.id = v.cliente where v.negocio = v_neg), '[]'::jsonb));
+        from public.cuotas q join public.ventas_cuotas v on v.id = q.venta join public.clientes c on c.id = v.cliente where v.negocio = v_neg), '[]'::jsonb),
+    'caja', coalesce((select jsonb_agg(jsonb_build_object('fecha', fecha, 'tipo', tipo, 'monto', monto, 'categoria', categoria, 'descripcion', descripcion,
+        'medio', medio, 'anulado', anulado_at is not null, 'motivo_anulacion', motivo_anulacion) order by fecha)
+        from public.caja where negocio = v_neg), '[]'::jsonb));
 end $$;
 
 -- ---------- Cuenta ----------
@@ -1316,6 +1390,130 @@ begin
   if not found then perform privado.fallo('No hay una cuenta por recuperar'); end if;
 end $$;
 
+-- ---------- Caja: ingresos y gastos ----------
+create or replace function public.registrar_caja(p_id uuid, p_tipo text, p_monto int, p_categoria text, p_descripcion text, p_medio text,
+  p_fecha timestamptz, p_confirmar_dup boolean) returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(); v_fecha timestamptz := coalesce(p_fecha, now()); v_cat text := privado.limpio(p_categoria, 24);
+  u public.uso_mensual; v_lim int;
+begin
+  if p_id is null then perform privado.fallo('Falta el identificador'); end if;
+  if exists (select 1 from public.caja where id = p_id) then
+    if not exists (select 1 from public.caja where id = p_id and negocio = v_neg) then perform privado.fallo('Movimiento inválido'); end if;
+    return jsonb_build_object('ok', true, 'repetido', true);
+  end if;
+  if p_tipo not in ('ingreso','gasto') then perform privado.fallo('Elige ingreso o gasto'); end if;
+  if p_monto is null or p_monto < 1 or p_monto > 99999999 then perform privado.fallo('El monto debe ser entre $1 y $99.999.999'); end if;
+  if v_cat is null or char_length(v_cat) < 2 then perform privado.fallo('Elige una categoría'); end if;
+  if coalesce(p_medio, 'efectivo') not in ('efectivo','transferencia','tarjeta','otro') then perform privado.fallo('Medio de pago inválido'); end if;
+  if v_fecha > now() + interval '5 minutes' then perform privado.fallo('La fecha no puede ser futura'); end if;
+  if v_fecha < now() - interval '1 year' then perform privado.fallo('La fecha puede ser hasta 1 año atrás'); end if;
+  if not coalesce(p_confirmar_dup, false) and exists (select 1 from public.caja where negocio = v_neg and tipo = p_tipo and monto = p_monto
+      and categoria = v_cat and anulado_at is null and creado_at > now() - interval '60 seconds') then
+    return jsonb_build_object('ok', false, 'duplicado', true);
+  end if;
+  v_lim := privado.limite(v_neg, 'caja');
+  u := privado.uso(v_neg);
+  if v_lim is not null and u.caja >= v_lim then
+    perform privado.fallo('Llegaste a los ' || v_lim || ' ingresos y gastos de este mes del plan gratis. Activa Pro para anotar sin límite.', 'PLAN');
+  end if;
+  perform privado.limitar('caja:' || v_neg, 300, 3600);
+  insert into public.caja (id, negocio, tipo, monto, categoria, descripcion, medio, fecha, creado_por)
+  values (p_id, v_neg, p_tipo, p_monto, v_cat, privado.limpio(p_descripcion, 120), coalesce(p_medio, 'efectivo'), v_fecha, auth.uid());
+  update public.uso_mensual set caja = caja + 1 where negocio = v_neg and mes = date_trunc('month', privado.hoy())::date;
+  return jsonb_build_object('ok', true);
+end $$;
+
+create or replace function public.anular_caja(p_id uuid, p_motivo text) returns void language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(); v_mot text := privado.limpio(p_motivo, 100);
+begin
+  if v_mot is null or char_length(v_mot) < 5 then perform privado.fallo('Escribe el motivo (mínimo 5 letras)'); end if;
+  update public.caja set anulado_at = now(), anulado_por = auth.uid(), motivo_anulacion = v_mot where id = p_id and negocio = v_neg and anulado_at is null;
+  if not found then perform privado.fallo('Movimiento no encontrado'); end if;
+  perform privado.auditar(v_neg, 'anular_caja', jsonb_build_object('id', p_id, 'motivo', v_mot));
+end $$;
+
+create or replace function public.guardar_categoria(p_tipo text, p_nombre text) returns void language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(); v_nom text := privado.limpio(p_nombre, 24); v_lim int;
+begin
+  if p_tipo not in ('ingreso','gasto') then perform privado.fallo('Tipo inválido'); end if;
+  if v_nom is null or char_length(v_nom) < 2 then perform privado.fallo('El nombre debe tener entre 2 y 24 letras'); end if;
+  v_lim := privado.limite(v_neg, 'categorias');
+  if v_lim is not null and (select count(*) from public.categorias where negocio = v_neg) >= v_lim then
+    perform privado.fallo('Tu plan permite ' || v_lim || ' categorías propias.', case when privado.es_premium(v_neg) then null else 'PLAN' end);
+  end if;
+  insert into public.categorias (negocio, tipo, nombre) values (v_neg, p_tipo, v_nom) on conflict do nothing;
+end $$;
+
+create or replace function public.borrar_categoria(p_id uuid) returns void language plpgsql security definer set search_path = public, pg_temp as $$
+begin delete from public.categorias where id = p_id and negocio = privado.exigir(); end $$;
+
+create or replace function public.resumen_caja(p_mes date) returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(false, true); m0 date := date_trunc('month', coalesce(p_mes, privado.hoy()))::date;
+  t0 timestamptz := m0::timestamp at time zone 'America/Santiago'; t1 timestamptz := (m0 + interval '1 month')::timestamp at time zone 'America/Santiago';
+  tp timestamptz := (m0 - interval '1 month')::timestamp at time zone 'America/Santiago';
+begin
+  return jsonb_build_object('mes', m0,
+    'ingresos', (select coalesce(sum(monto), 0) from public.caja where negocio = v_neg and tipo = 'ingreso' and anulado_at is null and fecha >= t0 and fecha < t1),
+    'gastos', (select coalesce(sum(monto), 0) from public.caja where negocio = v_neg and tipo = 'gasto' and anulado_at is null and fecha >= t0 and fecha < t1),
+    'cobros', (select coalesce(sum(monto), 0) from public.movimientos where negocio = v_neg and tipo = 'abono' and anulado_at is null and fecha >= t0 and fecha < t1),
+    'fiado', (select coalesce(sum(monto), 0) from public.movimientos where negocio = v_neg and tipo = 'cargo' and anulado_at is null and fecha >= t0 and fecha < t1),
+    'ingresos_ant', (select coalesce(sum(monto), 0) from public.caja where negocio = v_neg and tipo = 'ingreso' and anulado_at is null and fecha >= tp and fecha < t0)
+      + (select coalesce(sum(monto), 0) from public.movimientos where negocio = v_neg and tipo = 'abono' and anulado_at is null and fecha >= tp and fecha < t0),
+    'gastos_ant', (select coalesce(sum(monto), 0) from public.caja where negocio = v_neg and tipo = 'gasto' and anulado_at is null and fecha >= tp and fecha < t0),
+    'por_categoria', coalesce((select jsonb_agg(x order by x.monto desc) from (select tipo, categoria, sum(monto) monto, count(*) n
+        from public.caja where negocio = v_neg and anulado_at is null and fecha >= t0 and fecha < t1 group by tipo, categoria) x), '[]'::jsonb),
+    'por_medio', coalesce((select jsonb_object_agg(medio, s) from (select medio, sum(monto) s from public.caja
+        where negocio = v_neg and tipo = 'ingreso' and anulado_at is null and fecha >= t0 and fecha < t1 group by medio) x), '{}'::jsonb));
+end $$;
+
+-- ---------- Soporte: chat directo con el administrador ----------
+create or replace function public.soporte_enviar(p_texto text) returns void language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(true, true); v_t text := btrim(coalesce(p_texto, '')); n record;
+begin
+  if char_length(v_t) < 1 or char_length(v_t) > 1000 then perform privado.fallo('El mensaje debe tener entre 1 y 1000 caracteres'); end if;
+  perform privado.limitar('sop:' || v_neg, 30, 3600);
+  insert into public.soporte (negocio, de, texto) values (v_neg, 'negocio', v_t);
+  select nombre into n from public.negocios where id = v_neg;
+  perform privado.push(privado.admin_id(), null, null, 'Soporte · ' || n.nombre, left(v_t, 120), 'admin/#soporte/' || v_neg);
+end $$;
+
+create or replace function public.soporte_leer() returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(true, true);
+begin
+  update public.soporte set leido = true where negocio = v_neg and de = 'admin' and not leido;
+  return coalesce((select jsonb_agg(x order by x.creado) from (select id, de, texto, leido, creado from public.soporte
+    where negocio = v_neg order by creado desc limit 200) x), '[]'::jsonb);
+end $$;
+
+create or replace function public.admin_soporte_lista() returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  perform privado.solo_admin();
+  return coalesce((select jsonb_agg(x order by x.ultimo desc) from (
+    select n.id negocio, n.nombre, max(s.creado) ultimo,
+      (select texto from public.soporte s2 where s2.negocio = n.id order by creado desc limit 1) ultimo_texto,
+      count(*) filter (where s.de = 'negocio' and not s.leido) sin_leer
+    from public.soporte s join public.negocios n on n.id = s.negocio group by n.id, n.nombre) x), '[]'::jsonb);
+end $$;
+
+create or replace function public.admin_soporte_ver(p_negocio uuid) returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  perform privado.solo_admin();
+  update public.soporte set leido = true where negocio = p_negocio and de = 'negocio' and not leido;
+  return jsonb_build_object('negocio', (select nombre from public.negocios where id = p_negocio),
+    'mensajes', coalesce((select jsonb_agg(x order by x.creado) from (select id, de, texto, leido, creado from public.soporte
+      where negocio = p_negocio order by creado desc limit 300) x), '[]'::jsonb));
+end $$;
+
+create or replace function public.admin_soporte_enviar(p_negocio uuid, p_texto text) returns void language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_t text := btrim(coalesce(p_texto, ''));
+begin
+  perform privado.solo_admin();
+  if char_length(v_t) < 1 or char_length(v_t) > 1000 then perform privado.fallo('El mensaje debe tener entre 1 y 1000 caracteres'); end if;
+  if not exists (select 1 from public.negocios where id = p_negocio) then perform privado.fallo('Billetera no encontrada'); end if;
+  insert into public.soporte (negocio, de, texto) values (p_negocio, 'admin', v_t);
+  perform privado.push(null, p_negocio, null, 'Soporte te respondió', left(v_t, 120), 'app/#soporte');
+end $$;
+
 -- =====================================================================
 --  LINK DEL CLIENTE (sin cuenta: solo código + PIN)
 -- =====================================================================
@@ -1325,6 +1523,10 @@ begin
   select s2.* into s from public.sesiones_cliente s2 join public.clientes c on c.id = s2.cliente
    where s2.token_hash = privado.sha(coalesce(p_token, '')) and s2.vence > now() and c.estado <> 'borrado' and not c.link_bloqueado;
   if not found then perform privado.fallo('Tu sesión terminó. Vuelve a abrir el link que te mandó el negocio.', 'SESION'); end if;
+  if exists (select 1 from public.clientes c join public.negocios n on n.id = c.negocio where c.id = s.cliente
+      and (n.estado <> 'activo' or privado.estado_plan(n.id) = 'bloqueado')) then
+    perform privado.fallo('Este link está en pausa por ahora. Escríbele al negocio.');
+  end if;
   if s.visto < now() - interval '10 minutes' then update public.sesiones_cliente set visto = now() where id = s.id; end if;
   return s.cliente;
 end $$;
@@ -1337,7 +1539,7 @@ begin
   select * into c from public.clientes where link_codigo = coalesce(p_codigo, '') and estado <> 'borrado';
   if not found then return jsonb_build_object('ok', false); end if;
   select * into n from public.negocios where id = c.negocio;
-  return jsonb_build_object('ok', n.estado = 'activo', 'negocio', n.nombre, 'pin', n.pin_activo, 'bloqueado', c.link_bloqueado,
+  return jsonb_build_object('ok', n.estado = 'activo', 'pausa', privado.estado_plan(n.id) = 'bloqueado', 'negocio', n.nombre, 'pin', n.pin_activo, 'bloqueado', c.link_bloqueado,
     'logo_url', case when privado.es_premium(n.id) then n.logo_url end, 'color', case when privado.es_premium(n.id) then n.color end);
 end $$;
 
@@ -1349,7 +1551,7 @@ begin
   select * into c from public.clientes where link_codigo = coalesce(p_codigo, '') and estado <> 'borrado' for update;
   if not found then perform privado.fallo('Este link no es válido. Pídele al negocio que te lo envíe de nuevo.'); end if;
   select * into n from public.negocios where id = c.negocio;
-  if n.estado <> 'activo' then perform privado.fallo('Este link no está disponible por ahora.'); end if;
+  if n.estado <> 'activo' or privado.estado_plan(n.id) = 'bloqueado' then perform privado.fallo('Este link está en pausa. Escríbele a ' || n.nombre || '.'); end if;
   if c.link_bloqueado then perform privado.fallo('Este link está bloqueado por seguridad. Pídele a ' || n.nombre || ' uno nuevo.'); end if;
   if c.pin_bloqueo_hasta > now() then
     perform privado.fallo('Demasiados intentos. Prueba de nuevo en ' || ceil(extract(epoch from c.pin_bloqueo_hasta - now()) / 60) || ' minutos.');
@@ -1478,14 +1680,16 @@ begin
   return jsonb_build_object(
     'negocios', (select count(*) from public.negocios where estado <> 'eliminado'),
     'activos_7d', (select count(*) from public.negocios where estado = 'activo' and ultimo_uso > now() - interval '7 days'),
-    'premium', (select count(*) from public.negocios n where estado <> 'eliminado' and privado.es_premium(n.id) and not en_prueba),
-    'en_prueba', (select count(*) from public.negocios n where estado <> 'eliminado' and en_prueba and privado.es_premium(n.id)),
+    'premium', (select count(*) from public.negocios n where estado <> 'eliminado' and privado.estado_plan(n.id) = 'pro'),
+    'en_prueba', (select count(*) from public.negocios n where estado <> 'eliminado' and privado.estado_plan(n.id) = 'prueba'),
+    'bloqueados', (select count(*) from public.negocios n where estado <> 'eliminado' and privado.estado_plan(n.id) = 'bloqueado'),
     'suspendidos', (select count(*) from public.negocios where estado = 'suspendido'),
     'ingresos_mes', (select coalesce(sum(monto), 0) from public.solicitudes_pago where estado = 'aprobada' and revisado_at >= m0)
       + (select coalesce(sum(precio), 0) from public.keys where usada_at >= m0),
     'pagos_pendientes', (select count(*) from public.solicitudes_pago where estado = 'pendiente'),
+    'soporte_sin_leer', (select count(distinct negocio) from public.soporte where de = 'negocio' and not leido),
     'clientes_total', (select count(*) from public.clientes where estado <> 'borrado'),
-    'movimientos_mes', (select coalesce(sum(movimientos), 0) from public.uso_mensual where mes = m0),
+    'movimientos_mes', (select coalesce(sum(movimientos + caja), 0) from public.uso_mensual where mes = m0),
     'bd_mb', round(pg_database_size(current_database()) / 1048576.0, 1),
     'archivos_mb', (select round(coalesce(sum((metadata ->> 'size')::bigint), 0) / 1048576.0, 1) from storage.objects),
     'cola_push', (select count(*) from public.cola_push where tomado_at is null),
@@ -1497,16 +1701,18 @@ create or replace function public.admin_negocios(p_buscar text, p_filtro text) r
 begin
   perform privado.solo_admin();
   return coalesce((select jsonb_agg(x) from (
-    select n.id, n.nombre, n.rubro, n.estado, n.motivo_suspension, n.premium_hasta, n.en_prueba, privado.es_premium(n.id) premium,
+    select n.id, n.nombre, n.rubro, n.estado, n.motivo_suspension, n.premium_hasta, n.prueba_hasta, n.activado,
+      privado.estado_plan(n.id) plan, privado.es_premium(n.id) premium,
       n.ultimo_uso, n.creado, n.nota_admin, n.whatsapp, u.email,
       (select count(*) from public.clientes c where c.negocio = n.id and c.estado = 'activo') clientes,
-      (select movimientos from public.uso_mensual um where um.negocio = n.id and um.mes = date_trunc('month', privado.hoy())::date) movimientos_mes
+      (select coalesce(movimientos + caja, 0) from public.uso_mensual um where um.negocio = n.id and um.mes = date_trunc('month', privado.hoy())::date) movimientos_mes,
+      (select count(*) from public.soporte s where s.negocio = n.id and s.de = 'negocio' and not s.leido) soporte
     from public.negocios n join auth.users u on u.id = n.dueno
     where (coalesce(p_buscar, '') = '' or privado.norm(n.nombre) like '%' || privado.norm(p_buscar) || '%' or lower(u.email) like '%' || lower(p_buscar) || '%')
       and (coalesce(p_filtro, 'todos') = 'todos'
-        or (p_filtro = 'premium' and privado.es_premium(n.id) and not n.en_prueba)
-        or (p_filtro = 'prueba' and n.en_prueba and privado.es_premium(n.id))
-        or (p_filtro = 'normal' and not privado.es_premium(n.id) and n.estado = 'activo')
+        or (p_filtro in ('premium', 'pro') and privado.estado_plan(n.id) = 'pro' and n.estado <> 'eliminado')
+        or (p_filtro = 'prueba' and privado.estado_plan(n.id) = 'prueba' and n.estado <> 'eliminado')
+        or (p_filtro = 'bloqueado' and privado.estado_plan(n.id) = 'bloqueado' and n.estado = 'activo')
         or (p_filtro = 'suspendido' and n.estado = 'suspendido')
         or (p_filtro = 'eliminado' and n.estado = 'eliminado'))
     order by n.creado desc limit 300) x), '[]'::jsonb);
@@ -1515,10 +1721,13 @@ end $$;
 create or replace function public.admin_plan(p_negocio uuid, p_accion text, p_dias int) returns void language plpgsql security definer set search_path = public, pg_temp as $$
 begin
   perform privado.solo_admin();
+  if p_accion in ('sumar', 'prueba') and (p_dias is null or p_dias < 1 or p_dias > 3660) then perform privado.fallo('Días inválidos'); end if;
   if p_accion = 'sumar' then
-    if p_dias is null or p_dias < 1 or p_dias > 3660 then perform privado.fallo('Días inválidos'); end if;
-    update public.negocios set premium_hasta = greatest(coalesce(premium_hasta, now()), now()) + make_interval(days => p_dias), en_prueba = false where id = p_negocio;
-    perform privado.avisar_negocio(p_negocio, '¡Premium activado!', 'Se sumaron ' || p_dias || ' días de Premium a tu libreta.', 'app/#plan', true);
+    update public.negocios set premium_hasta = greatest(coalesce(premium_hasta, now()), now()) + make_interval(days => p_dias), en_prueba = false, activado = true where id = p_negocio;
+    perform privado.avisar_negocio(p_negocio, '¡Pro activado!', 'Se sumaron ' || p_dias || ' días de Pro a tu billetera.', 'app/#plan', true);
+  elsif p_accion = 'prueba' then
+    update public.negocios set prueba_hasta = greatest(coalesce(prueba_hasta, now()), now()) + make_interval(days => p_dias) where id = p_negocio;
+    perform privado.avisar_negocio(p_negocio, 'Tu prueba gratis se extendió', 'Tienes ' || p_dias || ' días más para probar tu billetera.', 'app/#plan', true);
   elsif p_accion = 'quitar' then
     update public.negocios set premium_hasta = now() - interval '30 days', en_prueba = false where id = p_negocio;
   else
@@ -1555,10 +1764,10 @@ begin
   select * into s from public.solicitudes_pago where id = p_id and estado = 'pendiente' for update;
   if not found then perform privado.fallo('Solicitud no encontrada'); end if;
   if p_aprobar then
-    update public.negocios set premium_hasta = greatest(coalesce(premium_hasta, now()), now()) + make_interval(months => s.meses), en_prueba = false where id = s.negocio;
+    update public.negocios set premium_hasta = greatest(coalesce(premium_hasta, now()), now()) + make_interval(months => s.meses), en_prueba = false, activado = true where id = s.negocio;
     update public.solicitudes_pago set estado = 'aprobada', revisado_at = now() where id = p_id;
     perform privado.aplicar_plan(s.negocio);
-    perform privado.avisar_negocio(s.negocio, '¡Pago aprobado!', 'Tu Premium quedó activo por ' || case when s.meses = 12 then '1 año' else '1 mes' end || '. ¡Gracias!', 'app/#plan', true);
+    perform privado.avisar_negocio(s.negocio, '¡Pago aprobado!', 'Tu Pro quedó activo por 1 mes. ¡Gracias!', 'app/#plan', true);
   else
     if coalesce(privado.limpio(p_motivo, 150), '') = '' then perform privado.fallo('Escribe el motivo'); end if;
     update public.solicitudes_pago set estado = 'rechazada', motivo = privado.limpio(p_motivo, 150), revisado_at = now() where id = p_id;
@@ -1614,7 +1823,7 @@ declare ln jsonb := p -> 'lim_normal'; k text;
 begin
   perform privado.solo_admin();
   if ln is not null then
-    foreach k in array array['clientes','movimientos','cuotas','productos','comprobantes','historial_meses'] loop
+    foreach k in array array['clientes','movimientos','cuotas','productos','comprobantes','historial_meses','caja','categorias'] loop
       if not (ln ? k) or (ln ->> k)::int < 1 or (ln ->> k)::int > 100000 then perform privado.fallo('Límite inválido: ' || k); end if;
     end loop;
   end if;
@@ -1623,7 +1832,7 @@ begin
   if coalesce(p ->> 'link_pago', '') <> '' and p ->> 'link_pago' !~ '^https://' then perform privado.fallo('El link de pago debe empezar con https://'); end if;
   update public.ajustes set
     precio_mensual = coalesce((p ->> 'precio_mensual')::int, precio_mensual),
-    precio_anual = coalesce((p ->> 'precio_anual')::int, precio_anual),
+    precio_activacion = coalesce((p ->> 'precio_activacion')::int, precio_activacion),
     link_pago = coalesce(p ->> 'link_pago', link_pago),
     transferencia = coalesce(p -> 'transferencia', transferencia),
     contacto_whatsapp = coalesce(privado.telefono(nullif(p ->> 'contacto_whatsapp', '')), case when p ? 'contacto_whatsapp' then '' else contacto_whatsapp end),
@@ -1656,6 +1865,21 @@ end $$;
 -- =====================================================================
 --  SOLO PARA EL SERVIDOR (Edge Function "enviar", con la clave de servicio)
 -- =====================================================================
+create or replace function public.srv_es_admin(p_uid uuid) returns boolean language sql stable security definer set search_path = public, pg_temp as
+  $$ select p_uid is not null and p_uid = privado.admin_id() $$;
+
+create or replace function public.srv_crear_negocio(p_uid uuid, p_nombre text, p_rubro text, p_pro_dias int) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare r jsonb;
+begin
+  r := privado.crear_negocio_para(p_uid, p_nombre, p_rubro);
+  if coalesce(p_pro_dias, 0) > 0 then
+    update public.negocios set premium_hasta = now() + make_interval(days => least(p_pro_dias, 3660)), activado = true where id = (r ->> 'id')::uuid;
+    perform privado.aplicar_plan((r ->> 'id')::uuid);
+  end if;
+  return r;
+end $$;
+
 create or replace function public.srv_secretos() returns jsonb language sql stable security definer set search_path = public, pg_temp as $$
   select coalesce(jsonb_object_agg(nombre, valor), '{}'::jsonb) from privado.secretos
 $$;
@@ -1749,23 +1973,29 @@ begin
   -- 2) Resumen de las 09:00 y avisos de plan
   if h >= 9 and not exists (select 1 from privado.tareas_hechas where tarea = 'resumen' and fecha = hoy) then
     insert into privado.tareas_hechas values ('resumen', hoy);
-    for r in select n.id, n.premium_hasta, n.en_prueba, privado.es_premium(n.id) prem from public.negocios n where n.estado = 'activo' loop
-      select count(*) filter (where prox_venc = hoy), count(*) filter (where atrasado), coalesce(sum(saldo) filter (where atrasado), 0)
-        into n_hoy, n_atr, m_atr from public.clientes where negocio = r.id and saldo > 0 and estado <> 'borrado';
-      if n_hoy + n_atr > 0 then
-        v_txt := concat_ws(' · ', case when n_hoy > 0 then n_hoy || ' vencen hoy' end,
-                                  case when n_atr > 0 then n_atr || ' atrasados por ' || privado.pesos(m_atr) end);
-        perform privado.avisar_negocio(r.id, 'Para cobrar hoy', v_txt, 'app/', r.prem);
+    for r in select n.id, n.premium_hasta, n.prueba_hasta, privado.estado_plan(n.id) est from public.negocios n where n.estado = 'activo' loop
+      if r.est <> 'bloqueado' then
+        select count(*) filter (where prox_venc = hoy), count(*) filter (where atrasado), coalesce(sum(saldo) filter (where atrasado), 0)
+          into n_hoy, n_atr, m_atr from public.clientes where negocio = r.id and saldo > 0 and estado <> 'borrado';
+        if n_hoy + n_atr > 0 then
+          v_txt := concat_ws(' · ', case when n_hoy > 0 then n_hoy || ' vencen hoy' end,
+                                    case when n_atr > 0 then n_atr || ' atrasados por ' || privado.pesos(m_atr) end);
+          perform privado.avisar_negocio(r.id, 'Para cobrar hoy', v_txt, 'app/', r.est = 'pro');
+        end if;
       end if;
-      if r.premium_hasta is not null then
+      if r.est = 'prueba' then
+        dias := (r.prueba_hasta at time zone 'America/Santiago')::date - hoy;
+        if dias in (3, 1, 0) then
+          perform privado.avisar_negocio(r.id, case when dias = 0 then 'Hoy termina tu prueba gratis' else 'Te quedan ' || dias || ' días de prueba gratis' end,
+            'Activa Pro para seguir usando tu billetera sin interrupciones.', 'app/#plan', true);
+        end if;
+      elsif r.est = 'pro' and r.premium_hasta is not null then
         dias := (r.premium_hasta at time zone 'America/Santiago')::date - hoy;
-        if r.en_prueba and dias in (4, 1) then
-          perform privado.avisar_negocio(r.id, 'Te quedan ' || dias || ' días de Premium', 'Después tu libreta pasa a Normal (no se borra nada). Hazte Premium para seguir con todo.', 'app/#plan', true);
-        elsif not r.en_prueba and dias in (7, 3, 1, 0) then
-          perform privado.avisar_negocio(r.id, case when dias = 0 then 'Tu Premium vence hoy' else 'Tu Premium vence en ' || dias || ' días' end,
-            'Renueva desde Más → Mi plan para no perder nada.', 'app/#plan', true);
-        elsif not r.en_prueba and dias < 0 and r.prem then
-          perform privado.avisar_negocio(r.id, 'Premium vencido: estás en días de gracia', 'Renueva para no pasar al plan Normal.', 'app/#plan', true);
+        if dias in (7, 3, 1, 0) then
+          perform privado.avisar_negocio(r.id, case when dias = 0 then 'Tu mensualidad de Pro vence hoy' else 'Tu mensualidad de Pro vence en ' || dias || ' días' end,
+            'Paga desde Más → Mi plan para no quedar bloqueado.', 'app/#plan', true);
+        elsif dias < 0 then
+          perform privado.avisar_negocio(r.id, 'Mensualidad vencida: estás en días de gracia', 'Paga para que tu billetera no se bloquee.', 'app/#plan', true);
         end if;
       end if;
     end loop;
@@ -1817,7 +2047,7 @@ create trigger lc_nuevo_usuario after insert on auth.users for each row execute 
 do $$ declare t text; begin
   foreach t in array array['ajustes','perfiles','negocios','miembros','invitaciones','clientes','ventas_cuotas','cuotas','movimientos',
     'comprobantes','recordatorios','productos','uso_mensual','notificaciones','sesiones_cliente','push_subs','cola_push','solicitudes_pago',
-    'keys','feriados','auditoria'] loop
+    'keys','feriados','auditoria','caja','categorias','soporte'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('revoke all on public.%I from anon, authenticated', t);
   end loop;
@@ -1847,14 +2077,17 @@ create policy lectura on public.productos for select to authenticated using (neg
 create policy lectura on public.uso_mensual for select to authenticated using (negocio = (select privado.mi_negocio()) or (select privado.es_admin()));
 create policy lectura on public.notificaciones for select to authenticated using (usuario = auth.uid() or negocio = (select privado.mi_negocio()));
 create policy lectura on public.solicitudes_pago for select to authenticated using ((negocio = (select privado.mi_negocio()) and (select privado.mi_rol()) = 'dueno') or (select privado.es_admin()));
+create policy lectura on public.caja for select to authenticated using (negocio = (select privado.mi_negocio()));
+create policy lectura on public.categorias for select to authenticated using (negocio = (select privado.mi_negocio()));
+create policy lectura on public.soporte for select to authenticated using (negocio = (select privado.mi_negocio()) or (select privado.es_admin()));
 create policy lectura on public.auditoria for select to authenticated using (negocio = (select privado.mi_negocio()) and (select privado.mi_rol()) = 'dueno');
 
 grant usage on schema public to anon, authenticated, service_role;
 grant select (id, dueno, nombre, rubro, whatsapp, banco, venc_defecto, limite_general, pin_activo, saldo_a_favor, logo_url, color,
-  plantilla_propia, premium_hasta, en_prueba, plan_aplicado, estado, motivo_suspension, eliminar_desde, ultimo_uso, creado) on public.negocios to authenticated;
+  plantilla_propia, premium_hasta, en_prueba, plan_aplicado, estado, motivo_suspension, eliminar_desde, ultimo_uso, creado, prueba_hasta, activado) on public.negocios to authenticated;
 grant select on public.ajustes, public.feriados, public.perfiles, public.miembros, public.ventas_cuotas, public.cuotas,
   public.movimientos, public.recordatorios, public.productos, public.uso_mensual, public.notificaciones, public.solicitudes_pago,
-  public.auditoria to authenticated;
+  public.auditoria, public.caja, public.categorias, public.soporte to authenticated;
 grant select (id, negocio, nombre, apodo, telefono, rut, nota, limite, estado, bloqueado, fuera_de_plan, saldo, prox_venc, atrasado, puntaje,
   ultimo_mov, link_codigo, link_bloqueado, creado) on public.clientes to authenticated;
 grant select (id, negocio, cliente, monto, fecha, comentario, foto_path, estado, motivo, abono, revisado_at, creado) on public.comprobantes to authenticated;
@@ -1864,7 +2097,7 @@ grant all on all sequences in schema public to service_role;
 -- Funciones: nadie las puede llamar salvo las que se autorizan abajo
 revoke all on all functions in schema public from public, anon, authenticated;
 revoke all on all functions in schema privado from public, anon, authenticated;
-grant execute on function privado.mi_negocio(), privado.mi_rol(), privado.mi_premium(), privado.es_admin(), privado.es_premium(uuid) to authenticated;
+grant execute on function privado.mi_negocio(), privado.mi_rol(), privado.mi_premium(), privado.es_admin(), privado.es_premium(uuid), privado.estado_plan(uuid) to authenticated;
 grant execute on function public.ping(), public.config_publica(), public.portal_info(text), public.portal_entrar(text, text), public.portal_ver(text),
   public.portal_confirmar(text, uuid, boolean, text), public.portal_comprobante(text, int, date, text, boolean),
   public.portal_push(text, text, text, text), public.portal_salir(text) to anon, authenticated;
@@ -1882,9 +2115,13 @@ grant execute on function public.mi_estado(), public.aceptar_terminos(), public.
   public.admin_resumen(), public.admin_negocios(text, text), public.admin_plan(uuid, text, int), public.admin_estado(uuid, boolean, text, text),
   public.admin_pagos(), public.admin_resolver_pago(uuid, boolean, text), public.admin_crear_keys(int, int, int), public.admin_keys(),
   public.admin_revocar_key(text), public.admin_aviso(text, uuid, text, text), public.admin_guardar_ajustes(jsonb),
-  public.admin_set_secret(text, text), public.admin_feriado(date, text, boolean) to authenticated;
+  public.admin_set_secret(text, text), public.admin_feriado(date, text, boolean),
+  public.registrar_caja(uuid, text, int, text, text, text, timestamptz, boolean), public.anular_caja(uuid, text), public.guardar_categoria(text, text),
+  public.borrar_categoria(uuid), public.resumen_caja(date), public.soporte_enviar(text), public.soporte_leer(), public.admin_soporte_lista(),
+  public.admin_soporte_ver(uuid), public.admin_soporte_enviar(uuid, text) to authenticated;
 grant execute on function public.srv_secretos(), public.srv_cola_tomar(int), public.srv_quitar_endpoint(text), public.srv_foto_validar(uuid, text),
-  public.srv_foto_lista(uuid, text), public.srv_archivos_por_borrar(int), public.srv_archivos_borrados(bigint[]) to service_role;
+  public.srv_foto_lista(uuid, text), public.srv_archivos_por_borrar(int), public.srv_archivos_borrados(bigint[]),
+  public.srv_es_admin(uuid), public.srv_crear_negocio(uuid, text, text, int) to service_role;
 
 -- =====================================================================
 --  ARCHIVOS (Storage)
@@ -1922,7 +2159,7 @@ create policy lc_pagos_ver on storage.objects for select to authenticated
 --  TIEMPO REAL Y TAREAS PROGRAMADAS
 -- =====================================================================
 do $$ declare t text; begin
-  foreach t in array array['movimientos','notificaciones'] loop
+  foreach t in array array['movimientos','notificaciones','soporte'] loop
     begin execute format('alter publication supabase_realtime add table public.%I', t);
     exception when others then null; end;
   end loop;

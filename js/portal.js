@@ -37,6 +37,7 @@
     if (!info.ok) return pintar(el('div', { class: 'tarjeta centro' }, el('div', { style: 'font-size:2.5em' }, '🔗'), el('h1', null, 'Este link no es válido'),
       el('p', null, 'Puede que el negocio haya generado uno nuevo. Pídele que te lo envíe otra vez.')));
     marcaColor(info.color);
+    if (info.pausa) return pintar(cabecera(info.negocio, info.logo_url), el('div', { class: 'tarjeta centro' }, el('div', { style: 'font-size:2.5em' }, '⏸️'), el('h1', null, 'Link en pausa'), el('p', null, 'Por ahora no puedes ver tu cuenta aquí. Escríbele a ' + info.negocio + '.')));
     if (info.bloqueado) return pintar(cabecera(info.negocio, info.logo_url), el('div', { class: 'tarjeta centro' }, el('h1', null, 'Link bloqueado'), el('p', null, 'Por seguridad este link se bloqueó. Pídele a ' + info.negocio + ' uno nuevo.')));
     if (!info.pin) return entrar('');
     let pin = '';

@@ -13,11 +13,13 @@
   rpc('config_publica').then((c) => {
     if (!c) return;
     $('#precioPremium').textContent = LC.pesos(c.precio_mensual) + '/mes';
-    $('#txtPrueba').textContent = c.dias_prueba > 0 ? 'Incluye ' + c.dias_prueba + ' días de Premium. Sin tarjeta.' : 'Gratis para empezar. Sin tarjeta.';
+    $('#precioActivacion').textContent = c.precio_activacion > 0 ? 'Activación ' + LC.pesos(c.precio_activacion) + ' (una vez)' : 'Sin costo de activación';
+    $('#diasPrueba').textContent = c.dias_prueba;
+    $('#txtPrueba').textContent = 'Prueba ' + c.dias_prueba + ' días gratis. Sin tarjeta.';
     const l = c.lim_normal || {};
     const ul = vaciar($('#listaNormal'));
-    ['Hasta ' + l.clientes + ' clientes activos', l.movimientos + ' movimientos al mes', l.cuotas + ' ventas en cuotas activas',
-      'Link del cliente con PIN y comprobantes', 'Cobro por WhatsApp', 'Exportar a CSV'].forEach((t) => ul.append(el('li', null, t)));
+    ['Hasta ' + l.clientes + ' clientes y ' + l.movimientos + ' fiados/abonos', (l.caja || 300) + ' ventas y gastos', l.cuotas + ' ventas en cuotas',
+      'Link del cliente con PIN y comprobantes', 'Cobro por WhatsApp', 'Al terminar: ver y exportar tus datos'].forEach((t) => ul.append(el('li', null, t)));
   }).catch(() => {});
 
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-ir]'); if (b) location.hash = b.dataset.ir; });
@@ -72,7 +74,7 @@
     const acepta = el('input', { type: 'checkbox', id: 'acepta' });
     const form = el('form', { class: 'tarjeta', novalidate: true },
       el('h1', null, invitacion ? 'Únete como ayudante' : 'Crea tu libreta'),
-      el('p', { class: 'sutil' }, invitacion ? 'Te invitaron a ayudar en una libreta. Crea tu cuenta con tu correo.' : 'Gratis. Empiezas con 14 días de Premium, sin tarjeta.'),
+      el('p', { class: 'sutil' }, invitacion ? 'Te invitaron a ayudar en una libreta. Crea tu cuenta con tu correo.' : 'Prueba 7 días gratis, sin tarjeta.'),
       campo(invitacion ? 'Tu nombre' : 'Nombre de tu negocio', nombre), invitacion ? null : campo('Rubro', rubro),
       campo('Tu correo', email), campo('Contraseña', clave, 'Mínimo 8 caracteres, con letras y números.'), fuerza,
       el('label', { class: 'check mt', for: 'acepta' }, acepta, el('span', null, 'Acepto los ', el('a', { href: 'legal/#terminos', target: '_blank' }, 'Términos'), ' y la ', el('a', { href: 'legal/#privacidad', target: '_blank' }, 'Política de privacidad'), '.')),
@@ -162,7 +164,7 @@
       try {
         const r = await conCarga(() => rpc('crear_negocio', { p_nombre: pend.nombre, p_rubro: pend.rubro || 'otro', p_acepta: true }));
         local.del('lc-pendiente'); local.set('lc-bienvenida', true);
-        if (r.prueba) local.set('lc-msg', '¡Listo! Tienes ' + r.dias + ' días de Premium 🎉');
+        local.set('lc-msg', r.prueba ? '¡Listo! Tienes ' + r.dias + ' días de prueba gratis 🎉' : 'Tu billetera está lista. Activa Pro para empezar a anotar.');
         location.replace('app/'); return;
       } catch (e) { /* si falla, se muestra el formulario con el error */ error(e); }
     }
@@ -187,7 +189,7 @@
       try {
         const r = await conCarga(() => rpc('crear_negocio', { p_nombre: nombre.value, p_rubro: rubro.value, p_acepta: true }));
         local.del('lc-pendiente'); local.set('lc-bienvenida', true);
-        if (r.prueba) local.set('lc-msg', '¡Listo! Tienes ' + r.dias + ' días de Premium 🎉');
+        local.set('lc-msg', r.prueba ? '¡Listo! Tienes ' + r.dias + ' días de prueba gratis 🎉' : 'Tu billetera está lista. Activa Pro para empezar a anotar.');
         location.replace('app/');
       } catch (er) { errorEn(form, LC.traducir(er).message); }
     };

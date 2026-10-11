@@ -1,73 +1,38 @@
-# 2. Planes: Normal (gratis, siempre abierto) y Premium (solo mensual)
+# 2. Planes: Prueba gratis (7 días) y Pro (mensual)
 
-## Cómo se pensaron los límites
-- El plan **Normal sirve de verdad** para un negocio chico, así el negocio se acostumbra y le cuenta a otros.
-- Los límites aparecen **justo cuando el negocio ya depende de la app**, a las 2–4 semanas de uso real en un almacén,
-  y no el primer día.
-- **Nunca se bloquea cobrar.** Registrar abonos, aprobar comprobantes y ver saldos funciona siempre, en cualquier plan y
-  aunque el negocio esté sobre el límite. Solo se frena **agregar más deuda o más clientes**.
-- **Nunca se borra nada** por bajar de plan.
-- Cada límite se valida **en el servidor**. Una copia de la app no puede saltárselo.
-
-## Tabla de límites
-| Función | Normal (gratis) | Premium |
-|---|---|---|
-| Clientes activos (los archivados no cuentan) | **20** | Ilimitados |
-| Movimientos nuevos (fiados + abonos) al mes | **250** | Ilimitados |
-| Ventas en cuotas activas | **2** | Ilimitadas |
-| Botones de productos frecuentes | **6** | 30 |
-| Historial que se ve en pantalla | Últimos **6 meses** (el saldo siempre es exacto) | Completo |
-| Link del cliente con PIN, confirmar cargos y subir comprobante | ✓ | ✓ |
-| Comprobantes recibidos al mes | **15** | 300 |
-| Recordatorio por WhatsApp (manual, un toque) | ✓ ilimitado (dentro de la ley) | ✓ |
-| Tono del mensaje | 1 (amable) | 3 (amable, neutral, firme) + mensaje propio |
-| Aviso **push automático al cliente** (cuota por vencer, abono recibido) | — | ✓ |
-| Resumen diario al dueño ("hoy vencen 4 por $38.000") | Dentro de la app | Push al celular |
-| Límite de fiado | Uno general para todos | Uno distinto por cliente |
-| Puntaje del cliente (buen pagador / regular / riesgoso) | — | ✓ |
-| Tablero | Mes actual | Histórico, gráficos, mejores y peores pagadores |
-| Estado de cuenta en PDF para el cliente | — | ✓ |
-| Exportar | CSV con todos los datos (derecho del usuario) | Excel ordenado y PDF |
-| Ayudantes | — | Hasta 3 |
-| Logo y color del negocio en el link del cliente | — | ✓ |
-| Texto "Hecho con Libreta de Cobros" en el link del cliente | Se muestra | Se quita |
-| Soporte | Correo | WhatsApp con prioridad |
-
-¿Por qué esos números?
-- **20 clientes**: alcanza para probar con los clientes fijos, pero un almacén normal fía a 30–80 vecinos. Ahí está el salto.
-- **250 movimientos**: 20 clientes con 2–3 movimientos por semana cada uno. Solo lo pasa quien la usa en serio.
-- **2 cuotas activas**: deja probar la función estrella de la venta por catálogo sin regalarla.
-- **15 comprobantes**: protege los 1 GB de fotos gratis de Supabase y empuja a Premium a quien más cobra.
-
-## Prueba gratis: 14 días de Premium al crear la cuenta
-- Toda cuenta nueva parte con **14 días de Premium completo**, sin tarjeta. En la industria esto se llama "prueba al revés".
-  Funciona mejor que partir en gratis, porque el negocio prueba los avisos automáticos y el puntaje y después los extraña.
-- Avisos el día 10 y el día 13: *"Te quedan X días de Premium"*. El día 14 la cuenta pasa sola a Normal.
-- Es una prueba **por correo**. El servidor la marca como usada y no se repite.
-
-## Cobro mensual de Premium
-Mismo sistema que CodeFix Apps, pero en su propia base de datos:
-1. El negocio toca **Hazte Premium** y ve el precio, el link de pago (Mercado Pago) y tus datos para transferir.
-2. Paga y toca **Ya pagué**. Puede subir el comprobante.
-3. Te llega aviso en **Administración**. Apruebas con un toque y se suma **1 mes** desde la fecha de vencimiento,
-   o desde hoy si ya había vencido.
-4. También puedes generar **keys** de 1, 3, 6 o 12 meses (de un solo uso) para vender en persona.
-5. Avisos de vencimiento: 7, 3 y 1 día antes, y el mismo día.
-6. **Tres días de gracia** después de vencer, con Premium activo y un aviso en rojo. Al día 4 la cuenta pasa a Normal.
-
-Precio inicial: **$4.990 al mes**. Premium se vende **solo mes a mes** (sin plan anual). Las keys del admin pueden dar 1, 3, 6 o 12 meses como regalo o venta en persona.
-Se cambia desde **Administración → Ajustes** sin tocar código.
-
-## Qué pasa al bajar a Normal (al terminar la prueba o el Premium)
-| Situación | Qué pasa |
+## Cómo funciona
+| Etapa | Qué puede hacer |
 |---|---|
-| Tiene más de 20 clientes activos | Todos siguen visibles. Los 20 **con más movimiento reciente** quedan normales. El resto queda en "solo cobro": se pueden registrar abonos, aprobar comprobantes y mandar recordatorios, pero no agregarles deuda. Si archiva clientes saldados, libera cupos |
-| Tiene más de 2 ventas en cuotas | Siguen corriendo hasta terminar. No puede crear una nueva hasta bajar de 2 |
-| Ayudantes | Quedan pausados (no pueden entrar). Vuelven solos al renovar |
-| Límites por cliente | Se usa el límite general |
-| Logo y color | Vuelve el diseño estándar con "Hecho con…" |
-| Historial de más de 6 meses | Queda guardado, no se borra. Se ve de nuevo al volver a Premium y se puede exportar en CSV |
-| Avisos automáticos programados | Se cancelan. Los recordatorios manuales siguen |
+| **Prueba gratis** (7 días desde que se crea la cuenta) | Todo funciona, con límites amplios (tabla abajo). Avisos el día 4, el 6 y el último día |
+| **Bloqueada** (terminó la prueba o venció la mensualidad) | Puede entrar, **ver y exportar** todo, escribir a soporte y pagar. **No puede anotar** nada. El link de sus clientes queda "en pausa". No se borra nada |
+| **Pro** (pagado) | Todo **sin límites** + funciones Pro |
 
-Cada vez que el negocio choca con un límite, la pantalla dice exactamente cuál fue y qué gana con Premium,
-con un botón **Hazte Premium**. Nunca muestra un error genérico.
+- La prueba es **una vez por correo**. El admin puede **extenderla** desde su panel.
+- **Precio Pro**: activación **$10.000** (una vez) + mensualidad (parte en **$4.990**). Ambos se cambian en Administración → Ajustes.
+  El primer pago es activación + mensualidad; los siguientes, solo la mensualidad.
+- Avisos de mensualidad: 7, 3 y 1 día antes y el mismo día. Después, **3 días de gracia** con aviso en rojo; luego se bloquea.
+
+## Cómo se activa Pro
+1. El cliente toca **Quiero Pro** (llega un mensaje a tu chat de soporte y una notificación) o **Ya pagué** (con comprobante opcional).
+2. Tú apruebas el pago en **Administración → Pagos**, o le das Pro directo en **Billeteras → (billetera) → Dar Pro**.
+3. También puedes vender **keys** en persona (1, 3, 6 o 12 meses).
+4. Si vendes en persona, **creas tú la cuenta** desde tu panel (con Pro desde el inicio) y le mandas los datos por WhatsApp.
+
+## Límites de la prueba gratis
+| Función | Prueba gratis | Pro |
+|---|---|---|
+| Clientes activos (me deben) | 20 | Sin límite |
+| Fiados y abonos al mes | 250 | Sin límite |
+| Ventas y gastos (caja) al mes | 300 | Sin límite |
+| Categorías propias | 5 | 50 |
+| Ventas en cuotas activas | 2 | Sin límite |
+| Comprobantes recibidos al mes | 15 | 300 |
+| Productos frecuentes | 6 | 30 |
+| Historial en pantalla | 6 meses | Completo |
+| Tonos de cobro | Amable | Amable, neutral, firme y propio |
+| Avisos automáticos al cliente, puntaje, límite por cliente | — | ✓ |
+| Reportes históricos, Excel y PDF | Mes actual y CSV | ✓ |
+| Logo y colores en el link del cliente | — | ✓ |
+| Chat de soporte | ✓ | ✓ |
+
+Cada billetera es **personal** (una sola persona, sin ayudantes). Todo se valida en el servidor.

@@ -23,6 +23,9 @@
 **Frase de venta:** *"Recupera la plata que te deben. Anota en 3 segundos, cobra con un toque por WhatsApp."*
 
 ## Qué hace (resumen)
+0. **Caja (v1.2)**: ventas, ingresos y gastos con categorías (mercadería, arriendo, luz, transporte, sueldos, consumo…), balance del mes,
+   "¿en qué se fue la plata?" y comparación con el mes anterior. Los abonos de clientes cuentan como ingreso automáticamente.
+0. **Soporte (v1.2)**: chat privado dentro de la app entre cada billetera y el administrador, con notificaciones.
 1. **Libreta**: cada cliente tiene su cuenta con el saldo y el historial, como un chat: lo que se fió y lo que pagó.
 2. **Anotar rápido**: un teclado grande para el monto, botones de productos frecuentes y listo. Funciona **sin internet** y se sincroniza después.
 3. **Link del cliente**: cada cliente tiene un link privado, protegido con PIN. Ahí ve cuánto debe, el detalle, las cuotas y los datos para
