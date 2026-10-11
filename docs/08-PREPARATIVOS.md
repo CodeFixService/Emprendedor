@@ -33,6 +33,7 @@ El correo de fábrica de Supabase **solo envía a los miembros de tu equipo** (m
 - [x] Se usan las propuestas de `09-PLAN.md` (nombre, precio, límites y color). Todo se cambia después desde Administración → Ajustes.
 
 ## B. Instalar y publicar (unos 20 minutos) — el código ya está listo
+Guía con botones para copiar: https://claude.ai/artifact/5Du23Vn6sobq3Uizym5Mfm (también en `docs/guia-instalacion.html`).
 Todo en https://supabase.com/dashboard → organización **Emprendedor** → proyecto **libreta-cobros**.
 
 **B1. Base de datos**
