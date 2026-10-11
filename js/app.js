@@ -1154,8 +1154,7 @@
       el('p', { class: 'sutil' }, 'Te avisamos antes de que venza cada mensualidad. Si no pagas, tu billetera se bloquea pero no se borra nada.'));
   }
   async function quieroPro() {
-    const msg = S.st.plan.estado === 'pro' ? 'Hola, quiero pagar mi mensualidad de Pro.' : 'Hola, quiero activar Pro en mi billetera.';
-    try { await conCarga(() => rpc('soporte_enviar', { p_texto: msg })); toast('Listo ✓ Te responderemos por el chat de soporte.'); location.hash = 'soporte'; } catch (e) { error(e); }
+    try { await conCarga(() => rpc('pedir_pro')); toast('Listo ✓ Te responderemos por el chat de soporte.'); location.hash = 'soporte'; } catch (e) { error(e); }
   }
   async function yaPague() {
     const meses = el('p', null, el('strong', null, 'Pro · ' + precioPro()));
@@ -1229,7 +1228,9 @@
           el('span', { class: 'crece' }, '🔠 Letra más grande'), el('span', { class: 'tag' }, document.documentElement.classList.contains('grande') ? 'Sí' : 'No')),
         el('button', { class: 'item', type: 'button', onclick: () => { const sig = { auto: 'light', light: 'dark', dark: 'auto' }[tema]; local.set('lc-tema', sig); aplicarTema(); vCuenta(); } },
           el('span', { class: 'crece' }, '🌓 Tema'), el('span', { class: 'tag' }, { auto: 'Automático', light: 'Claro', dark: 'Oscuro' }[tema])),
-        !LC.instalada() ? el('button', { class: 'item', type: 'button', onclick: () => LC.instalar() }, el('span', { class: 'crece' }, '📲 Instalar la app'), el('span', { class: 'sutil' }, '›')) : null),
+        !LC.instalada() ? el('button', { class: 'item', type: 'button', onclick: () => LC.instalar() }, el('span', { class: 'crece' }, '📲 Instalar la app'), el('span', { class: 'sutil' }, '›')) : null,
+        el('button', { class: 'item', type: 'button', onclick: async () => { if (await confirmar('Reparar la app', 'Se vuelve a descargar la app en este celular. No se borra ningún dato. Úsalo si algo se ve raro o no se actualiza.', 'Reparar')) LC.repararApp(); } },
+          el('span', { class: 'crece' }, '🛠️ Reparar la app'), el('span', { class: 'tag' }, 'v' + LC.VERSION))),
       el('div', { class: 'lista' },
         el('button', { class: 'item', type: 'button', onclick: salir }, el('span', { class: 'crece' }, '🚪 Cerrar sesión')),
         el('button', { class: 'item', type: 'button', onclick: borrarCuenta }, el('span', { class: 'crece rojo' }, esDueno() ? '🗑️ Borrar mi cuenta y libreta' : '🗑️ Borrar mi cuenta de ayudante'))));
@@ -1332,6 +1333,7 @@
           varG != null ? el('div', { class: 't' }, (varG > 0 ? '▲ ' : '▼ ') + Math.abs(varG) + '% vs mes anterior') : null)),
       el('div', { class: 'grid2 mb' },
         el('a', { class: 'btn verde', href: '#anotar/ingreso' }, '＋ Ingreso'), el('a', { class: 'btn rojo', href: '#anotar/gasto' }, '－ Gasto')),
+      tarjetaMetas(rc),
       el('div', { class: 'dos-col' },
         el('div', { class: 'tarjeta' }, el('h2', null, '¿En qué se fue la plata?'),
           gastos.length ? gastos.map((x) => barraCat(x, maxG)) : el('p', { class: 'sutil' }, 'Sin gastos este mes.')),
@@ -1341,6 +1343,33 @@
           rc.fiado ? el('p', { class: 'sutil mt' }, 'Además fiaste ' + pesos(rc.fiado) + ' este mes (plata por cobrar).') : null)),
       el('div', { class: 'fila entre mt' }, el('h3', { style: 'margin:0' }, 'Movimientos'), el('button', { class: 'btn chico', type: 'button', onclick: gestionarCategorias }, '🏷️ Categorías')),
       el('div', { class: 'mt' }, movs));
+  }
+
+  function tarjetaMetas(rc) {
+    const editar = async () => {
+      if (!prem()) return alPlan('La meta de ventas y el presupuesto de gastos son Pro.');
+      const meta = el('input', { type: 'number', inputmode: 'numeric', min: 0, value: rc.meta_ventas || '' });
+      const pres = el('input', { type: 'number', inputmode: 'numeric', min: 0, value: rc.presupuesto_gastos || '' });
+      const ok = await dialogo('Metas del mes', el('div', null,
+        el('div', { class: 'campo' }, el('label', null, 'Meta de ventas e ingresos'), meta, el('div', { class: 'ayuda' }, 'Cuánto quieres vender al mes.')),
+        el('div', { class: 'campo' }, el('label', null, 'Presupuesto de gastos'), pres, el('div', { class: 'ayuda' }, 'Hasta cuánto quieres gastar. Te avisamos al llegar al 80%.'))),
+        [{ texto: 'Cancelar', valor: null }, { texto: 'Guardar', clase: 'primario', valor: true }]);
+      if (!ok) return;
+      try { await conCarga(() => rpc('guardar_metas', { p_meta: Math.round(Number(meta.value || 0)), p_presupuesto: Math.round(Number(pres.value || 0)) })); toast('Metas guardadas ✓'); router(true); } catch (e) { error(e); }
+    };
+    const vendido = rc.ingresos + rc.cobros;
+    const fila = (t, actual, total, invertir) => {
+      const pct = total ? Math.round(actual * 100 / total) : 0;
+      const cls = invertir ? (pct >= 100 ? 'lleno' : pct >= 80 ? 'alerta' : '') : (pct >= 100 ? '' : pct >= 50 ? '' : 'alerta');
+      return el('div', { class: 'mb' }, el('div', { class: 'fila entre' }, el('span', null, t), el('strong', null, pesos(actual) + ' de ' + pesos(total) + ' (' + pct + '%)')),
+        el('div', { class: 'barra ' + cls }, el('i', { style: 'width:' + Math.min(pct, 100) + '%' })));
+    };
+    if (!rc.meta_ventas && !rc.presupuesto_gastos) {
+      return el('button', { class: 'btn ancho mb', type: 'button', onclick: editar }, '🎯 Ponte una meta de ventas y un presupuesto de gastos' + (prem() ? '' : ' ⭐'));
+    }
+    return el('div', { class: 'tarjeta' }, el('div', { class: 'fila entre' }, el('h2', { style: 'margin:0' }, '🎯 Metas del mes'), el('button', { class: 'btn chico', type: 'button', onclick: editar }, 'Cambiar')),
+      el('div', { class: 'mt' }, rc.meta_ventas ? fila('Ventas', vendido, rc.meta_ventas) : null, rc.presupuesto_gastos ? fila('Gastos', rc.gastos, rc.presupuesto_gastos, true) : null),
+      rc.presupuesto_gastos && rc.gastos >= rc.presupuesto_gastos * 0.8 ? el('p', { class: rc.gastos >= rc.presupuesto_gastos ? 'rojo' : 'naranjo' }, rc.gastos >= rc.presupuesto_gastos ? '⚠️ Pasaste tu presupuesto de gastos.' : '⚠️ Llevas más del 80% de tu presupuesto de gastos.') : null);
   }
 
   async function menuCaja(k) {

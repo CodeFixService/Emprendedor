@@ -33,6 +33,8 @@
 | Avisos automáticos al cliente, puntaje, límite por cliente | — | ✓ |
 | Reportes históricos, Excel y PDF | Mes actual y CSV | ✓ |
 | Logo y colores en el link del cliente | — | ✓ |
+| Meta de ventas y presupuesto de gastos del mes (con alertas) | — | ✓ |
+| Resumen semanal al celular (lunes: entró, salió, balance) | — | ✓ |
 | Chat de soporte | ✓ | ✓ |
 
 Cada billetera es **personal** (una sola persona, sin ayudantes). Todo se valida en el servidor.

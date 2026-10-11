@@ -9,7 +9,9 @@ const ARCHIVOS = [
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/favicon.svg',
 ];
 const META = 'lc-meta';
-const pedirVersion = () => fetch('version.json', { cache: 'no-store' }).then((r) => r.json()).then((j) => String(j.version));
+let reinstalando = null;
+// "?t=" evita copias viejas guardadas por GitHub (su CDN guarda archivos hasta 10 minutos).
+const pedirVersion = () => fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then((r) => r.json()).then((j) => String(j.version));
 
 async function versionActual() {
   const r = await (await caches.open(META)).match('actual');
@@ -19,7 +21,15 @@ async function versionActual() {
 // Descarga todos los archivos de una versión y la deja como la actual.
 async function instalarVersion(v) {
   const c = await caches.open('lc-app-' + v);
-  await c.addAll(ARCHIVOS.map((f) => new Request(f, { cache: 'reload' })));
+  const marca = '?v=' + v + '&t=' + Date.now();
+  // Revisa que lo publicado sea de verdad la versión v (si GitHub aún no termina de publicar, no instala nada a medias).
+  const core = await (await fetch('js/core.js' + marca, { cache: 'no-store' })).text();
+  if (!core.includes("VERSION = '" + v + "'")) throw new Error('La versión ' + v + ' aún se está publicando. Prueba de nuevo en unos minutos.');
+  await Promise.all(ARCHIVOS.map(async (f) => {
+    const res = await fetch(f + (f.endsWith('/') ? 'index.html' : '') + marca, { cache: 'no-store' });
+    if (!res.ok) throw new Error('No se pudo descargar ' + f);
+    await c.put(new Request(f), res);
+  }));
   await (await caches.open(META)).put('actual', new Response(v));
   for (const k of await caches.keys()) if (k.startsWith('lc-') && k !== META && k !== 'lc-app-' + v) await caches.delete(k);
   return v;
@@ -38,7 +48,7 @@ self.addEventListener('message', (e) => {
   const port = e.ports && e.ports[0];
   e.waitUntil(pedirVersion().then(instalarVersion)
     .then((v) => port && port.postMessage({ ok: true, version: v }))
-    .catch((err) => port && port.postMessage({ ok: false, error: String(err) })));
+    .catch((err) => port && port.postMessage({ ok: false, error: (err && err.message) || String(err) })));
 });
 
 // Primero la versión guardada; si falta un archivo, se pide a internet.
@@ -49,6 +59,9 @@ self.addEventListener('fetch', (e) => {
   if (/\/(version\.json|sw\.js)$/.test(url.pathname)) return;          // siempre desde internet
   e.respondWith((async () => {
     const v = await versionActual();
+    if (!v && !reinstalando) { // la copia guardada se borró (por ejemplo, al limpiar el navegador): se vuelve a armar
+      reinstalando = pedirVersion().then(instalarVersion).catch(() => {}).then(() => { reinstalando = null; });
+    }
     const c = v ? await caches.open('lc-app-' + v) : null;
     const hit = c && await c.match(req, { ignoreSearch: true });
     if (hit) return hit;

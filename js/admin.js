@@ -13,6 +13,10 @@
     if (!data.session) { location.replace('../#ingresar'); return; }
     const st = await rpc('mi_estado');
     if (!st.es_admin) { pintar(el('div', { class: 'vacio' }, el('span', { class: 'ico' }, '🔒'), 'Solo el administrador puede entrar aquí.', el('br'), el('a', { href: '../app/' }, 'Volver a la app'))); return; }
+    LC.revisarVersion(st.config, (txt, fn) => {
+      const v = document.getElementById('admUpd'); if (v) v.remove();
+      if (txt) document.querySelector('.app').insertBefore(el('div', { id: 'admUpd', class: 'banda info' }, el('span', null, txt + ' Tu celular aún no la tiene.'), el('button', { class: 'btn chico', type: 'button', onclick: fn }, 'Actualizar')), document.getElementById('vista'));
+    });
     window.addEventListener('hashchange', router);
     router();
   }
@@ -25,25 +29,49 @@
 
   // ---------- Resumen ----------
   async function vResumen() {
-    const r = await conCarga(() => rpc('admin_resumen'));
+    const [r, op] = await conCarga(() => Promise.all([rpc('admin_resumen'), rpc('admin_oportunidades')]));
     $('#badgePagos').textContent = r.pagos_pendientes; $('#badgePagos').classList.toggle('oculto', !r.pagos_pendientes);
     $('#badgeSoporte').textContent = r.soporte_sin_leer; $('#badgeSoporte').classList.toggle('oculto', !r.soporte_sin_leer);
     const pct = Math.round(r.bd_mb * 100 / 500);
+    const conv = r.negocios ? Math.round(r.convertidos * 100 / r.negocios) : 0;
+    const dias = []; for (let i = 29; i >= 0; i--) dias.push(LC.sumarDias(LC.hoyISO(), -i));
+    const porDia = Object.fromEntries((r.registros_dia || []).map((x) => [x.dia, x.n]));
+    const maxD = Math.max(1, ...dias.map((d) => porDia[d] || 0));
+    const etapa = (t, n, cls) => el('div', { class: 'kpi' }, el('div', { class: 't' }, t), el('div', { class: 'v ' + (cls || '') }, n));
+    const op1 = (titulo, lista, sub, plantilla) => lista.length ? el('div', { class: 'tarjeta' }, el('h2', null, titulo + ' (' + lista.length + ')'),
+      el('div', { class: 'lista' }, lista.map((n) => el('div', { class: 'item', style: 'cursor:default' },
+        el('div', { class: 'avatar', style: 'background:' + LC.colorDe(n.nombre) }, LC.iniciales(n.nombre)),
+        el('a', { class: 'crece', href: '#negocios/' + n.id, style: 'color:inherit;text-decoration:none' }, el('div', { class: 'nom' }, n.nombre), el('div', { class: 'sub' }, sub(n))),
+        n.whatsapp ? el('button', { class: 'btn-icono', type: 'button', 'aria-label': 'WhatsApp', onclick: () => abrir(wa(n.whatsapp, plantilla(n))) }, '💬') : null,
+        el('a', { class: 'btn-icono', href: '#soporte/' + n.id, style: 'text-decoration:none', 'aria-label': 'Chat' }, '✉️'))))) : null;
+    const cfgP = r.mrr;
     pintar(el('h2', null, 'Resumen'),
-      !r.cron_ok ? el('div', { class: 'banda error' }, '⚠️ Las tareas automáticas no están activas. Revisa que pg_cron y pg_net estén activados y vuelve a correr el SQL.') : null,
+      !r.cron_ok ? el('div', { class: 'banda error' }, '⚠️ Las tareas automáticas no están activas: en Supabase → Database → Extensions enciende pg_cron y pg_net, y vuelve a correr el SQL de actualización.') : null,
       !r.push_ok ? el('div', { class: 'banda aviso' }, '⚠️ Falta generar las claves push.', el('a', { class: 'btn chico', href: '#ajustes' }, 'Ir')) : null,
       r.pagos_pendientes ? el('a', { class: 'banda info', href: '#pagos', style: 'text-decoration:none' }, '💳 ' + r.pagos_pendientes + ' pago(s) por revisar', el('span', { class: 'btn chico' }, 'Revisar')) : null,
       r.soporte_sin_leer ? el('a', { class: 'banda info', href: '#soporte', style: 'text-decoration:none' }, '💬 ' + r.soporte_sin_leer + ' chat(s) de soporte sin leer', el('span', { class: 'btn chico' }, 'Ver')) : null,
-      el('button', { class: 'btn primario ancho mb', type: 'button', onclick: crearCuenta }, '＋ Crear cuenta para un cliente'),
-      el('div', { class: 'grid2 mb' }, kpi('Billeteras', r.negocios), kpi('Activas 7 días', r.activos_7d, 'verde'), kpi('Pro (pagando)', r.premium, 'verde'), kpi('En prueba gratis', r.en_prueba),
-        kpi('Bloqueadas', r.bloqueados, r.bloqueados ? 'rojo' : ''), kpi('Ingresos del mes', pesos(r.ingresos_mes), 'verde'), kpi('Clientes registrados', r.clientes_total), kpi('Movimientos del mes', r.movimientos_mes)),
+      el('div', { class: 'kpi hero mb' }, el('div', { class: 't' }, 'Ingreso mensual recurrente (Pro activos × mensualidad)'), el('div', { class: 'grande' }, pesos(cfgP)),
+        el('div', { class: 't' }, 'Cobrado este mes: ' + pesos(r.ingresos_mes) + ' · ' + r.convertidos + ' clientes han pagado (' + conv + '% de las billeteras)')),
+      el('h3', null, 'Embudo de ventas'),
+      el('div', { class: 'grid2 mb' }, etapa('Billeteras creadas', r.negocios), etapa('En prueba gratis', r.en_prueba), etapa('Quieren Pro ⭐', r.quieren_pro, r.quieren_pro ? 'naranjo' : ''),
+        etapa('Pro pagando', r.premium, 'verde'), etapa('Bloqueadas', r.bloqueados, r.bloqueados ? 'rojo' : ''), etapa('Activas 7 días', r.activos_7d, 'verde')),
+      el('div', { class: 'tarjeta' }, el('h2', null, 'Registros: ' + r.nuevos_7d + ' esta semana · ' + r.nuevos_30d + ' en 30 días'),
+        el('div', { class: 'grafico', role: 'img', 'aria-label': 'Registros por día en los últimos 30 días' }, dias.map((d) => el('div', { title: LC.fechaCorta(d) + ': ' + (porDia[d] || 0) },
+          el('i', { class: 'c', style: 'height:' + Math.round((porDia[d] || 0) * 100 / maxD) + 'px' }))))),
+      el('h3', null, 'Oportunidades'),
+      op1('⭐ Quieren Pro', op.quieren_pro, (n) => 'Lo pidió ' + LC.relativo(n.fecha.slice(0, 10)) + ' · ' + n.email, (n) => 'Hola ' + n.nombre + ', vi que quieres activar Pro en tu billetera 🙌 Te cuento cómo pagar:'),
+      op1('⏳ Su prueba termina pronto', op.prueba_termina, (n) => 'Termina ' + LC.relativo(n.fecha.slice(0, 10)) + ' · usó la app ' + (n.ultimo_uso ? LC.relativo(n.ultimo_uso.slice(0, 10)) : 'nunca'), (n) => 'Hola ' + n.nombre + ', tu prueba gratis de Libreta de Cobros termina pronto. ¿Te ayudo a activar Pro para que no se bloquee?'),
+      op1('💳 Pro por vencer', op.pro_vence, (n) => 'Vence ' + LC.relativo(n.fecha.slice(0, 10)), (n) => 'Hola ' + n.nombre + ', te recuerdo que tu mensualidad de Pro vence pronto. ¿Te paso los datos para pagar?'),
+      op1('🔒 Bloqueadas que siguen entrando', op.bloqueados, (n) => (n.activado ? 'Venció su Pro' : 'Terminó su prueba') + ' · entró ' + (n.ultimo_uso ? LC.relativo(n.ultimo_uso.slice(0, 10)) : '—'), (n) => 'Hola ' + n.nombre + ', vi que tu billetera quedó bloqueada. Si quieres la activamos hoy y sigues donde quedaste.'),
+      !op.quieren_pro.length && !op.prueba_termina.length && !op.pro_vence.length && !op.bloqueados.length ? el('div', { class: 'lista' }, el('div', { class: 'vacio' }, 'Sin oportunidades por ahora.')) : null,
+      el('button', { class: 'btn primario ancho mb mt', type: 'button', onclick: crearCuenta }, '＋ Crear cuenta para un cliente'),
       el('div', { class: 'tarjeta' }, el('h2', null, 'Capacidad del plan gratis de Supabase'),
         el('div', { class: 'fila entre' }, el('span', null, 'Base de datos'), el('strong', null, r.bd_mb + ' MB de 500 MB')),
         el('div', { class: 'barra ' + (pct >= 85 ? 'lleno' : pct >= 70 ? 'alerta' : '') }, el('i', { style: 'width:' + Math.min(pct, 100) + '%' })),
         el('div', { class: 'fila entre mt' }, el('span', null, 'Archivos (fotos)'), el('strong', null, r.archivos_mb + ' MB de 1.024 MB')),
         pct >= 70 ? el('p', { class: 'naranjo mt' }, 'Pasaste el 70%: es momento de pasar a Supabase Pro.') : null,
         el('p', { class: 'sutil mt' }, 'Avisos en cola: ' + r.cola_push)),
-      el('div', { class: 'grid2' }, el('a', { class: 'btn', href: '#keys' }, '🔑 Keys'), el('a', { class: 'btn', href: '#avisos' }, '📣 Avisos a negocios')),
+      el('div', { class: 'grid2' }, el('a', { class: 'btn', href: '#keys' }, '🔑 Keys'), el('a', { class: 'btn', href: '#avisos' }, '📣 Avisos a todos')),
       el('button', { class: 'btn ancho mt', type: 'button', onclick: probar }, '🩺 Probar servidor de avisos'),
       el('button', { class: 'btn texto ancho mt', type: 'button', onclick: async () => { await sb.auth.signOut().catch(() => {}); location.replace('../#ingresar'); } }, '🚪 Cerrar sesión'));
   }
@@ -54,12 +82,15 @@
 
   // ---------- Negocios ----------
   let filtro = 'todos', busca = '';
-  async function vNegocios() {
+  let ultimaLista = [];
+  async function vNegocios(id) {
+    if (id) { const d = await rpc('admin_negocios', { p_buscar: '', p_filtro: 'todos' }); const n = d.find((x) => x.id === id); history.replaceState(null, '', '#negocios'); if (n) { vNegocios(); return fichaNegocio(n); } }
     const lista = el('div', { class: 'lista' });
     const inp = el('input', { type: 'search', placeholder: '🔎 Nombre o correo', value: busca });
     let t;
     const cargar = async () => {
       const d = await rpc('admin_negocios', { p_buscar: busca, p_filtro: filtro });
+      ultimaLista = d;
       vaciar(lista);
       if (!d.length) lista.append(el('div', { class: 'vacio' }, 'Sin resultados.'));
       d.forEach((n) => lista.append(el('button', { class: 'item', type: 'button', onclick: () => fichaNegocio(n) },
@@ -71,11 +102,29 @@
     pintar(el('div', { class: 'fila entre mb' }, el('h2', { style: 'margin:0' }, 'Billeteras'), el('button', { class: 'btn chico primario', type: 'button', onclick: crearCuenta }, '＋ Crear cuenta')), inp,
       el('div', { class: 'chips mt' }, [['todos', 'Todas'], ['pro', 'Pro'], ['prueba', 'En prueba'], ['bloqueado', 'Bloqueadas'], ['suspendido', 'Suspendidas'], ['eliminado', 'Por borrar']].map(([v, tx]) =>
         el('button', { class: 'chip' + (filtro === v ? ' activo' : ''), type: 'button', onclick: () => { filtro = v; vNegocios(); } }, tx))),
-      lista);
+      lista,
+      el('button', { class: 'btn ancho mt', type: 'button', onclick: () => {
+        const plan = { pro: 'Pro', prueba: 'Prueba', bloqueado: 'Bloqueada' };
+        LC.descargar('billeteras-' + LC.hoyISO() + '.csv', LC.csv(ultimaLista, [{ t: 'Negocio', v: (n) => n.nombre }, { t: 'Correo', v: (n) => n.email }, { t: 'WhatsApp', v: (n) => n.whatsapp || '' },
+          { t: 'Rubro', v: (n) => n.rubro }, { t: 'Plan', v: (n) => plan[n.plan] }, { t: 'Activación pagada', v: (n) => n.activado ? 'Sí' : 'No' }, { t: 'Prueba hasta', v: (n) => n.prueba_hasta || '' },
+          { t: 'Pro hasta', v: (n) => n.premium_hasta || '' }, { t: 'Clientes', v: (n) => n.clientes }, { t: 'Movimientos del mes', v: (n) => n.movimientos_mes || 0 }, { t: 'Último uso', v: (n) => n.ultimo_uso || '' }, { t: 'Creada', v: (n) => n.creado }]));
+      } }, '📄 Exportar lista (CSV)'));
     await cargar();
   }
   async function fichaNegocio(n) {
+    const det = await rpc('admin_negocio_detalle', { p_negocio: n.id }).catch(() => null);
+    const plantillas = [['Recordar pago', 'Hola ' + n.nombre + ', te recuerdo que tu mensualidad de Libreta de Cobros vence pronto. ¿Te paso los datos para pagar?'],
+      ['Ofrecer Pro', 'Hola ' + n.nombre + ', ¿cómo te ha ido con tu billetera? Si activas Pro tienes todo sin límites, avisos automáticos a tus clientes y reportes. ¿Te ayudo?'],
+      ['Ayuda para empezar', 'Hola ' + n.nombre + ', soy Josué de Libreta de Cobros. ¿Te ayudo a configurar tu billetera? Toma 5 minutos.']];
     const r = await dialogo(n.nombre, el('div', null,
+      det ? el('div', { class: 'grid3 mb' },
+        el('div', { class: 'kpi' }, el('div', { class: 't' }, 'Clientes'), el('div', { class: 'v' }, det.clientes)),
+        el('div', { class: 'kpi' }, el('div', { class: 't' }, 'Mov. del mes'), el('div', { class: 'v' }, (det.movimientos_mes || 0) + (det.caja_mes || 0))),
+        el('div', { class: 'kpi' }, el('div', { class: 't' }, 'Días con uso'), el('div', { class: 'v' }, det.dias_activo))) : null,
+      det && det.quiere_pro_at ? el('p', { class: 'naranjo' }, '⭐ Pidió Pro ' + LC.relativo(det.quiere_pro_at.slice(0, 10))) : null,
+      det && det.pagos.length ? el('details', { class: 'mb' }, el('summary', { class: 'sutil', style: 'cursor:pointer' }, 'Pagos (' + det.pagos.length + ')'),
+        el('div', { class: 'lista mt' }, det.pagos.map((x) => el('div', { class: 'item', style: 'cursor:default' }, el('span', { class: 'crece' }, pesos(x.monto) + ' · ' + fechaCorta(x.creado)), el('span', { class: 'tag ' + (x.estado === 'aprobada' ? 'verde' : x.estado === 'rechazada' ? 'rojo' : 'naranjo') }, x.estado))))) : null,
+      n.whatsapp ? el('div', { class: 'chips' }, plantillas.map(([t, m]) => el('button', { class: 'chip', type: 'button', onclick: () => abrir(wa(n.whatsapp, m)) }, '💬 ' + t))) : null,
       el('p', null, n.email, n.whatsapp ? ' · ' + n.whatsapp : ''),
       el('p', { class: 'sutil' }, 'Rubro: ' + n.rubro + ' · Desde ' + fechaCorta(n.creado) + ' · Último uso: ' + (n.ultimo_uso ? fechaHora(n.ultimo_uso) : '—')),
       el('p', null, 'Plan: ', el('strong', null, { pro: 'Pro', prueba: 'Prueba gratis', bloqueado: 'Bloqueada' }[n.plan]),
@@ -137,7 +186,7 @@
           el('button', { class: 'btn peligro', type: 'button', onclick: async () => { const m = await pedirTexto('Rechazar pago', 'Motivo (lo verá el negocio)', { min: 3, max: 150, boton: 'Rechazar', clase: 'rojo' }); if (m) { try { await conCarga(() => rpc('admin_resolver_pago', { p_id: s.id, p_aprobar: false, p_motivo: m })); vPagos(); } catch (e) { error(e); } } } }, 'Rechazar'),
           el('button', { class: 'btn verde', type: 'button', onclick: async () => { if (await confirmar('Aprobar pago', 'Revisa que el dinero (' + pesos(s.monto) + ') haya llegado. ¿Aprobar 1 mes de Pro?', 'Aprobar')) { try { await conCarga(() => rpc('admin_resolver_pago', { p_id: s.id, p_aprobar: true, p_motivo: null })); toast('Aprobado ✓'); vPagos(); } catch (e) { error(e); } } } }, 'Aprobar')) : null));
     }
-    pintar(el('h2', null, 'Pagos'), lista);
+    pintar(el('h2', null, 'Pagos'), el('p', { class: 'sutil' }, 'Aquí llegan los avisos de "Ya pagué" de tus clientes (con comprobante si lo subieron). Revisa que la plata llegó a tu cuenta y aprueba: se le suma 1 mes de Pro al instante.'), lista);
   }
 
   // ---------- Keys ----------
@@ -236,10 +285,15 @@
       btn.disabled = !pub || !LC.versionMenor(a.version_liberada, pub);
       if (pub && !LC.versionMenor(a.version_liberada, pub)) btn.textContent = '✓ La última versión ya está liberada';
     }).catch(() => { estado.textContent = 'No se pudo leer la versión publicada.'; });
-    LC.revisarVersion({ version_liberada: a.version_liberada }, (txt, fn) => { vaciar(tuyo); if (txt) tuyo.append(el('button', { class: 'btn ancho mt', type: 'button', onclick: fn }, 'Actualizar mi celular a la versión liberada')); });
+    LC.revisarVersion({ version_liberada: a.version_liberada }, (txt, fn) => { vaciar(tuyo); if (txt) tuyo.append(el('button', { class: 'btn primario ancho mt', type: 'button', onclick: fn }, '⬇️ Actualizar mi celular a la v' + a.version_liberada)); });
+    tuyo.append(el('button', { class: 'btn texto ancho', type: 'button', onclick: async () => { if (await confirmar('Reparar la app', 'Vuelve a descargar la app en este celular. No borra datos.', 'Reparar')) LC.repararApp(); } }, '🛠️ Reparar la app en este celular'));
     btn.onclick = async () => {
       if (!await confirmar('Liberar actualización', '¿Liberar la v' + pub + '? A todos les aparecerá el botón "Actualizar" y la tendrán al tocarlo.', 'Liberar')) return;
-      try { await conCarga(() => rpc('admin_guardar_ajustes', { p: { version_liberada: pub } })); toast('✅ v' + pub + ' liberada para todos'); vAjustes(); } catch (e) { error(e); }
+      try {
+        await conCarga(() => rpc('admin_guardar_ajustes', { p: { version_liberada: pub } }));
+        toast('✅ v' + pub + ' liberada para todos. Actualizando tu celular…');
+        if (LC.versionMenor(LC.VERSION, pub)) LC.actualizarAhora(); else vAjustes();
+      } catch (e) { error(e); }
     };
     return el('div', { class: 'tarjeta' }, el('h2', null, 'Actualizaciones'),
       el('p', { class: 'sutil' }, 'Cuando se publique una versión nueva en GitHub, pruébala en tu celular y después libérala. Nadie recibe cambios hasta que tú los apruebas.'),

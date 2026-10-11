@@ -219,6 +219,26 @@ select pruebas.ok((public.reporte(current_date - 30, current_date) ->> 'cobrado'
 select pruebas.ok(jsonb_array_length(public.exportar_datos() -> 'movimientos') > 0, 'exportar');
 reset role;
 
+-- ===== v1.3: metas (Pro), Quiero Pro, oportunidades y detalle para el admin =====
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d1', false);
+set role authenticated;
+select public.guardar_metas(500000, 200000);
+select pruebas.ok((public.resumen_caja(null) ->> 'meta_ventas')::int = 500000, 'meta de ventas');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d2', false);
+reset role;
+update public.negocios set premium_hasta = null, prueba_hasta = now() + interval '2 days' where dueno = '00000000-0000-0000-0000-0000000000d2';
+set role authenticated;
+select pruebas.falla($$select public.guardar_metas(1, 1)$$, 'Pro');
+select public.pedir_pro();
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+select pruebas.ok(jsonb_array_length(public.admin_oportunidades() -> 'quieren_pro') = 1, 'oportunidades: quiere Pro');
+select pruebas.ok(jsonb_array_length(public.admin_oportunidades() -> 'prueba_termina') = 1, 'oportunidades: prueba por terminar');
+select pruebas.ok((public.admin_resumen() ->> 'quieren_pro')::int = 1 and (public.admin_resumen() ->> 'mrr')::int >= 4990, 'embudo y MRR');
+select pruebas.ok((public.admin_negocio_detalle((select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d1')) ->> 'movimientos_total')::int > 0, 'detalle de billetera');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d1', false);
+select pruebas.falla($$select public.admin_oportunidades()$$, 'administrador');
+reset role;
+
 -- ===== El admin crea una cuenta desde su panel (función del servidor) =====
 reset role;
 insert into auth.users (id, email, email_confirmed_at) values ('00000000-0000-0000-0000-0000000000c1', 'creada@prueba.cl', now());
