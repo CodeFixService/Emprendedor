@@ -39,6 +39,7 @@
 | Marcar una cuota pagada (se habilita la siguiente) | ✓ | ✓ |
 | Link de pago general (Ajustes) | ✓ | ✓ |
 | Link de pago propio por cliente | — | ✓ |
+| Billeteras conectadas (cuenta entre dos billeteras) | 🔒 | 10 incluidas + paquetes de 5 a $2.000/mes |
 | Cobrar a todos de una (lista con quién se puede cobrar hoy según la ley) | — | ✓ |
 | Recibo con imagen para WhatsApp | — | ✓ |
 | Reporte Pro: ganancia, comparación con el mes anterior, proyección, mejores clientes y mejores días | — | ✓ |
@@ -53,3 +54,17 @@ Cada billetera es **personal** (una sola persona, sin ayudantes). Todo se valida
 2. El cliente paga. Te llega el aviso de tu banco o de Mercado Pago.
 3. En la pestaña **Cuotas** tocas **✅ Marcar pagada** en la cuota que toca y eliges cómo pagó. Se anota el abono y se habilita la siguiente; las demás quedan con 🔒 "Aún no".
    Si el cliente tiene una deuda más antigua, la app te avisa: los pagos siempre cubren primero lo más antiguo.
+
+## Pagos de fiados (v1.6)
+- Cada fiado pendiente tiene **✅ Ya me pagó**: eliges **pagó todo** o **abonó una parte**, cómo pagó y, si quieres, adjuntas la **foto del comprobante** (queda en ese pago; se puede ver después).
+- A un abono ya anotado se le puede **adjuntar el comprobante** tocándolo.
+- La burbuja del fiado muestra "Abonado $X · falta $Y" o "✓ Pagado".
+- El botón para escribir todo lo que debe quedó bajo el teclado, para no tocarlo por error.
+
+## Billeteras conectadas (Pro, v1.6)
+1. En **Más → Billeteras conectadas** generas tu **código** (XXXX-XXXX). Puedes cambiarlo cuando quieras.
+2. La otra persona lo ingresa y tú **aceptas** la solicitud. Si ella ya te había enviado la suya, con tu código quedan conectados.
+3. Cualquiera anota **"Le presté"** o **"Le pagué"**; el otro lo **confirma o rechaza** (no vence). Solo lo confirmado cuenta en el saldo.
+4. Cada conexión es de a dos: nadie ve clientes, caja ni gastos del otro, y las conexiones no se cruzan.
+5. Pro incluye **10 conexiones**; cada **5 extra cuestan $2.000/mes** (se piden en la misma pantalla, se aprueban en Administración → Pagos y se suman a la mensualidad). Todo se ajusta en Administración → Ajustes.
+6. Si deja de ser Pro, sus conexiones quedan **en pausa**: puede verlas y confirmar lo del otro, pero no anotar.

@@ -61,7 +61,8 @@
         el('div', { class: 't' }, 'Cobrado este mes: ' + pesos(r.ingresos_mes) + ' · ' + r.convertidos + ' clientes han pagado (' + conv + '% de las billeteras)')),
       el('h3', null, 'Embudo de ventas'),
       el('div', { class: 'grid2 mb' }, etapa('Billeteras creadas', r.negocios), etapa('En prueba Pro', r.en_prueba), etapa('Quieren Pro ⭐', r.quieren_pro, r.quieren_pro ? 'naranjo' : ''),
-        etapa('Pro pagando', r.premium, 'verde'), etapa('En Free', r.free != null ? r.free : '—'), etapa('Activas 7 días', r.activos_7d, 'verde')),
+        etapa('Pro pagando', r.premium, 'verde'), etapa('En Free', r.free != null ? r.free : '—'), etapa('Activas 7 días', r.activos_7d, 'verde'),
+        etapa('🤝 Conexiones activas', r.conexiones != null ? r.conexiones : '—')),
       L(r.vencen).length ? el('div', { class: 'tarjeta', style: 'border-color:var(--aviso)' }, el('h2', null, '⏰ Vencen hoy o mañana (' + r.vencen.length + ')'),
         el('div', { class: 'lista' }, r.vencen.map((n) => el('div', { class: 'item', style: 'cursor:default' },
           el('div', { class: 'avatar', style: 'background:' + LC.colorDe(n.nombre) }, LC.iniciales(n.nombre)),
@@ -144,6 +145,7 @@
       el('p', null, 'Plan: ', el('strong', null, PLAN[n.plan]),
         n.plan === 'pro' ? ' · pagado hasta ' + fechaLarga(n.premium_hasta) : n.plan === 'prueba' ? ' · hasta ' + fechaLarga(n.prueba_hasta) : '',
         n.activado ? ' · ✅ activación pagada' : ' · sin activación'),
+      el('p', { class: 'sutil' }, '🤝 ' + (n.conexiones || 0) + ' conexiones activas · ' + (n.conexiones_extra || 0) + ' paquete(s) extra'),
       n.estado === 'suspendido' ? el('p', { class: 'rojo' }, 'Suspendido: ' + (n.motivo_suspension || '')) : null,
       n.nota_admin ? el('p', { class: 'sutil' }, '📝 ' + n.nota_admin) : null,
       el('div', { class: 'col' },
@@ -152,6 +154,7 @@
             : el('button', { class: 'btn', type: 'button', onclick: () => cerrarCon('quitar') }, '⬇️ Quitar Pro')),
         n.plan === 'prueba' ? el('button', { class: 'btn', type: 'button', onclick: () => cerrarCon('quitar') }, '⬇️ Terminar prueba (pasa a Free)') : null,
         el('a', { class: 'btn', href: '#soporte/' + n.id }, '💬 Chat de soporte' + (n.soporte ? ' (' + n.soporte + ')' : '')),
+        el('button', { class: 'btn', type: 'button', onclick: () => cerrarCon('conexiones') }, '🤝 Paquetes de conexiones'),
         el('button', { class: 'btn', type: 'button', onclick: () => cerrarCon('nota') }, '📝 Nota interna'),
         el('button', { class: 'btn', type: 'button', onclick: () => cerrarCon('aviso') }, '📣 Enviar aviso'),
         n.whatsapp ? el('button', { class: 'btn wsp', type: 'button', onclick: () => abrir(wa(n.whatsapp, 'Hola ' + n.nombre + ', te escribo de Libreta de Cobros.')) }, '💬 WhatsApp') : null,
@@ -168,6 +171,9 @@
           if (d) { await conCarga(() => rpc('admin_plan', { p_negocio: n.id, p_accion: 'prueba', p_dias: Number(d) })); toast('Prueba extendida ✓'); }
         } else if (v === 'quitar') {
           if (await confirmar(n.plan === 'prueba' ? 'Terminar prueba' : 'Quitar Pro', '¿Pasar a ' + n.nombre + ' a Free ahora? Su billetera sigue funcionando gratis y las funciones Pro quedan en pausa. No se borra nada.', 'Pasar a Free', 'rojo')) { await conCarga(() => rpc('admin_plan', { p_negocio: n.id, p_accion: 'quitar', p_dias: null })); toast('Ahora está en Free'); }
+        } else if (v === 'conexiones') {
+          const d = await pedirTexto('Paquetes de conexiones', 'Paquetes extra (cada uno suma conexiones según Ajustes)', { valor: String(n.conexiones_extra || 0), inputmode: 'numeric', tipo: 'number', validar: (x) => Number(x) >= 0 && Number(x) <= 200 ? null : 'Entre 0 y 200' });
+          if (d != null && d !== '') { await conCarga(() => rpc('admin_plan', { p_negocio: n.id, p_accion: 'conexiones', p_dias: Number(d) })); toast('Paquetes actualizados ✓'); }
         } else if (v === 'nota') {
           const t = await pedirTexto('Nota interna', 'Solo la ves tú', { valor: n.nota_admin || '', multilinea: true, max: 500 });
           if (t != null) { await rpc('admin_estado', { p_negocio: n.id, p_suspender: null, p_motivo: null, p_nota: t }); toast('Nota guardada'); }
@@ -195,11 +201,11 @@
       if (s.comprobante_path) sb.storage.from('pagos').createSignedUrl(s.comprobante_path, 600).then(({ data: u }) => { if (u) foto.append(el('img', { class: 'foto-comp mt', src: u.signedUrl, alt: 'Comprobante', onclick: () => abrir(u.signedUrl) })); });
       lista.append(el('div', { class: 'tarjeta' },
         el('div', { class: 'fila entre' }, el('strong', null, s.negocio_nombre), el('span', { class: 'tag ' + (s.estado === 'aprobada' ? 'verde' : s.estado === 'rechazada' ? 'rojo' : 'naranjo') }, s.estado)),
-        el('div', null, 'Pro 1 mes · ' + pesos(s.monto) + ' · ' + fechaHora(s.creado)), s.cupon ? el('div', { class: 'verde' }, '🏷️ Usó el cupón ' + s.cupon) : null,
+        el('div', null, (s.tipo === 'conexiones' ? '🤝 ' + s.paquetes + ' paquete' + (s.paquetes > 1 ? 's' : '') + ' de conexiones' : 'Pro 1 mes') + ' · ' + pesos(s.monto) + ' · ' + fechaHora(s.creado)), s.cupon ? el('div', { class: 'verde' }, '🏷️ Usó el cupón ' + s.cupon) : null,
         s.nota ? el('p', { class: 'sutil' }, '“' + s.nota + '”') : null, s.motivo ? el('p', { class: 'rojo' }, s.motivo) : null, foto,
         s.estado === 'pendiente' ? el('div', { class: 'grid2 mt' },
           el('button', { class: 'btn peligro', type: 'button', onclick: async () => { const m = await pedirTexto('Rechazar pago', 'Motivo (lo verá el negocio)', { min: 3, max: 150, boton: 'Rechazar', clase: 'rojo' }); if (m) { try { await conCarga(() => rpc('admin_resolver_pago', { p_id: s.id, p_aprobar: false, p_motivo: m })); vPagos(); } catch (e) { error(e); } } } }, 'Rechazar'),
-          el('button', { class: 'btn verde', type: 'button', onclick: async () => { if (await confirmar('Aprobar pago', 'Revisa que el dinero (' + pesos(s.monto) + ') haya llegado. ¿Aprobar 1 mes de Pro?', 'Aprobar')) { try { await conCarga(() => rpc('admin_resolver_pago', { p_id: s.id, p_aprobar: true, p_motivo: null })); toast('Aprobado ✓'); vPagos(); } catch (e) { error(e); } } } }, 'Aprobar')) : null));
+          el('button', { class: 'btn verde', type: 'button', onclick: async () => { if (await confirmar('Aprobar pago', 'Revisa que el dinero (' + pesos(s.monto) + ') haya llegado. ¿Aprobar ' + (s.tipo === 'conexiones' ? s.paquetes + ' paquete(s) de conexiones' : '1 mes de Pro') + '?', 'Aprobar')) { try { await conCarga(() => rpc('admin_resolver_pago', { p_id: s.id, p_aprobar: true, p_motivo: null })); toast('Aprobado ✓'); vPagos(); } catch (e) { error(e); } } } }, 'Aprobar')) : null));
     }
     pintar(el('h2', null, 'Pagos'), el('p', { class: 'sutil' }, 'Aquí llegan los avisos de "Ya pagué" de tus clientes (con comprobante si lo subieron). Revisa que la plata llegó a tu cuenta y aprueba: se le suma 1 mes de Pro al instante.'), lista);
   }
@@ -283,6 +289,7 @@
       mensual: inp(a.precio_mensual, { type: 'number', inputmode: 'numeric' }), activacion: inp(a.precio_activacion, { type: 'number', inputmode: 'numeric' }), anual: inp(a.precio_anual, { type: 'number', inputmode: 'numeric' }),
       link: inp(a.link_pago, { type: 'url', placeholder: 'https://mpago.la/…' }), wsp: inp(a.contacto_whatsapp, { type: 'tel', placeholder: '+56 9 …' }),
       prueba: inp(a.dias_prueba, { type: 'number' }), gracia: inp(a.dias_gracia, { type: 'number' }),
+      conInc: inp(a.conexiones_incluidas, { type: 'number' }), conPaq: inp(a.conexiones_paquete, { type: 'number' }), conPrecio: inp(a.precio_paquete, { type: 'number', inputmode: 'numeric' }),
       tb: inp(t.banco), tt: inp(t.tipo), tn: inp(t.numero, { inputmode: 'numeric' }), tr: inp(t.rut), ttit: inp(t.titular), te: inp(t.email, { type: 'email' }),
       lc: inp(ln.clientes, { type: 'number' }), lm: inp(ln.movimientos, { type: 'number' }), lq: inp(ln.cuotas, { type: 'number' }), lp: inp(ln.productos, { type: 'number' }), lk: inp(ln.comprobantes, { type: 'number' }), lh: inp(ln.historial_meses, { type: 'number' }), lcaja: inp(ln.caja, { type: 'number' }), lcat: inp(ln.categorias, { type: 'number' }),
       vlegal: inp(a.version_legal, { type: 'number' }), vmin: inp(a.version_min),
@@ -293,7 +300,8 @@
         el('div', null,
           el('div', { class: 'tarjeta' }, el('h2', null, 'Venta de Pro'), el('div', { class: 'grid2' }, campo('Activación (una vez)', f.activacion), campo('Mensualidad Pro', f.mensual)),
             el('p', { class: 'sutil' }, 'El primer pago es activación + mensualidad; después solo la mensualidad.'),
-            campo('Link de pago (Mercado Pago u otro)', f.link), campo('Tu WhatsApp de soporte', f.wsp), el('div', { class: 'grid2' }, campo('Días de prueba Pro', f.prueba), campo('Días de gracia', f.gracia))),
+            campo('Link de pago (Mercado Pago u otro)', f.link), campo('Tu WhatsApp de soporte', f.wsp), el('div', { class: 'grid2' }, campo('Días de prueba Pro', f.prueba), campo('Días de gracia', f.gracia)),
+            el('h3', null, '🤝 Billeteras conectadas'), el('div', { class: 'grid3' }, campo('Incluidas', f.conInc), campo('Por paquete', f.conPaq), campo('Precio paquete/mes', f.conPrecio))),
           el('div', { class: 'tarjeta' }, el('h2', null, 'Tus datos para transferencias de Pro'), campo('Banco', f.tb), campo('Tipo de cuenta', f.tt), campo('Número', f.tn), campo('RUT', f.tr), campo('Titular', f.ttit), campo('Correo', f.te))),
         el('div', null,
           el('div', { class: 'tarjeta' }, el('h2', null, 'Límites del plan Free'), el('p', { class: 'sutil' }, 'Después de la prueba Pro, cada billetera sigue gratis con estos límites.'),
@@ -311,6 +319,7 @@
           const num = (i) => Math.round(Number(i.value));
           const datos = { precio_mensual: num(f.mensual), precio_activacion: num(f.activacion), link_pago: f.link.value.trim(), contacto_whatsapp: f.wsp.value.trim() ? V.telefono(f.wsp.value) : '',
             dias_prueba: num(f.prueba), dias_gracia: num(f.gracia),
+            conexiones_incluidas: f.conInc.value === '' ? undefined : num(f.conInc), conexiones_paquete: f.conPaq.value === '' ? undefined : num(f.conPaq), precio_paquete: f.conPrecio.value === '' ? undefined : num(f.conPrecio),
             transferencia: { banco: f.tb.value.trim(), tipo: f.tt.value.trim(), numero: f.tn.value.replace(/\D/g, ''), rut: f.tr.value ? V.rutBonito(V.rut(f.tr.value)) : '', titular: f.ttit.value.trim(), email: f.te.value.trim() },
             lim_normal: { clientes: num(f.lc), movimientos: num(f.lm), cuotas: num(f.lq), productos: num(f.lp), comprobantes: num(f.lk), historial_meses: num(f.lh), caja: num(f.lcaja), categorias: num(f.lcat) },
             version_legal: num(f.vlegal), version_min: f.vmin.value.trim() };
