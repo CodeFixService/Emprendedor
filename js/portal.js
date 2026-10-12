@@ -15,9 +15,9 @@
   LC.alSesion = () => { sesion = null; local.del('lc-portal'); pedirPin(); };
 
   const pintar = (...n) => { vaciar(raiz).append(...n.flat().filter((x) => x != null && x !== false)); window.scrollTo(0, 0); };
-  function marcaColor(c) { if (c) { document.documentElement.style.setProperty('--marca', c); document.documentElement.style.setProperty('--marca-2', c); } }
-  function cabecera(nombre, logo) {
-    return el('div', { class: 'fila mb' }, el('div', { class: 'logo-mini', style: 'width:44px;height:44px' }, logo ? el('img', { src: logo, alt: '' }) : LC.iniciales(nombre)),
+  function marcaColor(c) { if (c) LC.aplicarColor(c, false); }
+  function cabecera(nombre, icono) {
+    return el('div', { class: 'fila mb' }, el('div', { class: 'logo-mini' + (icono ? ' emoji' : ''), style: 'width:44px;height:44px' }, icono || LC.iniciales(nombre)),
       el('div', { class: 'crece' }, el('div', { class: 'sutil' }, 'Tu cuenta en'), el('strong', { style: 'font-size:1.15em' }, nombre)));
   }
 
@@ -37,8 +37,8 @@
     if (!info.ok) return pintar(el('div', { class: 'tarjeta centro' }, el('div', { style: 'font-size:2.5em' }, '🔗'), el('h1', null, 'Este link no es válido'),
       el('p', null, 'Puede que el negocio haya generado uno nuevo. Pídele que te lo envíe otra vez.')));
     marcaColor(info.color);
-    if (info.pausa) return pintar(cabecera(info.negocio, info.logo_url), el('div', { class: 'tarjeta centro' }, el('div', { style: 'font-size:2.5em' }, '⏸️'), el('h1', null, 'Link en pausa'), el('p', null, 'Por ahora no puedes ver tu cuenta aquí. Escríbele a ' + info.negocio + '.')));
-    if (info.bloqueado) return pintar(cabecera(info.negocio, info.logo_url), el('div', { class: 'tarjeta centro' }, el('h1', null, 'Link bloqueado'), el('p', null, 'Por seguridad este link se bloqueó. Pídele a ' + info.negocio + ' uno nuevo.')));
+    if (info.pausa) return pintar(cabecera(info.negocio, info.icono), el('div', { class: 'tarjeta centro' }, el('div', { style: 'font-size:2.5em' }, '⏸️'), el('h1', null, 'Link en pausa'), el('p', null, 'Por ahora no puedes ver tu cuenta aquí. Escríbele a ' + info.negocio + '.')));
+    if (info.bloqueado) return pintar(cabecera(info.negocio, info.icono), el('div', { class: 'tarjeta centro' }, el('h1', null, 'Link bloqueado'), el('p', null, 'Por seguridad este link se bloqueó. Pídele a ' + info.negocio + ' uno nuevo.')));
     if (!info.pin) return entrar('');
     let pin = '';
     const puntos = el('div', { class: 'pin' }, [0, 1, 2, 3].map(() => el('span')));
@@ -53,7 +53,7 @@
         if (r) { msg.textContent = r; msg.className = 'centro rojo'; repintar(); }
       }
     };
-    pintar(cabecera(info.negocio, info.logo_url), el('div', { class: 'tarjeta' }, el('h1', { class: 'centro' }, '🔒 Tu PIN'), msg, puntos,
+    pintar(cabecera(info.negocio, info.icono), el('div', { class: 'tarjeta' }, el('h1', { class: 'centro' }, '🔒 Tu PIN'), msg, puntos,
       el('div', { class: 'teclado', style: 'max-width:320px;margin:0 auto' }, ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k) => k ? el('button', { type: 'button', onclick: () => tecla(k), 'aria-label': k === '⌫' ? 'Borrar' : k }, k) : el('span')))),
     el('p', { class: 'sutil centro' }, '🔐 Solo tú ves esta cuenta. ', el('a', { href: '../legal/#cliente' }, 'Privacidad')));
   }
@@ -81,7 +81,7 @@
     const cuotasProx = D.cuotas.filter((v) => v.estado === 'activa').flatMap((v) => v.cuotas.filter((q) => q.pagado < q.monto).map((q) => ({ ...q, venta: v.descripcion }))).sort((a, b) => a.vence < b.vence ? -1 : 1);
     const prox = cuotasProx[0];
     pintar(
-      cabecera(n.nombre, n.logo_url),
+      cabecera(n.nombre, n.icono),
       el('div', { class: 'tarjeta centro' },
         el('div', { class: 'sutil' }, c.saldo > 0 ? 'Debes' : c.saldo < 0 ? 'Saldo a tu favor' : 'Tu cuenta'),
         el('div', { class: 'saldo-gigante ' + (c.saldo > 0 ? 'rojo' : 'verde') }, c.saldo > 0 ? pesos(c.saldo) : c.saldo < 0 ? pesos(-c.saldo) : '¡Al día! ✓'),
@@ -149,7 +149,7 @@
       if (!m) { err.textContent = 'Escribe el monto'; return false; }
       try {
         let blob = null;
-        if (foto.files[0]) blob = await LC.achicarImagen(foto.files[0], 1280, 300 * 1024);
+        if (foto.files[0]) blob = await LC.achicarImagen(foto.files[0], 1080, 200 * 1024);
         const r = await conCarga(() => rpc('portal_comprobante', { p_sesion: sesion, p_monto: m, p_fecha: fecha.value, p_comentario: com.value, p_con_foto: !!blob }));
         if (blob && r.foto_token) {
           const data = await LC.blobADataURL(blob);

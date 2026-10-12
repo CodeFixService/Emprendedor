@@ -106,56 +106,76 @@ select pruebas.falla($$select public.admin_resumen()$$, 'administrador');
 select pruebas.falla($$select * from privado.secretos$$, 'permission denied');
 select pruebas.falla($$select privado.fijar_admin()$$, 'permission denied');
 
--- ===== Prueba gratis (límites del plan gratis): 20 clientes y 250 movimientos =====
+-- ===== Prueba: los primeros días son Pro completo (sin límites) =====
 select pruebas.ok(public.mi_estado() -> 'plan' ->> 'estado' = 'prueba', 'dueño 2 en prueba');
-do $$ begin for i in 1..20 loop perform public.crear_cliente('Cliente ' || i, null, null, null, null, null, '1111', 0, false, true); end loop; end $$;
-select pruebas.falla($$select public.crear_cliente('Cliente 21', null, null, null, null, null, '1111', 0, false, true)$$, '20 clientes');
+select pruebas.ok((public.mi_estado() -> 'plan' ->> 'premium')::boolean, 'la prueba es Pro');
+do $$ begin for i in 1..21 loop perform public.crear_cliente('Cliente ' || i, null, null, null, null, null, '1111', 0, false, true); end loop; end $$;
 select set_config('t.f1', (select id::text from public.clientes where nombre = 'Cliente 1'), false);
-reset role;
-update public.uso_mensual set movimientos = 250 where negocio = (select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d2');
-set role authenticated;
-select pruebas.falla($$select public.registrar_movimiento(gen_random_uuid(), current_setting('t.f1')::uuid, 'cargo', 100, null, null, null, null, null, false, false)$$, 'movimientos de este mes');
-reset role;
-update public.uso_mensual set movimientos = 0 where negocio = (select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d2');
-set role authenticated;
 select public.registrar_movimiento(gen_random_uuid(), current_setting('t.f1')::uuid, 'cargo', 100, null, null, null, null, null, false, false);
-select pruebas.falla($$select public.registrar_recordatorio(current_setting('t.f1')::uuid, 'whatsapp', 'firme', '')$$, 'Premium');
+select pruebas.ok(jsonb_typeof(public.reporte_pro(null)) = 'object', 'en prueba ve reportes Pro');
+select pruebas.ok(jsonb_array_length(public.cobranza_lote()) >= 1, 'en prueba usa cobrar a todos');
 select pruebas.falla($$select public.invitar_ayudante()$$, 'personal');
 select pruebas.falla($$select public.solicitar_pago(12, null, null)$$, 'mes a mes');
-reset role;
-update public.uso_mensual set caja = 300 where negocio = (select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d2');
-set role authenticated;
-select pruebas.falla($$select public.registrar_caja(gen_random_uuid(), 'gasto', 1000, 'Arriendo', null, 'efectivo', null, false)$$, 'ingresos y gastos de este mes');
+-- Perfil: ícono y color (gratis)
+select public.guardar_perfil('🧁', '#db2777');
+select pruebas.ok((select icono = '🧁' and color = '#db2777' from public.negocios where dueno = auth.uid()), 'guarda ícono y color');
+select pruebas.falla($$select public.guardar_perfil('<b>', null)$$, 'Ícono inválido');
+select pruebas.falla($$select public.guardar_perfil(null, 'red')$$, 'Color inválido');
 
--- ===== Fin de la prueba: billetera bloqueada (ver y exportar sí; anotar no) =====
+-- ===== Fin de la prueba: pasa a Free (sigue funcionando, lo Pro queda en pausa) =====
 reset role;
 update public.negocios set prueba_hasta = now() - interval '1 minute' where dueno = '00000000-0000-0000-0000-0000000000d2';
 select set_config('t.codf', (select link_codigo from public.clientes where id = current_setting('t.f1')::uuid), false);
 set role authenticated;
-select pruebas.ok(public.mi_estado() -> 'plan' ->> 'estado' = 'bloqueado', 'se bloquea al terminar la prueba');
-select pruebas.ok((select count(*) >= 1 from public.notificaciones where titulo = 'Terminó tu prueba gratis'), 'avisa el bloqueo');
-select pruebas.falla($$select public.crear_cliente('Nuevo', null, null, null, null, null, '1111', 0, false, true)$$, 'Terminó tu prueba gratis');
-select pruebas.falla($$select public.registrar_movimiento(gen_random_uuid(), current_setting('t.f1')::uuid, 'abono', 50, null, 'efectivo', null, null, null, false, false)$$, 'Terminó tu prueba gratis');
-select pruebas.ok((public.tablero() ->> 'por_cobrar')::int >= 0, 'bloqueado puede ver el tablero');
-select pruebas.ok(public.exportar_datos() ? 'clientes', 'bloqueado puede exportar');
+select pruebas.ok(public.mi_estado() -> 'plan' ->> 'estado' = 'free', 'pasa a Free al terminar la prueba');
+select pruebas.ok(not (public.mi_estado() -> 'plan' ->> 'premium')::boolean, 'Free no tiene Pro');
+select pruebas.ok((select count(*) >= 1 from public.notificaciones where titulo = 'Terminó tu prueba Pro: pasaste a Free'), 'avisa el paso a Free');
+select pruebas.ok((public.mi_estado() -> 'uso' ->> 'fuera_de_plan')::int = 1, 'el cliente 21 queda en solo cobro');
+select pruebas.falla($$select public.crear_cliente('Nuevo', null, null, null, null, null, '1111', 0, false, true)$$, '20 clientes');
+select pruebas.ok((public.registrar_movimiento(gen_random_uuid(), current_setting('t.f1')::uuid, 'abono', 50, null, 'efectivo', null, null, null, false, false) ->> 'ok')::boolean, 'Free sigue anotando');
+select pruebas.falla($$select public.registrar_recordatorio(current_setting('t.f1')::uuid, 'whatsapp', 'firme', '')$$, 'Pro');
+select pruebas.falla($$select public.reporte_pro(null)$$, 'Pro');
+select pruebas.falla($$select public.cobranza_lote()$$, 'Pro');
+select pruebas.falla($$select public.guardar_metas(1, 1)$$, 'Pro');
+reset role;
+update public.uso_mensual set movimientos = 250 where negocio = (select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d2');
+set role authenticated;
+select pruebas.falla($$select public.registrar_movimiento(gen_random_uuid(), current_setting('t.f1')::uuid, 'cargo', 150, null, null, null, null, null, false, false)$$, 'fiados y abonos de este mes');
+reset role;
+update public.uso_mensual set movimientos = 0, caja = 300 where negocio = (select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d2');
+set role authenticated;
+select pruebas.falla($$select public.registrar_caja(gen_random_uuid(), 'gasto', 1000, 'Arriendo', null, 'efectivo', null, false)$$, 'ingresos y gastos de este mes');
+select pruebas.ok((public.tablero() ->> 'por_cobrar')::int >= 0, 'Free ve el tablero');
+select pruebas.ok(public.exportar_datos() ? 'clientes', 'Free puede exportar');
 select public.soporte_enviar('Hola, quiero activar Pro');
+-- Cupón de descuento en la activación
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+select public.admin_guardar_cupon('feria50', 50, 10, null);
+select pruebas.falla($$select public.admin_guardar_cupon('x', 50, null, null)$$, '3 a 20');
+select pruebas.ok((public.admin_segmentos() ->> 'free')::int = 1, 'segmentos para avisos');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d2', false);
+select pruebas.falla($$select public.usar_cupon('NOEXISTE')$$, 'Cupón inválido');
+select pruebas.falla($$select public.admin_guardar_cupon('OTRO', 10, null, null)$$, 'administrador');
+select pruebas.ok((public.usar_cupon('Feria50') ->> 'precio_activacion')::int = 5000, 'cupón 50% en la activación');
 select public.solicitar_pago(1, null, 'transferí');
-select pruebas.ok((select monto = 14990 from public.solicitudes_pago where negocio = (select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d2')), 'primer pago = activación + mes');
+select pruebas.ok((select monto = 9990 and cupon = 'FERIA50' from public.solicitudes_pago where negocio = (select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d2')), 'primer pago = activación con descuento + mes');
 reset role;
 set role anon;
-select pruebas.falla($$select public.portal_entrar(current_setting('t.codf'), '1111')$$, 'en pausa');
+select pruebas.ok((public.portal_entrar(current_setting('t.codf'), '1111') ->> 'ok')::boolean, 'el link del cliente sigue funcionando en Free');
 reset role;
 set role authenticated;
 
 -- ===== Admin: aprueba el pago, soporte y keys =====
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
 select pruebas.ok((public.admin_resumen() ->> 'negocios')::int = 2, 'admin ve resumen');
-select pruebas.ok((public.admin_resumen() ->> 'bloqueados')::int = 1, 'admin ve bloqueados');
+select pruebas.ok((public.admin_resumen() ->> 'free')::int = 1, 'admin ve los Free');
 select pruebas.ok((public.admin_resumen() ->> 'soporte_sin_leer')::int = 1, 'admin ve soporte sin leer');
 select pruebas.ok((select count(*) = 0 from public.clientes), 'admin no ve clientes');
 select pruebas.ok((select count(*) = 0 from public.caja), 'admin no ve la caja');
 select public.admin_resolver_pago((select id from public.solicitudes_pago where estado = 'pendiente' limit 1), true, null);
 select public.admin_soporte_enviar((select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d2'), '¡Listo, activado!');
+select pruebas.falla($$select * from public.cupones$$, 'permission denied');
+select pruebas.ok((public.admin_cupones() -> 0 ->> 'usos')::int = 1, 'cuenta el uso del cupón al aprobar');
 select set_config('t.key', (public.admin_crear_keys(1, 1, 4990) ->> 0), false);
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d2', false);
 select pruebas.ok(public.mi_estado() -> 'plan' ->> 'estado' = 'pro', 'pago aprobado: Pro');
@@ -228,7 +248,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d2
 reset role;
 update public.negocios set premium_hasta = null, prueba_hasta = now() + interval '2 days' where dueno = '00000000-0000-0000-0000-0000000000d2';
 set role authenticated;
-select pruebas.falla($$select public.guardar_metas(1, 1)$$, 'Pro');
+select public.guardar_metas(1, 1);
 select public.pedir_pro();
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
 select pruebas.ok(jsonb_array_length(public.admin_oportunidades() -> 'quieren_pro') = 1, 'oportunidades: quiere Pro');
@@ -247,6 +267,18 @@ select pruebas.ok(public.srv_es_admin('00000000-0000-0000-0000-0000000000a1') an
 select public.srv_crear_negocio('00000000-0000-0000-0000-0000000000c1', 'Creado por Josué', 'feria', 30);
 reset role;
 select pruebas.ok((select privado.estado_plan(id) = 'pro' and activado from public.negocios where dueno = '00000000-0000-0000-0000-0000000000c1'), 'cuenta creada con Pro');
+-- El admin le quita el Pro: pasa a Free al instante
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+set role authenticated;
+select public.admin_plan((select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000c1'), 'quitar', null);
+select pruebas.ok((select count(*) = 1 from jsonb_array_elements(public.admin_negocios('Creado por', 'free'))), 'quitar Pro deja la billetera en Free');
+select pruebas.ok(jsonb_typeof(public.admin_resumen() -> 'vencen') = 'array', 'resumen trae vencimientos');
+select pruebas.ok(jsonb_typeof(public.admin_cupones()) = 'array', 'lista de cupones');
+reset role;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d1', false);
+set role authenticated;
+select pruebas.ok((public.reporte_pro(null) -> 'actual' ->> 'ventas')::int >= 0, 'reporte Pro');
+reset role;
 
 -- Tareas automáticas no fallan
 select privado.tarea_horaria();

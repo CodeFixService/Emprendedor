@@ -1,7 +1,7 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.3.0';
+  const VERSION = '1.4.0';
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
   const sb = global.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, {
@@ -39,6 +39,7 @@
   const hora = (d) => new Date(d).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: ZONA });
   const fechaHora = (d) => fechaCorta(d) + ' ' + hora(d);
   const hoyISO = () => new Date().toLocaleDateString('en-CA', { timeZone: ZONA });
+  const fechaISO = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone: ZONA });
   const sumarDias = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
   const diasEntre = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000);
   function relativo(iso) {
@@ -50,6 +51,23 @@
   const iniciales = (n) => (n || '?').trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
   const COLORES = ['#059669', '#2563eb', '#7c3aed', '#db2777', '#ea580c', '#0d9488', '#4f46e5', '#b45309'];
   const colorDe = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return COLORES[h % COLORES.length]; };
+  // Colores del tema (los mismos que acepta el servidor) e íconos de perfil: emojis, sin subir imágenes.
+  const TEMAS = [['#059669', 'Esmeralda'], ['#2563eb', 'Azul'], ['#4f46e5', 'Índigo'], ['#7c3aed', 'Morado'], ['#db2777', 'Rosado'], ['#e11d48', 'Frambuesa'],
+    ['#ea580c', 'Naranjo'], ['#d97706', 'Ámbar'], ['#0d9488', 'Turquesa'], ['#0284c7', 'Celeste'], ['#92400e', 'Café'], ['#334155', 'Grafito']];
+  const ICONOS = ['🏪', '🛒', '🥖', '🥑', '🍎', '🍓', '🧁', '🍰', '🍩', '☕', '🍔', '🌭', '🌮', '🍕', '🍣', '🥤', '🍦', '🧃', '🍺', '🍷',
+    '👕', '👗', '👟', '👜', '💄', '💅', '💇', '✂️', '🧵', '🧶', '🎨', '📚', '✏️', '🎓', '🛠️', '🔧', '🚗', '🛵', '🚚', '🐶',
+    '🌸', '🌱', '📱', '💻', '🎁', '🧸', '💊', '🏠', '⚽', '🎵', '📸', '💎', '⭐', '🔥', '💰', '🙂'];
+  function aplicarColor(hex, guardar) {
+    const r = document.documentElement.style;
+    if (!/^#[0-9a-f]{6}$/i.test(hex || '')) hex = null;
+    if (hex) {
+      const n = parseInt(hex.slice(1), 16), k = 0.82;
+      const os = '#' + [n >> 16, (n >> 8) & 255, n & 255].map((x) => Math.round(x * k).toString(16).padStart(2, '0')).join('');
+      r.setProperty('--marca', hex); r.setProperty('--marca-2', os);
+    } else { r.removeProperty('--marca'); r.removeProperty('--marca-2'); }
+    const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = hex || '#059669';
+    if (guardar !== false) local.set('lc-color', hex);
+  }
   const norm = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
   // ---------- Validaciones (mismas reglas que el servidor) ----------
@@ -211,7 +229,7 @@
       const img = await new Promise((ok, mal) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => mal(new ErrorApp('No se pudo leer la imagen. Prueba con una captura de pantalla.')); i.src = url; });
       let w = img.naturalWidth, h = img.naturalHeight; const f = Math.min(1, maxLado / Math.max(w, h)); w = Math.round(w * f); h = Math.round(h * f);
       const cv = el('canvas'); cv.width = w; cv.height = h; cv.getContext('2d').drawImage(img, 0, 0, w, h);
-      for (const q of [0.82, 0.7, 0.58, 0.45, 0.35]) {
+      for (const q of [0.72, 0.6, 0.5, 0.4, 0.32]) {
         const blob = await new Promise((ok) => cv.toBlob(ok, 'image/webp', q));
         const b = blob && blob.type === 'image/webp' ? blob : await new Promise((ok) => cv.toBlob(ok, 'image/jpeg', q));
         if (b && b.size <= maxBytes) return b;
@@ -328,7 +346,7 @@
   }
 
   global.LC = {
-    VERSION, C, RAIZ, sb, $, el, vaciar, pesos, fechaCorta, fechaLarga, hora, fechaHora, hoyISO, sumarDias, diasEntre, relativo, iniciales, colorDe, norm,
+    VERSION, C, RAIZ, sb, $, el, vaciar, TEMAS, ICONOS, aplicarColor, pesos, fechaCorta, fechaLarga, hora, fechaHora, hoyISO, fechaISO, sumarDias, diasEntre, relativo, iniciales, colorDe, norm,
     V, ErrorApp, traducir, rpc, funcion, uuid, toast, cargando, conCarga, dialogo, confirmar, pedirTexto, error, copiar, wa, abrir,
     achicarImagen, blobADataURL, pushSoportado, suscribirPush, pushActual, esIOS, instalada, instalar, registrarSW, versionMenor, revisarVersion, actualizarAhora, repararApp,
     local, descargar, csv, excel, alPlan: null, alSesion: null, alBloqueo: null,

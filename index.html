@@ -3,94 +3,107 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Libreta de Cobros · Fiado, cuotas y abonos en tu celular</title>
-  <meta name="description" content="Tu billetera de negocio: ventas, gastos, fiado y cuotas en el celular. Tu cliente ve su cuenta con un link y paga por transferencia. Prueba 7 días gratis.">
+  <title>Libreta de Cobros · Tu billetera de negocio en el celular</title>
+  <meta name="description" content="Ventas, gastos y fiado en tu celular. Tu cliente ve lo que debe con un link y te paga por transferencia. Gratis para siempre, con 7 días de Pro de regalo.">
   <meta name="theme-color" content="#059669">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <meta property="og:title" content="Libreta de Cobros">
-  <meta property="og:description" content="Recupera la plata que te deben. Fiado, cuotas y abonos en tu celular.">
+  <meta property="og:description" content="Recupera la plata que te deben. Ventas, gastos y fiado en tu celular.">
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <main class="portada" id="portada">
-    <div class="fila entre">
-      <div class="fila"><div class="logo-mini">LC</div><strong>Libreta de Cobros</strong></div>
-      <div class="fila">
-        <button class="btn chico" id="bInstalarTop" type="button">📲 Instalar</button>
-        <button class="btn chico primario" type="button" data-ir="ingresar">Ingresar</button>
+  <div class="lp" id="portada">
+    <header class="lp-top">
+      <div class="logo-mini">LC</div><span class="marca">Libreta de Cobros</span>
+      <button class="btn chico texto" id="bInstalarTop" type="button" aria-label="Instalar la app">📲</button>
+      <span id="topSinSesion" class="fila">
+        <button class="btn chico" type="button" data-ir="ingresar">Ya tengo cuenta</button>
+        <button class="btn chico primario" type="button" data-ir="crear">Crear cuenta</button>
+      </span>
+      <span id="topConSesion" class="fila oculto">
+        <button class="btn chico" type="button" id="bSalirTop">🚪 Cerrar sesión</button>
+        <button class="btn chico primario" type="button" data-ir="app">Abrir</button>
+      </span>
+    </header>
+
+    <section class="lp-hero">
+      <div>
+        <span class="tag marca">Para almacenes, ferias y emprendedores 🇨🇱</span>
+        <h1>Tu negocio en el bolsillo. <em>Cobra sin vergüenza.</em></h1>
+        <p class="bajada">Ventas, gastos y fiado en 3 segundos. Tu cliente ve lo que debe con un link y te paga por transferencia.</p>
+        <div class="lp-cta">
+          <button class="btn primario" type="button" data-ir="crear">Empezar gratis</button>
+          <button class="btn" type="button" data-ir="ingresar">Ya tengo cuenta</button>
+        </div>
+        <div class="lp-sellos"><span>🎁 <span id="txtPrueba">7 días de Pro gratis</span></span><span>💳 Sin tarjeta</span><span>📶 Funciona sin internet</span></div>
+      </div>
+      <div style="position:relative">
+        <div class="lp-tel" aria-hidden="true">
+          <div class="kpi hero"><div class="t">Te deben en total</div><div class="grande" id="contador">$0</div></div>
+          <div class="grid2"><div class="kpi"><div class="t">Entró</div><div class="v verde">$412.000</div></div><div class="kpi"><div class="t">Salió</div><div class="v rojo">$158.500</div></div></div>
+          <div class="lista">
+            <div class="item"><div class="avatar" style="background:#2563eb">JP</div><div class="crece"><div class="nom">Juan Pérez</div><div class="sub">Vence hoy</div></div><div class="monto rojo">$12.500</div></div>
+            <div class="item"><div class="avatar" style="background:#db2777">MS</div><div class="crece"><div class="nom">María Soto</div><div class="sub">Cuota 2 de 3</div></div><div class="monto rojo">$33.333</div></div>
+          </div>
+          <div class="btn wsp ancho">💬 Cobrar por WhatsApp</div>
+        </div>
+        <div class="lp-burbuja b1" aria-hidden="true">✅ María pagó $20.000</div>
+        <div class="lp-burbuja b2" aria-hidden="true">🧾 Comprobante recibido</div>
+        <div class="lp-burbuja b3" aria-hidden="true">📈 +18% este mes</div>
+      </div>
+    </section>
+
+    <div class="lp-titulo aparece"><h2>Todo lo que necesitas, nada que sobre</h2></div>
+    <div class="lp-grid">
+      <div class="lp-card aparece"><span class="ico">⚡</span><strong>Anota en 3 segundos</strong><small class="sutil">Teclado grande y sin internet</small></div>
+      <div class="lp-card aparece"><span class="ico">💰</span><strong>Tu caja al día</strong><small class="sutil">Cuánto entró y en qué se fue</small></div>
+      <div class="lp-card aparece"><span class="ico">🔗</span><strong>Link para tu cliente</strong><small class="sutil">Ve su deuda y te paga</small></div>
+      <div class="lp-card aparece"><span class="ico">⚖️</span><strong>Cobra dentro de la ley</strong><small class="sutil">Horarios y mensajes correctos</small></div>
+      <div class="lp-card aparece"><span class="ico">📆</span><strong>Ventas en cuotas</strong><small class="sutil">El calendario se arma solo</small></div>
+      <div class="lp-card aparece"><span class="ico">📣</span><strong>Cobra a todos de una</strong><small class="sutil">Un toque por cliente</small></div>
+      <div class="lp-card aparece"><span class="ico">🧾</span><strong>Recibos con imagen</strong><small class="sutil">Directo a WhatsApp</small></div>
+      <div class="lp-card aparece"><span class="ico">🎨</span><strong>A tu estilo</strong><small class="sutil">Tu color y tu ícono</small></div>
+    </div>
+
+    <div class="lp-titulo aparece"><h2>Así de fácil</h2></div>
+    <div class="lp-pasos">
+      <div class="lp-paso aparece"><b>1</b><div><strong>Crea tu cuenta</strong><div class="sutil">Con tu correo, en 1 minuto.</div></div></div>
+      <div class="lp-paso aparece"><b>2</b><div><strong>Anota lo del día</strong><div class="sutil">Ventas, gastos y quién te debe.</div></div></div>
+      <div class="lp-paso aparece"><b>3</b><div><strong>Cobra con un link</strong><div class="sutil">Tu cliente ve y paga por transferencia.</div></div></div>
+    </div>
+
+    <div class="lp-titulo aparece" id="precios"><h2>Gratis para siempre. Pro cuando crezcas.</h2><p>Empiezas con <strong id="diasPrueba">7</strong> días de Pro de regalo.</p></div>
+    <div class="lp-planes">
+      <div class="lp-plan aparece">
+        <h3>Free</h3><div class="precio">$0</div><p class="sutil">Para siempre</p>
+        <ul id="listaNormal"><li>Ventas, gastos y fiado</li><li>Link del cliente con PIN</li><li>Cobro por WhatsApp</li></ul>
+      </div>
+      <div class="lp-plan pro aparece">
+        <h3>Pro ⭐</h3><div class="precio" id="precioPremium">$4.990/mes</div><p class="sutil" id="precioActivacion">Activación $10.000 (una vez)</p>
+        <ul><li>Todo sin límites</li><li>Cobrar a todos de una</li><li>Recibos con imagen</li><li>Reportes avanzados y metas</li><li>Excel, PDF e historial completo</li></ul>
       </div>
     </div>
 
-    <section class="hero-portada">
-      <div>
-        <span class="tag marca">Para almacenes, ferias, venta por catálogo y emprendedores</span>
-        <h1 class="mt">Sabe en qué se va tu plata y recupera la que te deben.</h1>
-        <p>Anota ventas, gastos y fiados en <strong>3 segundos</strong>. Ve tu balance del mes por categoría. Tu cliente ve lo que te debe con un link
-          —sin descargar nada— y te paga por <strong>transferencia</strong>. Cobra por WhatsApp <strong>dentro de la ley</strong>.</p>
-        <div class="fila envolver">
-          <button class="btn primario" type="button" data-ir="crear">Crear mi libreta gratis</button>
-          <button class="btn" type="button" data-ir="ingresar">Ya tengo cuenta</button>
-        </div>
-        <p class="sutil mt" id="txtPrueba">Prueba 7 días gratis. Sin tarjeta.</p>
-      </div>
-      <div class="mock" aria-hidden="true">
-        <div class="kpi hero"><div class="t">Te deben en total</div><div class="grande">$184.300</div></div>
-        <div class="lista mt">
-          <div class="item"><div class="avatar" style="background:#2563eb">JP</div><div class="crece"><div class="nom">Juan Pérez</div><div class="sub">Vence hoy</div></div><div class="monto rojo">$12.500</div></div>
-          <div class="item"><div class="avatar" style="background:#db2777">MS</div><div class="crece"><div class="nom">María Soto</div><div class="sub">Cuota 2 de 3 · al día</div></div><div class="monto rojo">$33.333</div></div>
-          <div class="item"><div class="avatar" style="background:#059669">LR</div><div class="crece"><div class="nom">Luis Rojas</div><div class="sub">Pagó ayer ✓</div></div><div class="monto verde">Al día</div></div>
-        </div>
-        <button class="btn wsp ancho" type="button" tabindex="-1">💬 Cobrar por WhatsApp</button>
-      </div>
-    </section>
+    <div class="lp-titulo aparece"><h2>Preguntas</h2></div>
+    <div class="lp-faq">
+      <details class="aparece"><summary>¿Mis clientes tienen que descargar algo?</summary><p class="sutil mt">No. Les llega un link por WhatsApp y entran con un PIN.</p></details>
+      <details class="aparece"><summary>¿Cobran comisión?</summary><p class="sutil mt">No. Te transfieren directo a tu cuenta.</p></details>
+      <details class="aparece"><summary>¿Qué pasa después de los días de Pro?</summary><p class="sutil mt">Sigues gratis en Free. Lo Pro queda en pausa y no se borra nada.</p></details>
+      <details class="aparece"><summary>¿Quién ve mis datos?</summary><p class="sutil mt">Solo tú. Cada billetera es personal y privada.</p></details>
+    </div>
 
-    <section class="beneficios">
-      <div class="tarjeta"><div class="ico">⚡</div><h3>Anota en 3 segundos</h3><p class="sutil">Teclado grande, productos frecuentes y funciona sin internet. Ideal para la feria o el almacén.</p></div>
-      <div class="tarjeta"><div class="ico">🔗</div><h3>Tu cliente ve su cuenta</h3><p class="sutil">Un link privado con PIN: ve cuánto debe, sus cuotas y tus datos para transferir. Sube el comprobante ahí mismo.</p></div>
-      <div class="tarjeta"><div class="ico">⚖️</div><h3>Cobra dentro de la ley</h3><p class="sutil">Mensajes amables, en horario permitido y máximo 2 por semana, como pide la ley chilena de cobranza.</p></div>
-      <div class="tarjeta"><div class="ico">📆</div><h3>Ventas en cuotas</h3><p class="sutil">"$60.000 en 3 cuotas": la app arma el calendario y te avisa quién se atrasó.</p></div>
-      <div class="tarjeta"><div class="ico">✅</div><h3>Se acabó el "yo no te debía tanto"</h3><p class="sutil">El cliente confirma cada cargo desde su link. Todo queda registrado y nada se borra.</p></div>
-      <div class="tarjeta"><div class="ico">💰</div><h3>Tu caja al día</h3><p class="sutil">Ventas, gastos y consumo por categoría: cuánto entró, cuánto salió y en qué se fue la plata cada mes.</p></div>
-    </section>
-
-    <section class="tarjeta" id="precios">
-      <h2>Planes</h2>
-      <div class="dos-col">
-        <div class="tarjeta plana">
-          <h3>Prueba gratis · <span id="diasPrueba">7</span> días</h3>
-          <ul class="sutil" id="listaNormal">
-            <li>Todo funcionando, con límites amplios</li><li>Ventas, gastos y fiado</li><li>Link del cliente con PIN y comprobantes</li>
-            <li>Cobro por WhatsApp</li><li>Al terminar puedes ver y exportar tus datos</li>
-          </ul>
-        </div>
-        <div class="tarjeta plana" style="border-color:var(--marca)">
-          <h3>Pro <span class="tag premium" id="precioPremium">$4.990/mes</span></h3>
-          <p class="sutil" id="precioActivacion">Activación $10.000 (una vez)</p>
-          <ul class="sutil">
-            <li>Todo <strong>sin límites</strong>: clientes, fiados, cuotas, ventas y gastos</li><li>Avisos automáticos a tus clientes</li>
-            <li>Puntaje de buen pagador y límite por cliente</li><li>Reportes, Excel y estado de cuenta PDF</li>
-            <li>Tu logo y tus colores · chat directo de soporte</li>
-          </ul>
-        </div>
-      </div>
-    </section>
-
-    <section class="tarjeta">
-      <h2>Preguntas frecuentes</h2>
-      <h3>¿Mis clientes tienen que descargar algo?</h3><p class="sutil">No. Reciben un link por WhatsApp y entran con un PIN de 4 números.</p>
-      <h3>¿Cobran comisión por los pagos?</h3><p class="sutil">No. El cliente te transfiere directo a tu cuenta. La app solo lleva la cuenta.</p>
-      <h3>¿Y si no tengo señal?</h3><p class="sutil">Puedes anotar igual: se guarda en el celular y se sube solo cuando vuelve internet.</p>
-      <h3>¿Quién ve mis datos?</h3><p class="sutil">Solo tú: cada billetera es personal. Ni siquiera el administrador de la plataforma ve tus ventas, gastos ni las deudas de tus clientes.</p>
-      <h3>¿Qué pasa después de la prueba?</h3><p class="sutil">Tu billetera queda bloqueada para anotar, pero puedes ver y exportar todo. Al activar Pro sigues donde quedaste: no se borra nada.</p>
+    <section class="lp-final aparece">
+      <h2>Empieza hoy, es gratis</h2>
+      <button class="btn" type="button" data-ir="crear">Crear mi cuenta</button>
     </section>
 
     <footer class="pie">
       <a href="legal/#terminos">Términos</a> · <a href="legal/#privacidad">Privacidad</a> · <a href="legal/#uso">Uso aceptable</a><br>
       © CodeFix · Josué Castillo · v<span id="ver"></span>
     </footer>
-  </main>
+  </div>
 
   <main class="app oculto" id="cuenta" style="max-width:480px;padding-top:24px"></main>
 

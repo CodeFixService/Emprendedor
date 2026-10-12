@@ -15,15 +15,27 @@
     $('#precioPremium').textContent = LC.pesos(c.precio_mensual) + '/mes';
     $('#precioActivacion').textContent = c.precio_activacion > 0 ? 'Activación ' + LC.pesos(c.precio_activacion) + ' (una vez)' : 'Sin costo de activación';
     $('#diasPrueba').textContent = c.dias_prueba;
-    $('#txtPrueba').textContent = 'Prueba ' + c.dias_prueba + ' días gratis. Sin tarjeta.';
+    $('#txtPrueba').textContent = c.dias_prueba > 0 ? c.dias_prueba + ' días de Pro gratis' : 'Gratis para siempre';
     const l = c.lim_normal || {};
     const ul = vaciar($('#listaNormal'));
-    ['Hasta ' + l.clientes + ' clientes y ' + l.movimientos + ' fiados/abonos', (l.caja || 300) + ' ventas y gastos', l.cuotas + ' ventas en cuotas',
-      'Link del cliente con PIN y comprobantes', 'Cobro por WhatsApp', 'Al terminar: ver y exportar tus datos'].forEach((t) => ul.append(el('li', null, t)));
+    [(l.caja || 300) + ' ventas y gastos al mes', l.clientes + ' clientes y ' + l.movimientos + ' fiados/abonos al mes', l.cuotas + ' ventas en cuotas',
+      'Link del cliente con PIN', 'Cobro por WhatsApp'].forEach((t) => ul.append(el('li', null, t)));
   }).catch(() => {});
 
   document.addEventListener('click', (e) => { const b = e.target.closest('[data-ir]'); if (b) location.hash = b.dataset.ir; });
   $('#bInstalarTop').onclick = () => LC.instalar();
+  $('#bSalirTop').onclick = () => salir();
+  // Animación al aparecer en pantalla y contador del celular de ejemplo
+  if ('IntersectionObserver' in window) {
+    const obs = new IntersectionObserver((es) => es.forEach((x) => { if (x.isIntersecting) { x.target.classList.add('visto'); obs.unobserve(x.target); } }), { threshold: 0.12 });
+    document.querySelectorAll('.aparece').forEach((n) => obs.observe(n));
+  } else document.querySelectorAll('.aparece').forEach((n) => n.classList.add('visto'));
+  (function contar() {
+    const n = $('#contador'); if (!n) return;
+    const fin = 184300, t0 = performance.now(), dur = matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 1400;
+    const paso = (t) => { const k = Math.min(1, (t - t0) / dur); n.textContent = LC.pesos(Math.round(fin * (1 - Math.pow(1 - k, 3)))); if (k < 1) requestAnimationFrame(paso); };
+    requestAnimationFrame(paso);
+  })();
 
   function campo(etq, input, ayuda) { return el('div', { class: 'campo' }, el('label', { for: input.id }, etq), input, ayuda ? el('div', { class: 'ayuda' }, ayuda) : null); }
   function mostrar(...nodos) {
@@ -33,6 +45,7 @@
     window.scrollTo(0, 0);
   }
   function verPortada() { cuenta.classList.add('oculto'); portada.classList.remove('oculto'); }
+  function cabeceraSesion(conSesion) { $('#topSinSesion').classList.toggle('oculto', conSesion); $('#topConSesion').classList.toggle('oculto', !conSesion); }
   const errorEn = (form, msg) => { const e = form.querySelector('.error.general'); e.textContent = msg; };
 
   // ---------- Ingresar ----------
@@ -74,7 +87,7 @@
     const acepta = el('input', { type: 'checkbox', id: 'acepta' });
     const form = el('form', { class: 'tarjeta', novalidate: true },
       el('h1', null, invitacion ? 'Únete como ayudante' : 'Crea tu libreta'),
-      el('p', { class: 'sutil' }, invitacion ? 'Te invitaron a ayudar en una libreta. Crea tu cuenta con tu correo.' : 'Prueba 7 días gratis, sin tarjeta.'),
+      el('p', { class: 'sutil' }, invitacion ? 'Te invitaron a ayudar en una libreta. Crea tu cuenta con tu correo.' : 'Gratis para siempre, con días de Pro de regalo. Sin tarjeta.'),
       campo(invitacion ? 'Tu nombre' : 'Nombre de tu negocio', nombre), invitacion ? null : campo('Rubro', rubro),
       campo('Tu correo', email), campo('Contraseña', clave, 'Mínimo 8 caracteres, con letras y números.'), fuerza,
       el('label', { class: 'check mt', for: 'acepta' }, acepta, el('span', null, 'Acepto los ', el('a', { href: 'legal/#terminos', target: '_blank' }, 'Términos'), ' y la ', el('a', { href: 'legal/#privacidad', target: '_blank' }, 'Política de privacidad'), '.')),
@@ -164,7 +177,7 @@
       try {
         const r = await conCarga(() => rpc('crear_negocio', { p_nombre: pend.nombre, p_rubro: pend.rubro || 'otro', p_acepta: true }));
         local.del('lc-pendiente'); local.set('lc-bienvenida', true);
-        local.set('lc-msg', r.prueba ? '¡Listo! Tienes ' + r.dias + ' días de prueba gratis 🎉' : 'Tu billetera está lista. Activa Pro para empezar a anotar.');
+        local.set('lc-msg', r.prueba ? '¡Listo! Tienes ' + r.dias + ' días de Pro gratis 🎉' : 'Tu billetera está lista (plan Free) 🎉');
         location.replace('app/'); return;
       } catch (e) { /* si falla, se muestra el formulario con el error */ error(e); }
     }
@@ -189,7 +202,7 @@
       try {
         const r = await conCarga(() => rpc('crear_negocio', { p_nombre: nombre.value, p_rubro: rubro.value, p_acepta: true }));
         local.del('lc-pendiente'); local.set('lc-bienvenida', true);
-        local.set('lc-msg', r.prueba ? '¡Listo! Tienes ' + r.dias + ' días de prueba gratis 🎉' : 'Tu billetera está lista. Activa Pro para empezar a anotar.');
+        local.set('lc-msg', r.prueba ? '¡Listo! Tienes ' + r.dias + ' días de Pro gratis 🎉' : 'Tu billetera está lista (plan Free) 🎉');
         location.replace('app/');
       } catch (er) { errorEn(form, LC.traducir(er).message); }
     };
@@ -221,7 +234,7 @@
       el('button', { class: 'btn texto ancho', type: 'button', onclick: salir }, 'Cerrar sesión')));
   }
 
-  async function salir() { await sb.auth.signOut().catch(() => {}); local.del('lc-pendiente'); location.hash = ''; verPortada(); }
+  async function salir() { await sb.auth.signOut().catch(() => {}); local.del('lc-pendiente'); cabeceraSesion(false); location.hash = ''; verPortada(); toast('Sesión cerrada'); }
 
   // ---------- Rutas ----------
   let recuperando = false;
@@ -237,10 +250,8 @@
     if (h === 'crear') return data.session ? despuesDeEntrar() : pantallaCrear();
     if (h === 'recuperar') return pantallaRecuperar();
     if (data.session && (LC.instalada() || h === 'app')) return despuesDeEntrar();
-    if (data.session && !h) {
-      // Con sesión abierta, ofrece entrar directo
-      portada.querySelectorAll('[data-ir="ingresar"]').forEach((b) => { b.textContent = 'Abrir mi libreta'; });
-    }
+    cabeceraSesion(!!data.session);
+    if (data.session) portada.querySelectorAll('.lp-cta [data-ir="ingresar"]').forEach((b) => { b.textContent = 'Abrir mi billetera'; });
     verPortada();
   }
   window.addEventListener('hashchange', ruta);
