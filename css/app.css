@@ -332,3 +332,5 @@ table.comparar th:last-child, table.comparar td:last-child { color: var(--marca)
 .lp-top .btn { white-space: nowrap; padding: 0 12px; }
 @media (max-width: 380px) { .lp-top .marca { display: none; } .lp-top .btn { padding: 0 9px; font-size: .8em; } }
 input.malo, textarea.malo, select.malo { border-color: var(--deuda) !important; box-shadow: 0 0 0 3px var(--deuda-suave); }
+.codigo-conexion { font: 800 1.9em/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 4px; text-align: center; padding: 14px; border: 2px dashed var(--marca); border-radius: 14px; background: var(--marca-suave); color: var(--texto); }
+.avatar.emoji { background: var(--marca-suave); font-size: 1.3em; }

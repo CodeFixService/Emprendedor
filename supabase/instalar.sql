@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '6'),
+  ('version_bd', '7'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -408,6 +408,46 @@ end $$;
 alter table public.negocios add column if not exists link_pago text check (link_pago is null or (char_length(link_pago) <= 300 and link_pago ~ '^https://'));
 alter table public.clientes add column if not exists link_pago text check (link_pago is null or (char_length(link_pago) <= 300 and link_pago ~ '^https://'));
 
+-- ---------- v7: pago de fiados con comprobante y billeteras conectadas (Pro) ----------
+alter table public.movimientos add column if not exists foto_path text check (foto_path is null or char_length(foto_path) <= 200);
+alter table public.negocios add column if not exists codigo_conexion text;
+create unique index if not exists negocios_codigo_conexion on public.negocios (codigo_conexion);
+alter table public.negocios add column if not exists conexiones_extra int not null default 0 check (conexiones_extra between 0 and 200);
+alter table public.ajustes add column if not exists conexiones_incluidas int not null default 10 check (conexiones_incluidas between 0 and 1000);
+alter table public.ajustes add column if not exists conexiones_paquete int not null default 5 check (conexiones_paquete between 1 and 100);
+alter table public.ajustes add column if not exists precio_paquete int not null default 2000 check (precio_paquete between 0 and 1000000);
+alter table public.solicitudes_pago add column if not exists tipo text not null default 'pro' check (tipo in ('pro','conexiones'));
+alter table public.solicitudes_pago add column if not exists paquetes int not null default 0 check (paquetes between 0 and 50);
+
+-- Conexión entre dos billeteras (siempre a < b). Cada una solo ve el nombre y el ícono de la otra, y la cuenta entre ambas.
+create table if not exists public.conexiones (
+  id uuid primary key default gen_random_uuid(),
+  a uuid not null references public.negocios (id) on delete cascade,
+  b uuid not null references public.negocios (id) on delete cascade,
+  estado text not null default 'pendiente' check (estado in ('pendiente','activa','rechazada','cerrada')),
+  solicitada_por uuid not null references public.negocios (id) on delete cascade,
+  creado timestamptz not null default now(),
+  aceptada_at timestamptz,
+  check (a < b),
+  unique (a, b)
+);
+create index if not exists conexiones_b on public.conexiones (b);
+
+-- "Te presté" o "te pagué" dentro de una conexión. Cuenta solo cuando el otro lo confirma.
+create table if not exists public.conexion_movs (
+  id uuid primary key,
+  conexion uuid not null references public.conexiones (id) on delete cascade,
+  autor uuid not null references public.negocios (id) on delete cascade,
+  tipo text not null check (tipo in ('presto','pago')),
+  monto int not null check (monto between 1 and 99999999),
+  descripcion text check (descripcion is null or char_length(descripcion) <= 120),
+  estado text not null default 'pendiente' check (estado in ('pendiente','confirmado','rechazado','anulado')),
+  motivo text check (motivo is null or char_length(motivo) <= 150),
+  creado timestamptz not null default now(),
+  resuelto_at timestamptz
+);
+create index if not exists conexion_movs_con on public.conexion_movs (conexion, creado desc);
+
 -- =====================================================================
 --  AYUDANTES INTERNOS (esquema privado: no se pueden llamar desde la app)
 -- =====================================================================
@@ -636,6 +676,255 @@ begin
    where id = p_cliente;
 end $$;
 
+-- ---------- v7: pago de un fiado (todo o una parte), con foto del comprobante opcional ----------
+-- Cuánto lleva pagado cada fiado (los pagos cubren primero lo más antiguo, igual que el saldo).
+create or replace function public.estado_fiados(p_cliente uuid) returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(false, true); credito bigint; r record; pag bigint; v_out jsonb := '[]'::jsonb;
+begin
+  if not exists (select 1 from public.clientes where id = p_cliente and negocio = v_neg) then perform privado.fallo('Cliente no encontrado'); end if;
+  select coalesce(sum(monto), 0) into credito from public.movimientos where cliente = p_cliente and anulado_at is null and signo = -1;
+  for r in
+    select 'm'::text k, m.id, 0 num, m.monto::bigint monto, coalesce(m.vence, (m.fecha at time zone 'America/Santiago')::date) due, m.fecha ord
+      from public.movimientos m
+     where m.cliente = p_cliente and m.anulado_at is null and m.signo = 1 and m.venta is null
+    union all
+    select 'c', c.venta, c.numero, c.monto, c.vence, vc.creado
+      from public.cuotas c join public.ventas_cuotas vc on vc.id = c.venta
+     where vc.cliente = p_cliente and vc.estado <> 'anulada'
+    order by due, ord, num
+  loop
+    pag := least(r.monto, credito); credito := credito - pag;
+    if r.k = 'm' then v_out := v_out || jsonb_build_object('id', r.id, 'monto', r.monto, 'pagado', pag, 'vence', r.due); end if;
+  end loop;
+  return v_out;
+end $$;
+
+-- Vista previa (p_confirmar = false) o pago de un fiado. p_monto vacío = paga todo lo que falta para dejarlo al día.
+create or replace function public.pagar_fiado(p_id uuid, p_mov uuid, p_monto int, p_medio text, p_foto text, p_confirmar boolean) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(); f record; r record; credito bigint; hasta bigint := 0; v_total bigint; v_pend bigint; v_monto bigint; v_res jsonb;
+begin
+  select * into f from public.movimientos where id = p_mov and negocio = v_neg and signo = 1 and venta is null and anulado_at is null;
+  if not found then perform privado.fallo('Fiado no encontrado'); end if;
+  select coalesce(sum(monto), 0) into credito from public.movimientos where cliente = f.cliente and anulado_at is null and signo = -1;
+  for r in
+    select 'm'::text k, m.id, 0 num, m.monto::bigint monto, coalesce(m.vence, (m.fecha at time zone 'America/Santiago')::date) due, m.fecha ord
+      from public.movimientos m
+     where m.cliente = f.cliente and m.anulado_at is null and m.signo = 1 and m.venta is null
+    union all
+    select 'c', c.venta, c.numero, c.monto, c.vence, vc.creado
+      from public.cuotas c join public.ventas_cuotas vc on vc.id = c.venta
+     where vc.cliente = f.cliente and vc.estado <> 'anulada'
+    order by due, ord, num
+  loop
+    hasta := hasta + r.monto;
+    exit when r.k = 'm' and r.id = p_mov;
+  end loop;
+  v_total := hasta - credito;
+  if v_total <= 0 then perform privado.fallo('Este fiado ya está pagado'); end if;
+  v_pend := least(f.monto, v_total);
+  if not coalesce(p_confirmar, false) then
+    return jsonb_build_object('ok', false, 'total', v_total, 'pendiente', v_pend, 'previo', v_total - v_pend, 'monto', f.monto);
+  end if;
+  v_monto := coalesce(p_monto, v_total);
+  if v_monto < 1 or v_monto > v_total then perform privado.fallo('El monto debe ser entre $1 y ' || privado.pesos(v_total::int)); end if;
+  if coalesce(p_medio, '') not in ('efectivo', 'transferencia', 'otro') then perform privado.fallo('Medio de pago inválido'); end if;
+  if p_foto is not null and p_foto not like v_neg || '/pagos/%' then perform privado.fallo('Archivo inválido'); end if;
+  v_res := privado.mov_insertar(v_neg, p_id, f.cliente, 'abono', v_monto::int, null,
+    'Pago de ' || coalesce(f.descripcion, 'fiado del ' || to_char(f.fecha at time zone 'America/Santiago', 'DD/MM'))
+      || case when v_monto < v_total then ' (abono)' else '' end || case when p_medio = 'otro' then ' · link de pago' else '' end,
+    p_medio, null, null, null, false, true);
+  if p_foto is not null then update public.movimientos set foto_path = p_foto where id = p_id and negocio = v_neg; end if;
+  return v_res || jsonb_build_object('monto', v_monto, 'al_dia', v_monto = v_total);
+end $$;
+
+-- Adjuntar la foto del comprobante a un abono ya anotado
+create or replace function public.adjuntar_foto(p_mov uuid, p_foto text) returns void language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir();
+begin
+  if p_foto is null or p_foto not like v_neg || '/pagos/%' then perform privado.fallo('Archivo inválido'); end if;
+  update public.movimientos set foto_path = p_foto where id = p_mov and negocio = v_neg and signo = -1 and anulado_at is null;
+  if not found then perform privado.fallo('Abono no encontrado'); end if;
+end $$;
+
+-- ---------- v7: billeteras conectadas (Pro) ----------
+create or replace function privado.limite_conexiones(p_neg uuid) returns int language sql stable security definer set search_path = public, pg_temp as $$
+  select a.conexiones_incluidas + n.conexiones_extra * a.conexiones_paquete from public.ajustes a, public.negocios n where a.id = 1 and n.id = p_neg
+$$;
+-- Usadas: conexiones activas + solicitudes que yo envié y siguen pendientes.
+create or replace function privado.conexiones_usadas(p_neg uuid) returns int language sql stable security definer set search_path = public, pg_temp as $$
+  select count(*)::int from public.conexiones where (a = p_neg or b = p_neg) and (estado = 'activa' or (estado = 'pendiente' and solicitada_por = p_neg))
+$$;
+-- Saldo de una conexión visto por p_neg: positivo = el otro le debe a p_neg. Toda plata que entrego (préstamo o pago) suma.
+create or replace function privado.saldo_conexion(p_con uuid, p_neg uuid) returns bigint language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(sum(case when autor = p_neg then monto else -monto end), 0) from public.conexion_movs where conexion = p_con and estado = 'confirmado'
+$$;
+
+create or replace function public.mi_codigo_conexion(p_nuevo boolean) returns text language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(true, true); v text; i int := 0;
+begin
+  if not privado.es_premium(v_neg) then perform privado.fallo('Las billeteras conectadas son Pro.', 'PLAN'); end if;
+  select codigo_conexion into v from public.negocios where id = v_neg;
+  if v is null or coalesce(p_nuevo, false) then
+    perform privado.limitar('codcon:' || v_neg, 20, 86400);
+    loop
+      v := upper(translate(privado.codigo(8), 'abcdefghijkmnopqrstuvwxyzL', 'ABCDEFGHJKMNPQRSTUVWXYZ234'));
+      exit when not exists (select 1 from public.negocios where codigo_conexion = v);
+      i := i + 1; if i > 20 then perform privado.fallo('No se pudo generar el código. Intenta de nuevo.'); end if;
+    end loop;
+    update public.negocios set codigo_conexion = v where id = v_neg;
+  end if;
+  return v;
+end $$;
+
+create or replace function public.conectar(p_codigo text) returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(true); v_cod text := upper(regexp_replace(coalesce(p_codigo, ''), '[^A-Za-z0-9]', '', 'g')); o record; c record; yo text; existe boolean;
+begin
+  if not privado.es_premium(v_neg) then perform privado.fallo('Las billeteras conectadas son Pro.', 'PLAN'); end if;
+  perform privado.limitar('conectar:' || v_neg, 10, 3600);
+  select id, nombre, estado into o from public.negocios where codigo_conexion = v_cod and v_cod <> '';
+  if not found or o.estado <> 'activo' then perform privado.fallo('No encontramos ese código. Revísalo con la otra persona.'); end if;
+  if o.id = v_neg then perform privado.fallo('Ese es tu propio código: compártelo con la otra persona.'); end if;
+  select * into c from public.conexiones where a = least(v_neg, o.id) and b = greatest(v_neg, o.id);
+  existe := found;
+  if existe and c.estado = 'activa' then perform privado.fallo('Ya están conectados.'); end if;
+  if existe and c.estado = 'pendiente' and c.solicitada_por = v_neg then perform privado.fallo('Ya le enviaste la solicitud. Falta que la acepte.'); end if;
+  if privado.conexiones_usadas(v_neg) >= privado.limite_conexiones(v_neg) then
+    perform privado.fallo('Llegaste a tus ' || privado.limite_conexiones(v_neg) || ' conexiones. Suma más en Conexiones → "Más conexiones".');
+  end if;
+  select nombre into yo from public.negocios where id = v_neg;
+  if existe and c.estado = 'pendiente' then
+    -- La otra persona ya me había enviado la solicitud: con mi código queda conectada.
+    update public.conexiones set estado = 'activa', aceptada_at = now() where id = c.id;
+    perform privado.avisar_negocio(o.id, '🤝 Conexión lista', yo || ' aceptó conectar su billetera contigo.', 'app/#conexion/' || c.id, true);
+    return jsonb_build_object('ok', true, 'estado', 'activa', 'id', c.id, 'nombre', o.nombre);
+  end if;
+  if existe then
+    update public.conexiones set estado = 'pendiente', solicitada_por = v_neg, creado = now(), aceptada_at = null where id = c.id;
+  else
+    insert into public.conexiones (a, b, solicitada_por) values (least(v_neg, o.id), greatest(v_neg, o.id), v_neg) returning * into c;
+  end if;
+  perform privado.avisar_negocio(o.id, '🤝 Solicitud de conexión', yo || ' quiere conectar su billetera contigo para llevar las cuentas entre ustedes.', 'app/#conexiones', true);
+  return jsonb_build_object('ok', true, 'estado', 'pendiente', 'id', c.id, 'nombre', o.nombre);
+end $$;
+
+create or replace function public.conexion_responder(p_id uuid, p_aceptar boolean) returns void language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(true); c record; otro uuid; yo text;
+begin
+  select * into c from public.conexiones where id = p_id and (a = v_neg or b = v_neg) for update;
+  if not found or c.estado <> 'pendiente' or c.solicitada_por = v_neg then perform privado.fallo('Solicitud no encontrada'); end if;
+  otro := case when c.a = v_neg then c.b else c.a end;
+  select nombre into yo from public.negocios where id = v_neg;
+  if coalesce(p_aceptar, false) then
+    if not privado.es_premium(v_neg) then perform privado.fallo('Las billeteras conectadas son Pro.', 'PLAN'); end if;
+    if privado.conexiones_usadas(v_neg) >= privado.limite_conexiones(v_neg) then
+      perform privado.fallo('Llegaste a tus ' || privado.limite_conexiones(v_neg) || ' conexiones. Suma más en Conexiones → "Más conexiones".');
+    end if;
+    update public.conexiones set estado = 'activa', aceptada_at = now() where id = p_id;
+    perform privado.avisar_negocio(otro, '🤝 Conexión lista', yo || ' aceptó conectar su billetera contigo.', 'app/#conexion/' || p_id, true);
+  else
+    update public.conexiones set estado = 'rechazada' where id = p_id;
+  end if;
+end $$;
+
+-- Cancelar una solicitud enviada o desconectarse. El historial se guarda por si vuelven a conectarse.
+create or replace function public.conexion_cerrar(p_id uuid) returns void language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(true);
+begin
+  update public.conexiones set estado = 'cerrada' where id = p_id and (a = v_neg or b = v_neg) and estado in ('pendiente', 'activa');
+  if not found then perform privado.fallo('Conexión no encontrada'); end if;
+end $$;
+
+create or replace function public.mis_conexiones() returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(false, true); a record;
+begin
+  select * into a from public.ajustes where id = 1;
+  return jsonb_build_object(
+    'codigo', (select codigo_conexion from public.negocios where id = v_neg),
+    'pro', privado.es_premium(v_neg), 'limite', privado.limite_conexiones(v_neg), 'usadas', privado.conexiones_usadas(v_neg),
+    'extra', (select conexiones_extra from public.negocios where id = v_neg), 'paquete', a.conexiones_paquete, 'precio_paquete', a.precio_paquete,
+    'pago_pendiente', exists (select 1 from public.solicitudes_pago where negocio = v_neg and estado = 'pendiente'),
+    'lista', coalesce((select jsonb_agg(x order by x.orden, x.nombre) from (
+      select c.id, c.estado, c.solicitada_por = v_neg yo_solicite, o.nombre, o.icono, c.creado,
+        privado.saldo_conexion(c.id, v_neg) saldo,
+        (select count(*) from public.conexion_movs mv where mv.conexion = c.id and mv.estado = 'pendiente' and mv.autor <> v_neg) por_confirmar,
+        (select count(*) from public.conexion_movs mv where mv.conexion = c.id and mv.estado = 'pendiente' and mv.autor = v_neg) esperando,
+        case when c.estado = 'pendiente' and c.solicitada_por <> v_neg then 0 when c.estado = 'activa' then 1 else 2 end orden
+      from public.conexiones c join public.negocios o on o.id = case when c.a = v_neg then c.b else c.a end
+      where (c.a = v_neg or c.b = v_neg) and c.estado in ('pendiente', 'activa')) x), '[]'::jsonb));
+end $$;
+
+create or replace function public.conexion_ver(p_id uuid) returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(false, true); c record; o record;
+begin
+  select * into c from public.conexiones where id = p_id and (a = v_neg or b = v_neg) and estado in ('pendiente', 'activa');
+  if not found then perform privado.fallo('Conexión no encontrada'); end if;
+  select nombre, icono into o from public.negocios where id = case when c.a = v_neg then c.b else c.a end;
+  return jsonb_build_object('id', c.id, 'estado', c.estado, 'nombre', o.nombre, 'icono', o.icono, 'saldo', privado.saldo_conexion(c.id, v_neg),
+    'pro', privado.es_premium(v_neg),
+    'movs', coalesce((select jsonb_agg(x order by x.creado desc) from (
+      select id, autor = v_neg mio, tipo, monto, descripcion, estado, motivo, creado, resuelto_at
+      from public.conexion_movs where conexion = c.id order by creado desc limit 300) x), '[]'::jsonb));
+end $$;
+
+create or replace function public.conexion_anotar(p_conexion uuid, p_id uuid, p_tipo text, p_monto int, p_descripcion text) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(true); c record; otro uuid; yo text;
+begin
+  if not privado.es_premium(v_neg) then perform privado.fallo('Las billeteras conectadas son Pro.', 'PLAN'); end if;
+  select * into c from public.conexiones where id = p_conexion and (a = v_neg or b = v_neg);
+  if not found or c.estado <> 'activa' then perform privado.fallo('Conexión no encontrada'); end if;
+  if p_tipo not in ('presto', 'pago') then perform privado.fallo('Tipo inválido'); end if;
+  if p_monto is null or p_monto < 1 or p_monto > 99999999 then perform privado.fallo('El monto debe ser entre $1 y $99.999.999'); end if;
+  if exists (select 1 from public.conexion_movs where id = p_id) then return; end if;
+  perform privado.limitar('conmov:' || v_neg, 200, 3600);
+  insert into public.conexion_movs (id, conexion, autor, tipo, monto, descripcion) values (p_id, p_conexion, v_neg, p_tipo, p_monto, privado.limpio(p_descripcion, 120));
+  otro := case when c.a = v_neg then c.b else c.a end;
+  select nombre into yo from public.negocios where id = v_neg;
+  perform privado.avisar_negocio(otro, '🤝 ' || yo || ' anotó que ' || case when p_tipo = 'presto' then 'te prestó ' else 'te pagó ' end || privado.pesos(p_monto),
+    'Confírmalo o recházalo en Conexiones.', 'app/#conexion/' || p_conexion, true);
+end $$;
+
+-- Confirmar o rechazar lo que anotó la otra persona (se puede aunque ya no tengas Pro).
+create or replace function public.conexion_resolver(p_mov uuid, p_confirmar boolean, p_motivo text) returns void language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(true); m record; c record; yo text;
+begin
+  select mv.* into m from public.conexion_movs mv join public.conexiones cx on cx.id = mv.conexion
+   where mv.id = p_mov and (cx.a = v_neg or cx.b = v_neg) and cx.estado = 'activa' for update of mv;
+  if not found or m.estado <> 'pendiente' or m.autor = v_neg then perform privado.fallo('Movimiento no encontrado'); end if;
+  if not coalesce(p_confirmar, false) and coalesce(privado.limpio(p_motivo, 150), '') = '' then perform privado.fallo('Escribe el motivo'); end if;
+  update public.conexion_movs set estado = case when p_confirmar then 'confirmado' else 'rechazado' end,
+    motivo = case when p_confirmar then null else privado.limpio(p_motivo, 150) end, resuelto_at = now() where id = p_mov;
+  select nombre into yo from public.negocios where id = v_neg;
+  perform privado.avisar_negocio(m.autor, '🤝 ' || yo || case when p_confirmar then ' confirmó ' else ' rechazó ' end || privado.pesos(m.monto),
+    case when p_confirmar then 'Ya cuenta en el saldo entre ustedes.' else 'Motivo: ' || privado.limpio(p_motivo, 150) end, 'app/#conexion/' || m.conexion, true);
+end $$;
+
+create or replace function public.conexion_anular(p_mov uuid) returns void language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(true);
+begin
+  update public.conexion_movs set estado = 'anulado', resuelto_at = now() where id = p_mov and autor = v_neg and estado = 'pendiente';
+  if not found then perform privado.fallo('Solo puedes anular lo tuyo mientras no esté confirmado.'); end if;
+end $$;
+
+-- Pedir más conexiones (paquetes): queda como pago por revisar; al aprobarlo se suman.
+create or replace function public.pedir_conexiones(p_paquetes int, p_nota text) returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(true, true); a record; v_monto int; n record;
+begin
+  if not privado.es_premium(v_neg) then perform privado.fallo('Las billeteras conectadas son Pro.', 'PLAN'); end if;
+  if p_paquetes is null or p_paquetes < 1 or p_paquetes > 10 then perform privado.fallo('Elige entre 1 y 10 paquetes'); end if;
+  if exists (select 1 from public.solicitudes_pago where negocio = v_neg and estado = 'pendiente') then
+    perform privado.fallo('Ya tienes un pago en revisión. Te avisaremos apenas se apruebe.');
+  end if;
+  select * into a from public.ajustes where id = 1;
+  select nombre, conexiones_extra into n from public.negocios where id = v_neg;
+  if n.conexiones_extra + p_paquetes > 200 then perform privado.fallo('Máximo 200 paquetes'); end if;
+  v_monto := p_paquetes * a.precio_paquete;
+  insert into public.solicitudes_pago (negocio, meses, monto, nota, tipo, paquetes) values (v_neg, 1, v_monto, privado.limpio(p_nota, 200), 'conexiones', p_paquetes);
+  perform privado.avisar_usuario(privado.admin_id(), 'Pago por revisar', n.nombre || ' pidió ' || p_paquetes * a.conexiones_paquete || ' conexiones más (' || privado.pesos(v_monto) || ').', 'admin/#pagos', true);
+  return jsonb_build_object('ok', true, 'monto', v_monto);
+end $$;
+
 -- ---------- Planes: aplica la subida o bajada de plan ----------
 create or replace function privado.aplicar_plan(p_neg uuid) returns void language plpgsql security definer set search_path = public, pg_temp as $$
 declare n record; est text := privado.estado_plan(p_neg); nuevo text; v_lim int;
@@ -791,6 +1080,7 @@ create or replace function public.config_publica() returns jsonb language sql st
     'lim_normal', a.lim_normal, 'lim_premium', a.lim_premium, 'version_legal', a.version_legal, 'version_min', a.version_min,
     'version_liberada', a.version_liberada,
     'version_bd', (select valor::int from privado.config where clave = 'version_bd'),
+    'conexiones_incluidas', a.conexiones_incluidas, 'conexiones_paquete', a.conexiones_paquete, 'precio_paquete', a.precio_paquete,
     'vapid_public', (select valor from privado.secretos where nombre = 'vapid_public'))
   from public.ajustes a where a.id = 1
 $$;
@@ -830,6 +1120,7 @@ begin
       'en_gracia', privado.pagado(v_neg) and n.premium_hasta < now(), 'dias_gracia', a.dias_gracia,
       'cupon', case when privado.cupon_valido(n.cupon) then n.cupon end, 'descuento', privado.descuento(n.cupon),
       'precio_activacion', privado.precio_activacion(v_neg),
+      'conexiones_extra', n.conexiones_extra, 'mensual', a.precio_mensual + n.conexiones_extra * a.precio_paquete,
       'pago_pendiente', exists (select 1 from public.solicitudes_pago where negocio = v_neg and estado = 'pendiente')),
     'limites', case when prem then a.lim_premium else a.lim_normal end,
     'uso', jsonb_build_object('movimientos', u.movimientos, 'comprobantes', u.comprobantes,
@@ -1410,8 +1701,8 @@ begin
   end if;
   if p_path is not null and p_path not like v_neg || '/%' then perform privado.fallo('Archivo inválido'); end if;
   select * into a from public.ajustes where id = 1;
-  select nombre, activado, cupon into n from public.negocios where id = v_neg;
-  v_monto := a.precio_mensual + privado.precio_activacion(v_neg);
+  select nombre, activado, cupon, conexiones_extra into n from public.negocios where id = v_neg;
+  v_monto := a.precio_mensual + privado.precio_activacion(v_neg) + n.conexiones_extra * a.precio_paquete;
   insert into public.solicitudes_pago (negocio, meses, monto, comprobante_path, nota, cupon)
   values (v_neg, 1, v_monto, p_path, privado.limpio(p_nota, 200), case when not n.activado and privado.cupon_valido(n.cupon) then n.cupon end);
   perform privado.avisar_usuario(privado.admin_id(), 'Pago por revisar', n.nombre || ' dice que pagó ' || privado.pesos(v_monto)
@@ -1907,7 +2198,9 @@ begin
     'quieren_pro', (select count(*) from public.negocios n where estado = 'activo' and quiere_pro_at > now() - interval '30 days' and privado.estado_plan(n.id) <> 'pro'),
     'nuevos_7d', (select count(*) from public.negocios where creado > now() - interval '7 days'),
     'nuevos_30d', (select count(*) from public.negocios where creado > now() - interval '30 days'),
-    'mrr', (select count(*) from public.negocios n where estado <> 'eliminado' and privado.estado_plan(n.id) = 'pro') * (select precio_mensual from public.ajustes where id = 1),
+    'mrr', (select count(*) from public.negocios n where estado <> 'eliminado' and privado.estado_plan(n.id) = 'pro') * (select precio_mensual from public.ajustes where id = 1)
+      + (select coalesce(sum(conexiones_extra), 0) from public.negocios n where estado <> 'eliminado' and privado.estado_plan(n.id) = 'pro') * (select precio_paquete from public.ajustes where id = 1),
+    'conexiones', (select count(*) from public.conexiones where estado = 'activa'),
     'convertidos', (select count(*) from public.negocios where activado),
     'registros_dia', coalesce((select jsonb_agg(x order by x.dia) from (select (creado at time zone 'America/Santiago')::date dia, count(*) n
         from public.negocios where creado > now() - interval '30 days' group by 1) x), '[]'::jsonb),
@@ -1933,7 +2226,8 @@ begin
   return coalesce((select jsonb_agg(x) from (
     select n.id, n.nombre, n.rubro, n.estado, n.motivo_suspension, n.premium_hasta, n.prueba_hasta, n.activado,
       privado.estado_plan(n.id) plan, privado.es_premium(n.id) premium,
-      n.ultimo_uso, n.creado, n.nota_admin, n.whatsapp, u.email,
+      n.ultimo_uso, n.creado, n.nota_admin, n.whatsapp, u.email, n.conexiones_extra,
+      (select count(*) from public.conexiones cx where (cx.a = n.id or cx.b = n.id) and cx.estado = 'activa') conexiones,
       (select count(*) from public.clientes c where c.negocio = n.id and c.estado = 'activo') clientes,
       (select coalesce(movimientos + caja, 0) from public.uso_mensual um where um.negocio = n.id and um.mes = date_trunc('month', privado.hoy())::date) movimientos_mes,
       (select count(*) from public.soporte s where s.negocio = n.id and s.de = 'negocio' and not s.leido) soporte
@@ -1983,6 +2277,13 @@ create or replace function public.admin_plan(p_negocio uuid, p_accion text, p_di
 begin
   perform privado.solo_admin();
   if p_accion in ('sumar', 'prueba') and (p_dias is null or p_dias < 1 or p_dias > 3660) then perform privado.fallo('Días inválidos'); end if;
+  if p_accion = 'conexiones' then
+    -- p_dias = cantidad de paquetes extra de conexiones (0 a 200)
+    if p_dias is null or p_dias < 0 or p_dias > 200 then perform privado.fallo('Paquetes inválidos (0 a 200)'); end if;
+    update public.negocios set conexiones_extra = p_dias where id = p_negocio;
+    perform privado.auditar(p_negocio, 'admin_plan', jsonb_build_object('accion', p_accion, 'paquetes', p_dias));
+    return;
+  end if;
   if p_accion = 'sumar' then
     update public.negocios set premium_hasta = greatest(coalesce(premium_hasta, now()), now()) + make_interval(days => p_dias), en_prueba = false, activado = true where id = p_negocio;
     perform privado.avisar_negocio(p_negocio, '¡Pro activado!', 'Se sumaron ' || p_dias || ' días de Pro a tu billetera.', 'app/#plan', true);
@@ -2026,7 +2327,11 @@ begin
   perform privado.solo_admin();
   select * into s from public.solicitudes_pago where id = p_id and estado = 'pendiente' for update;
   if not found then perform privado.fallo('Solicitud no encontrada'); end if;
-  if p_aprobar then
+  if p_aprobar and s.tipo = 'conexiones' then
+    update public.negocios set conexiones_extra = least(200, conexiones_extra + s.paquetes) where id = s.negocio;
+    update public.solicitudes_pago set estado = 'aprobada', revisado_at = now() where id = p_id;
+    perform privado.avisar_negocio(s.negocio, '¡Conexiones sumadas!', 'Ya tienes ' || privado.limite_conexiones(s.negocio) || ' conexiones disponibles.', 'app/#conexiones', true);
+  elsif p_aprobar then
     if s.cupon is not null and not (select activado from public.negocios where id = s.negocio) then
       update public.cupones set usos = usos + 1 where codigo = s.cupon;
     end if;
@@ -2145,6 +2450,9 @@ begin
     contacto_whatsapp = coalesce(privado.telefono(nullif(p ->> 'contacto_whatsapp', '')), case when p ? 'contacto_whatsapp' then '' else contacto_whatsapp end),
     dias_prueba = coalesce((p ->> 'dias_prueba')::int, dias_prueba),
     dias_gracia = coalesce((p ->> 'dias_gracia')::int, dias_gracia),
+    conexiones_incluidas = coalesce((p ->> 'conexiones_incluidas')::int, conexiones_incluidas),
+    conexiones_paquete = coalesce((p ->> 'conexiones_paquete')::int, conexiones_paquete),
+    precio_paquete = coalesce((p ->> 'precio_paquete')::int, precio_paquete),
     lim_normal = coalesce(ln, lim_normal),
     version_legal = coalesce((p ->> 'version_legal')::int, version_legal),
     version_min = coalesce(nullif(p ->> 'version_min', ''), version_min),
@@ -2254,7 +2562,7 @@ end $$;
 
 create or replace function privado.tarea_horaria() returns void language plpgsql security definer set search_path = public, pg_temp as $$
 declare ahora timestamp := now() at time zone 'America/Santiago'; hoy date := ahora::date; h int := extract(hour from ahora); r record; c record;
-  v_txt text; n_hoy int; n_atr int; m_atr bigint; dias int; ok boolean;
+  v_txt text; n_hoy int; n_atr int; m_atr bigint; dias int; ok boolean; n_man int;
 begin
   -- 1) Diaria (desde las 00:00): vencimientos, planes, limpieza
   if not exists (select 1 from privado.tareas_hechas where tarea = 'diaria' and fecha = hoy) then
@@ -2265,6 +2573,7 @@ begin
     for r in select id from public.negocios where estado <> 'eliminado' loop perform privado.aplicar_plan(r.id); end loop;
     for r in select id, dueno from public.negocios where estado = 'eliminado' and eliminar_desde < now() loop
       insert into privado.archivos_por_borrar (bucket, ruta) select 'comprobantes', foto_path from public.comprobantes where negocio = r.id and foto_path is not null;
+      insert into privado.archivos_por_borrar (bucket, ruta) select 'comprobantes', foto_path from public.movimientos where negocio = r.id and foto_path is not null;
       insert into privado.archivos_por_borrar (bucket, ruta) select 'pagos', comprobante_path from public.solicitudes_pago where negocio = r.id and comprobante_path is not null;
       delete from public.negocios where id = r.id;
       delete from auth.users where id = r.dueno;
@@ -2282,10 +2591,12 @@ begin
     insert into privado.tareas_hechas values ('resumen', hoy);
     for r in select n.id, n.premium_hasta, n.prueba_hasta, privado.estado_plan(n.id) est from public.negocios n where n.estado = 'activo' loop
       if true then
-        select count(*) filter (where prox_venc = hoy), count(*) filter (where atrasado), coalesce(sum(saldo) filter (where atrasado), 0)
-          into n_hoy, n_atr, m_atr from public.clientes where negocio = r.id and saldo > 0 and estado <> 'borrado';
-        if n_hoy + n_atr > 0 then
+        select count(*) filter (where prox_venc = hoy), count(*) filter (where atrasado), coalesce(sum(saldo) filter (where atrasado), 0),
+               count(*) filter (where prox_venc = hoy + 1)
+          into n_hoy, n_atr, m_atr, n_man from public.clientes where negocio = r.id and saldo > 0 and estado <> 'borrado';
+        if n_hoy + n_atr + n_man > 0 then
           v_txt := concat_ws(' · ', case when n_hoy > 0 then n_hoy || ' vencen hoy' end,
+                                    case when n_man > 0 then n_man || ' vencen mañana' end,
                                     case when n_atr > 0 then n_atr || ' atrasados por ' || privado.pesos(m_atr) end);
           perform privado.avisar_negocio(r.id, 'Para cobrar hoy', v_txt, 'app/', r.est = 'pro');
         end if;
@@ -2359,6 +2670,8 @@ begin
       select 'pagos', comprobante_path from public.solicitudes_pago where comprobante_path is not null and estado <> 'pendiente' and revisado_at < now() - interval '180 days';
     update public.solicitudes_pago set comprobante_path = null where comprobante_path is not null and estado <> 'pendiente' and revisado_at < now() - interval '180 days';
     delete from public.recordatorios where at < now() - interval '400 days';
+    insert into privado.archivos_por_borrar (bucket, ruta) select 'comprobantes', foto_path from public.movimientos where foto_path is not null and creado_at < now() - interval '365 days';
+    update public.movimientos set foto_path = null where foto_path is not null and creado_at < now() - interval '365 days';
     delete from public.auditoria where at < now() - interval '400 days';
     delete from public.uso_mensual where mes < privado.hoy() - 800;
     for c in select id from public.clientes where estado <> 'borrado' loop perform privado.recalcular(c.id); end loop;
@@ -2384,7 +2697,7 @@ create trigger lc_nuevo_usuario after insert on auth.users for each row execute 
 do $$ declare t text; begin
   foreach t in array array['ajustes','perfiles','negocios','miembros','invitaciones','clientes','ventas_cuotas','cuotas','movimientos',
     'comprobantes','recordatorios','productos','uso_mensual','notificaciones','sesiones_cliente','push_subs','cola_push','solicitudes_pago',
-    'keys','feriados','auditoria','caja','categorias','soporte','cupones'] loop
+    'keys','feriados','auditoria','caja','categorias','soporte','cupones','conexiones','conexion_movs'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('revoke all on public.%I from anon, authenticated', t);
   end loop;
@@ -2459,7 +2772,11 @@ grant execute on function public.mi_estado(), public.aceptar_terminos(), public.
   public.admin_oportunidades(), public.admin_negocio_detalle(uuid),
   public.guardar_perfil(text, text), public.usar_cupon(text), public.reporte_pro(date), public.cobranza_lote(),
   public.admin_segmentos(), public.admin_cupones(), public.admin_guardar_cupon(text, int, int, date), public.admin_cupon_activo(text, boolean),
-  public.guardar_link_pago_cliente(uuid, text), public.pagar_cuota(uuid, uuid, int, text, boolean) to authenticated;
+  public.guardar_link_pago_cliente(uuid, text), public.pagar_cuota(uuid, uuid, int, text, boolean),
+  public.estado_fiados(uuid), public.pagar_fiado(uuid, uuid, int, text, text, boolean), public.adjuntar_foto(uuid, text),
+  public.mi_codigo_conexion(boolean), public.conectar(text), public.conexion_responder(uuid, boolean), public.conexion_cerrar(uuid),
+  public.mis_conexiones(), public.conexion_ver(uuid), public.conexion_anotar(uuid, uuid, text, int, text), public.conexion_resolver(uuid, boolean, text),
+  public.conexion_anular(uuid), public.pedir_conexiones(int, text) to authenticated;
 grant execute on function public.srv_secretos(), public.srv_cola_tomar(int), public.srv_quitar_endpoint(text), public.srv_foto_validar(uuid, text),
   public.srv_foto_lista(uuid, text), public.srv_archivos_por_borrar(int), public.srv_archivos_borrados(bigint[]),
   public.srv_es_admin(uuid), public.srv_crear_negocio(uuid, text, text, int) to service_role;
@@ -2474,6 +2791,7 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 on conflict (id) do update set public = excluded.public, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
 
 drop policy if exists lc_comprobantes_ver on storage.objects;
+drop policy if exists lc_comprobantes_subir on storage.objects;
 drop policy if exists lc_logos_subir on storage.objects;
 drop policy if exists lc_logos_cambiar on storage.objects;
 drop policy if exists lc_logos_borrar on storage.objects;
@@ -2482,6 +2800,9 @@ drop policy if exists lc_pagos_subir on storage.objects;
 drop policy if exists lc_pagos_ver on storage.objects;
 create policy lc_comprobantes_ver on storage.objects for select to authenticated
   using (bucket_id = 'comprobantes' and (storage.foldername(name))[1] = (select privado.mi_negocio())::text);
+-- El dueño sube la foto del comprobante de un pago que recibió (carpeta <negocio>/pagos/)
+create policy lc_comprobantes_subir on storage.objects for insert to authenticated
+  with check (bucket_id = 'comprobantes' and (storage.foldername(name))[1] = (select privado.mi_negocio())::text and (storage.foldername(name))[2] = 'pagos');
 create policy lc_logos_ver on storage.objects for select to authenticated
   using (bucket_id = 'logos' and (storage.foldername(name))[1] = (select privado.mi_negocio())::text);
 create policy lc_logos_subir on storage.objects for insert to authenticated

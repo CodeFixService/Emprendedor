@@ -15,6 +15,8 @@
     nodo.addEventListener('click', (e) => { e.preventDefault(); e.stopImmediatePropagation(); alPlan(msg); }, true);
     return nodo;
   }
+  // Solo se ve en plomo con candado, pero sí se puede entrar (la pantalla explica o muestra lo que quedó en pausa).
+  const marcaPro = (nodo) => { if (!prem()) { nodo.classList.add('bloq-pro'); nodo.append(el('span', { class: 'tag pro' }, '🔒 PRO')); } return nodo; };
   const vista = $('#vista');
   $('#ver').textContent = LC.VERSION;
   LC.aplicarColor(local.get('lc-color', null), false);
@@ -188,10 +190,10 @@
     const [v, a, b] = h.split('/');
     S.vista = v;
     document.querySelectorAll('#nav a').forEach((x) => x.classList.toggle('activo', x.dataset.v === v || (v === 'cliente' && x.dataset.v === 'clientes') ||
-      (['comprobantes', 'reportes', 'productos', 'ajustes', 'plan', 'cuenta', 'ayuda', 'pendientes', 'soporte', 'apariencia', 'cobranza'].includes(v) && x.dataset.v === 'mas')));
+      (['comprobantes', 'reportes', 'productos', 'ajustes', 'plan', 'cuenta', 'ayuda', 'pendientes', 'soporte', 'apariencia', 'cobranza', 'conexiones', 'conexion'].includes(v) && x.dataset.v === 'mas')));
     const vistas = { inicio: vInicio, caja: vCaja, clientes: vClientes, cliente: vCliente, anotar: vAnotar, mas: vMas, comprobantes: vComprobantes, reportes: vReportes,
       productos: vProductos, ayudantes: vMas, ajustes: vAjustes, plan: vPlan, avisos: vAvisos, cuenta: vCuenta, ayuda: vAyuda, pendientes: vPendientes, soporte: vSoporte,
-      apariencia: vApariencia, cobranza: vCobranza };
+      apariencia: vApariencia, cobranza: vCobranza, conexiones: vConexiones, conexion: vConexion };
     if (v !== 'soporte' && canalSoporte) { sb.removeChannel(canalSoporte); canalSoporte = null; }
     const fn = vistas[v] || vInicio;
     if (!silencioso) window.scrollTo(0, 0);
@@ -209,7 +211,8 @@
   const BENEFICIOS_PRO = [['♾️', 'Todo sin límites: clientes, fiados, ventas, gastos y cuotas'], ['📣', 'Cobrar a todos de una, con tonos y tu propio mensaje'],
     ['🧾', 'Recibos con imagen para mandar por WhatsApp'], ['📈', 'Reportes avanzados: mejores clientes, mejores días y comparación con el mes anterior'],
     ['🎯', 'Meta de ventas y presupuesto de gastos con alertas'], ['🗂️', 'Historial completo, Excel y estado de cuenta en PDF'],
-    ['🔔', 'Resumen semanal al celular y avisos automáticos de cuotas'], ['🎨', 'Tu color en el link de tus clientes']];
+    ['🔔', 'Resumen semanal al celular y avisos automáticos de cuotas'], ['🎨', 'Tu color en el link de tus clientes'],
+    ['🤝', 'Billeteras conectadas: cuentas claras con familia y amigos']];
   function alPlan(msg) {
     dialogo('Esto es Pro ⭐', el('div', null, el('p', null, msg),
       el('div', { class: 'tarjeta plana' }, el('strong', null, 'Con Pro desbloqueas'), el('ul', { class: 'lista-pro' }, BENEFICIOS_PRO.map(([i, t]) => el('li', null, el('span', null, i), t))),
@@ -496,8 +499,10 @@
 
   async function pMovimientos(c, cuerpo) {
     cuerpo.append(el('div', { class: 'vacio' }, el('div', { class: 'spinner', style: 'margin:auto' })));
-    const { data, error: e } = await sb.from('movimientos').select('*').eq('cliente', c.id).order('fecha', { ascending: false }).limit(300);
+    const [{ data, error: e }, estFiados] = await Promise.all([sb.from('movimientos').select('*').eq('cliente', c.id).order('fecha', { ascending: false }).limit(300),
+      rpc('estado_fiados', { p_cliente: c.id }).catch(() => [])]);
     if (e) throw LC.traducir(e);
+    const pagos = Object.fromEntries((estFiados || []).map((x) => [x.id, x]));
     const pend = cola().filter((m) => m.cliente === c.id);
     vaciar(cuerpo);
     if (!data.length && !pend.length) { cuerpo.append(el('div', { class: 'lista' }, el('div', { class: 'vacio' }, el('span', { class: 'ico' }, '📒'), 'Sin movimientos todavía.'))); return; }
@@ -510,24 +515,32 @@
       const tipo = m.tipo === 'cargo' || (m.tipo === 'ajuste' && m.signo === 1) ? 'cargo' : m.tipo === 'abono' ? 'abono' : 'ajuste';
       const etiqueta = m.tipo === 'cargo' ? (m.venta ? 'Venta en cuotas' : 'Fiado') : m.tipo === 'abono' ? 'Abono' + (m.medio ? ' · ' + m.medio : '') : 'Ajuste ' + (m.signo === 1 ? '(suma)' : '(resta)');
       const conf = m.tipo === 'cargo' ? (m.confirmacion === 'reconocido' ? ' · ✓ confirmado' : m.confirmacion === 'reclamado' ? ' · ⚠️ reclamado' : '') : '';
-      const b = el('div', { class: 'burbuja ' + tipo + (m.anulado_at ? ' anulado' : ''), role: 'button', tabindex: 0, onclick: () => menuMovimiento(m, c) },
+      const ep = !m.anulado_at && !m.venta && m.signo === 1 ? pagos[m.id] : null;
+      const pagado = ep && ep.pagado >= ep.monto;
+      const b = el('div', { class: 'burbuja ' + tipo + (m.anulado_at ? ' anulado' : ''), role: 'button', tabindex: 0, onclick: () => menuMovimiento(m, c, ep) },
         el('div', { class: 'm' }, (m.signo === 1 ? '+' : '−') + pesos(m.monto)),
         el('div', { class: 'd' }, m.descripcion || etiqueta),
         el('div', { class: 'meta' }, (m.descripcion ? etiqueta + ' · ' : '') + hora(m.fecha) + (m.vence && m.tipo === 'cargo' && !m.venta ? ' · vence ' + fechaCorta(m.vence) : '') + conf),
         m.anulado_at ? el('div', { class: 'meta rojo' }, 'Anulado: ' + (m.motivo_anulacion || '')) : null,
-        m.confirmacion === 'reclamado' && !m.anulado_at ? el('div', { class: 'meta rojo' }, 'Reclamo: ' + (m.reclamo_motivo || '') + (m.respuesta ? ' · Respuesta: ' + m.respuesta : '')) : null);
+        m.confirmacion === 'reclamado' && !m.anulado_at ? el('div', { class: 'meta rojo' }, 'Reclamo: ' + (m.reclamo_motivo || '') + (m.respuesta ? ' · Respuesta: ' + m.respuesta : '')) : null,
+        m.foto_path && !m.anulado_at ? el('div', { class: 'meta' }, '📎 Con comprobante') : null,
+        ep ? (pagado ? el('div', { class: 'meta verde', style: 'font-weight:700' }, '✓ Pagado')
+          : el('div', { class: 'fila', style: 'gap:6px;margin-top:6px;flex-wrap:wrap' }, ep.pagado > 0 ? el('span', { class: 'meta' }, 'Abonado ' + pesos(ep.pagado) + ' · falta ' + pesos(ep.monto - ep.pagado)) : null,
+            el('button', { class: 'btn chico verde', type: 'button', onclick: (ev) => { ev.stopPropagation(); pagarFiado(m, c); } }, '✅ Ya me pagó'))) : null);
       chat.append(b);
     }
     if (!prem()) chat.append(el('p', { class: 'sutil centro' }, 'En el plan Free ves los últimos 6 meses. El saldo siempre es exacto.'));
     cuerpo.append(chat);
   }
 
-  async function menuMovimiento(m, c) {
+  async function menuMovimiento(m, c, ep) {
     if (m.anulado_at) return;
     const yo = m.creado_por === S.uid && (Date.now() - new Date(m.creado_at)) < 10 * 60 * 1000;
     const puedeAnular = (esDueno() || yo);
     const botones = [{ texto: 'Cerrar', valor: null }];
     if (m.confirmacion === 'reclamado' && !m.respuesta && esDueno()) botones.push({ texto: 'Responder reclamo', clase: 'primario', valor: 'reclamo' });
+    if (ep && ep.pagado < ep.monto) botones.push({ texto: '✅ Ya me pagó', clase: 'verde', valor: 'pagar' });
+    if (m.signo === -1) botones.push(m.foto_path ? { texto: '📎 Ver comprobante', valor: 'foto' } : { texto: '📎 Adjuntar comprobante', valor: 'adjuntar' });
     if (m.tipo !== 'ajuste') botones.push({ texto: '🧾 Recibo' + (prem() ? '' : ' 🔒'), valor: 'recibo' });
     if (puedeAnular) botones.push({ texto: m.venta ? 'Anular venta' : 'Anular', clase: 'peligro', valor: 'anular' });
     const info = el('div', null,
@@ -537,6 +550,9 @@
       !puedeAnular && !esDueno() ? el('p', { class: 'sutil' }, 'Como ayudante solo puedes anular lo tuyo en los primeros 10 minutos.') : null);
     const r = await dialogo('Movimiento', info, botones);
     if (r === 'recibo') return enviarRecibo(m, c);
+    if (r === 'pagar') return pagarFiado(m, c);
+    if (r === 'foto') return verFoto(m.foto_path);
+    if (r === 'adjuntar') return adjuntarFoto(m);
     if (r === 'anular') {
       const mot = await pedirTexto(m.venta ? 'Anular venta en cuotas' : 'Anular movimiento', 'Motivo', { min: 5, max: 100, placeholder: 'Ej: me equivoqué de cliente', boton: 'Anular', clase: 'rojo' });
       if (!mot) return;
@@ -581,6 +597,71 @@
           try { await conCarga(() => rpc('anular_venta_cuotas', { p_venta: v.id, p_motivo: mot })); await cargarClientes(); toast('Venta anulada'); router(true); } catch (er) { error(er); }
         } }, 'Anular venta') : null));
     }
+  }
+
+  // ---------- Pago de un fiado: todo o una parte, con foto del comprobante opcional ----------
+  async function subirFotoPago(archivo) {
+    const blob = await LC.achicarImagen(archivo, 1080, 200 * 1024);
+    const ruta = S.neg.id + '/pagos/' + uuid() + (blob.type === 'image/webp' ? '.webp' : '.jpg');
+    const { error: e } = await sb.storage.from('comprobantes').upload(ruta, blob, { contentType: blob.type });
+    if (e) throw LC.traducir(e);
+    return ruta;
+  }
+  async function pagarFiado(m, c) {
+    let pre;
+    try { pre = await conCarga(() => rpc('pagar_fiado', { p_id: uuid(), p_mov: m.id, p_monto: null, p_medio: 'efectivo', p_foto: null, p_confirmar: false })); } catch (e) { return error(e); }
+    let todo = true, medio = 'transferencia';
+    const monto = el('input', { type: 'number', inputmode: 'numeric', min: 1, max: pre.total, placeholder: 'Ej: 2000' });
+    const foto = el('input', { type: 'file', accept: 'image/*' });
+    const segm = el('div', { class: 'segmento' }), chips = el('div', { class: 'chips' }), parte = el('div', { class: 'campo mt' }, el('label', null, '¿Cuánto abonó?'), monto);
+    const err = el('div', { class: 'error' });
+    const pintarP = () => {
+      vaciar(segm).append(el('button', { type: 'button', class: todo ? 'activo' : '', onclick: () => { todo = true; pintarP(); } }, 'Pagó todo'),
+        el('button', { type: 'button', class: !todo ? 'activo' : '', onclick: () => { todo = false; pintarP(); setTimeout(() => monto.focus(), 50); } }, 'Abonó una parte'));
+      parte.classList.toggle('oculto', todo);
+      vaciar(chips).append(...[['transferencia', '🏦 Transferencia'], ['efectivo', '💵 Efectivo'], ['otro', '💳 Link de pago']].map(([k, t]) =>
+        el('button', { type: 'button', class: 'chip' + (medio === k ? ' activo' : ''), onclick: () => { medio = k; pintarP(); } }, t)));
+    };
+    pintarP();
+    let res = null;
+    await dialogo('Ya me pagó', el('div', null,
+      el('p', { class: 'sutil' }, c.nombre + ' · ' + (m.descripcion || 'Fiado') + ' de ' + pesos(m.monto)),
+      el('div', { class: 'saldo-gigante verde', style: 'font-size:1.8em' }, pesos(pre.total)),
+      el('p', { class: 'sutil', style: 'margin-top:-6px' }, 'Falta para dejar este fiado pagado'),
+      pre.previo > 0 ? el('p', { class: 'naranjo' }, 'Incluye ' + pesos(pre.previo) + ' de deuda más antigua: los pagos siempre cubren primero lo más antiguo.') : null,
+      segm, parte,
+      el('h3', { class: 'mt' }, '¿Cómo te pagó?'), chips,
+      el('div', { class: 'campo mt' }, el('label', null, '📎 Foto del comprobante (opcional)'), foto, el('div', { class: 'ayuda' }, 'Queda guardada en este pago.')), err),
+    [{ texto: 'Cancelar', valor: null }, { texto: 'Confirmar pago', clase: 'primario', valor: true, antes: async () => {
+      err.textContent = '';
+      const v = todo ? null : Math.round(Number(monto.value));
+      if (!todo && (!v || v < 1 || v > pre.total)) { err.textContent = 'Escribe un monto entre $1 y ' + pesos(pre.total); monto.classList.add('malo'); return false; }
+      try {
+        const ruta = foto.files[0] ? await conCarga(() => subirFotoPago(foto.files[0])) : null;
+        res = await conCarga(() => rpc('pagar_fiado', { p_id: uuid(), p_mov: m.id, p_monto: v, p_medio: medio, p_foto: ruta, p_confirmar: true }));
+        return true;
+      } catch (e) { err.textContent = LC.traducir(e).message; return false; }
+    } }]);
+    if (!res) return;
+    await cargarClientes();
+    const c2 = cliente(c.id) || c;
+    const mov = { tipo: 'abono', signo: -1, monto: res.monto, fecha: new Date().toISOString(), medio: medio === 'otro' ? 'link de pago' : medio, descripcion: 'Pago de ' + (m.descripcion || 'fiado') };
+    toast((res.al_dia ? 'Fiado pagado ✓' : 'Abono de ' + pesos(res.monto) + ' ✓') + ' · Saldo ' + pesos(res.saldo), { accion: { texto: '🧾 Recibo' + (prem() ? '' : ' 🔒'), fn: () => enviarRecibo(mov, c2) } });
+    refrescarEstado().catch(() => {}); router(true);
+  }
+  async function verFoto(ruta) {
+    const { data, error: e } = await sb.storage.from('comprobantes').createSignedUrl(ruta, 600);
+    if (e || !data) return toast('No se pudo abrir la foto', { error: true });
+    await dialogo('Comprobante', el('img', { src: data.signedUrl, alt: 'Comprobante', style: 'width:100%;border-radius:12px' }));
+  }
+  async function adjuntarFoto(m) {
+    const foto = el('input', { type: 'file', accept: 'image/*' }), err = el('div', { class: 'error' });
+    await dialogo('Adjuntar comprobante', el('div', null, el('p', { class: 'sutil' }, 'Abono de ' + pesos(m.monto) + ' del ' + fechaCorta(m.fecha)), foto, err),
+      [{ texto: 'Cancelar', valor: null }, { texto: 'Guardar', clase: 'primario', valor: true, antes: async () => {
+        if (!foto.files[0]) { err.textContent = 'Elige la foto'; return false; }
+        try { const ruta = await conCarga(() => subirFotoPago(foto.files[0])); await rpc('adjuntar_foto', { p_mov: m.id, p_foto: ruta }); return true; }
+        catch (e) { err.textContent = LC.traducir(e).message; return false; }
+      } }]).then((ok) => { if (ok) { toast('Comprobante guardado ✓'); router(true); } });
   }
 
   // El cliente pagó la cuota que toca: el servidor calcula cuánto falta para dejarla pagada y anota el abono.
@@ -839,18 +920,19 @@
     const seg = el('div', { class: 'segmento' });
     const descIn = el('input', { maxlength: 80, placeholder: 'Detalle (opcional): pan, leche…' });
     descIn.oninput = () => { desc = descIn.value; };
-    const extra = el('div');
+    const extra = el('div'), completar = el('div');
     const pintarTodo = () => {
       vaciar(seg).append(
         el('button', { type: 'button', class: 'fiado' + (tipo === 'fiado' ? ' activo' : ''), onclick: () => { tipo = 'fiado'; pintarTodo(); } }, '＋ Fiado'),
         el('button', { type: 'button', class: 'abono' + (tipo === 'abono' ? ' activo' : ''), onclick: () => { tipo = 'abono'; pintarTodo(); } }, '－ Abono'));
       pantalla.className = 'pantalla-monto ' + tipo;
       pantalla.textContent = monto ? pesos(Number(monto)) : '$0';
-      vaciar(extra);
+      vaciar(extra); vaciar(completar);
       if (tipo === 'abono') {
         extra.append(el('div', { class: 'chips' }, [['efectivo', '💵 Efectivo'], ['transferencia', '🏦 Transferencia'], ['otro', 'Otro']].map(([v, t]) =>
           el('button', { type: 'button', class: 'chip' + (medio === v ? ' activo' : ''), onclick: () => { medio = v; pintarTodo(); } }, t))));
-        if (c.saldo > 0) extra.append(el('button', { class: 'btn chico', type: 'button', onclick: () => { monto = String(c.saldo); pintarTodo(); } }, 'Paga todo: ' + pesos(c.saldo)));
+        // Lejos del teclado para no tocarlo por error: solo escribe el monto, igual hay que tocar Guardar.
+        if (c.saldo > 0) completar.append(el('button', { class: 'btn texto chico', type: 'button', onclick: () => { monto = String(c.saldo); pintarTodo(); } }, 'Escribir todo lo que debe (' + pesos(c.saldo) + ')'));
       } else if (S.productos.length) {
         extra.append(el('div', { class: 'rapidos' }, S.productos.map((p) => el('button', { class: 'chip', type: 'button', onclick: () => {
           monto = String((Number(monto) || 0) + p.precio); desc = desc ? desc + ', ' + p.nombre : p.nombre; descIn.value = desc; pintarTodo();
@@ -884,6 +966,7 @@
       seg, pantalla, extra,
       el('div', { class: 'teclado mt' }, ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'].map((k) => el('button', { type: 'button', onclick: () => tecla(k), 'aria-label': k === '⌫' ? 'Borrar' : k === 'C' ? 'Limpiar' : k }, k))),
       el('div', { class: 'rapidos' }, ['+500', '+1000', '+5000', '+10000'].map((k) => el('button', { class: 'chip', type: 'button', onclick: () => tecla(k) }, '+' + pesos(Number(k.slice(1)))))),
+      completar,
       el('div', { class: 'mt' }, descIn),
       opciones,
       el('button', { class: 'btn ancho mt', type: 'button', onclick: () => formCuotas(c) }, '📆 Es una venta en cuotas'),
@@ -975,6 +1058,7 @@
         it('#comprobantes', '🧾', 'Comprobantes', p.comprobantes),
         esDueno() ? conPro(it('#cobranza', '📣', 'Cobrar a todos de una'), 'Cobrar a todos de una es Pro: ves quién te debe y le mandas el mensaje con un toque.') : null,
         it('#reportes', '📊', 'Reportes', null, esDueno()),
+        esDueno() ? marcaPro(it('#conexiones', '🤝', 'Billeteras conectadas')) : null,
         it('#productos', '🏷️', 'Productos frecuentes', null, esDueno()),
         it('#plan', '⭐', 'Mi plan · ' + planTxt(), null, esDueno()),
         it('#avisos', '🔔', 'Avisos', p.avisos),
@@ -1276,7 +1360,8 @@
     const comp = [['Ventas, gastos y fiado', '✓', '✓'], ['Link del cliente con PIN y comprobantes', '✓', '✓'], ['Cobro por WhatsApp (tono amable)', '✓', '✓'],
       ['Clientes activos', ln.clientes, '♾️'], ['Fiados y abonos al mes', ln.movimientos, '♾️'], ['Ingresos y gastos al mes', ln.caja, '♾️'], ['Ventas en cuotas activas', ln.cuotas, '♾️'],
       ['Cobrar a todos de una', '🔒', '✓'], ['Recibos con imagen', '🔒', '✓'], ['Reportes avanzados y Excel', '🔒', '✓'], ['Metas y presupuesto', '🔒', '✓'],
-      ['Tonos y mensaje propio', '🔒', '✓'], ['Historial completo y PDF', '6 meses', '✓']];
+      ['Tonos y mensaje propio', '🔒', '✓'], ['Historial completo y PDF', '6 meses', '✓'],
+      ['Billeteras conectadas', '🔒', (cfg.conexiones_incluidas || 10) + ' (+ más)']];
     pintar(el('h2', null, 'Mi plan'),
       el('div', { class: 'tarjeta ' + (pl.estado === 'free' ? '' : 'hero') },
         el('div', { class: 't' }, 'Tu billetera'), el('div', { class: 'grande', style: 'font-size:1.8em' }, titulo), el('div', { class: 't' }, sub),
@@ -1289,7 +1374,8 @@
           comp.map(([t, f, p2]) => el('tr', null, el('td', null, t), el('td', null, String(f)), el('td', null, String(p2)))))),
       el('div', { class: 'tarjeta', id: 'activar' }, el('h2', null, pl.estado === 'pro' ? 'Pagar la mensualidad' : 'Activar Pro'),
         el('p', null, act > 0 ? [act < actBase ? el('s', { class: 'sutil' }, pesos(actBase)) : null, ' ', el('strong', { style: 'font-size:1.3em' }, pesos(act)), ' de activación (una vez) + ', el('strong', null, pesos(cfg.precio_mensual)), ' al mes']
-          : [el('strong', { style: 'font-size:1.4em' }, pesos(cfg.precio_mensual)), ' al mes']),
+          : [el('strong', { style: 'font-size:1.4em' }, pesos(pl.mensual || cfg.precio_mensual)), ' al mes']),
+        pl.conexiones_extra ? el('p', { class: 'sutil' }, 'Tu mensualidad incluye ' + pl.conexiones_extra + ' paquete' + (pl.conexiones_extra > 1 ? 's' : '') + ' de conexiones extra.') : null,
         pl.cupon ? el('p', { class: 'verde' }, '🏷️ Cupón ' + pl.cupon + ': ' + pl.descuento + '% de descuento en la activación') : null,
         el('div', { class: 'col' },
           el('button', { class: 'btn primario', type: 'button', onclick: quieroPro }, pl.estado === 'pro' ? '💬 Avisar por soporte' : '💬 Quiero Pro (avisar por soporte)'),
@@ -1728,6 +1814,126 @@
       el('div', { class: 'col' }, el('button', { class: 'btn primario', type: 'button', onclick: () => LC.descargar(nombre, blob) }, '⬇️ Descargar imagen'),
         c.telefono ? el('button', { class: 'btn wsp', type: 'button', onclick: () => abrir(wa(c.telefono, texto)) }, '💬 Enviar texto por WhatsApp') : null)));
     URL.revokeObjectURL(url);
+  }
+
+  // ================= BILLETERAS CONECTADAS (Pro) =================
+  const codigoBonito = (c) => c ? c.slice(0, 4) + '-' + c.slice(4) : '';
+  async function vConexiones() {
+    if (soloDueno()) return;
+    const d = await conCarga(() => rpc('mis_conexiones'));
+    const explica = el('p', { class: 'sutil' }, 'Conecta tu billetera con familia o amigos de confianza y lleven juntos quién le debe a quién. Solo ven la cuenta entre ustedes: nada de tus clientes, tu caja ni tus gastos.');
+    if (!d.pro && !d.lista.length) {
+      pintar(el('h2', null, '🤝 Billeteras conectadas'), explica,
+        conPro(el('div', { class: 'tarjeta' }, el('ol', { class: 'sutil' }, el('li', null, 'Compartes tu código con la otra persona.'), el('li', null, 'Ella lo ingresa y tú aceptas: así se valida que se conocen.'),
+          el('li', null, 'Cualquiera anota "te presté" o "te pagué" y el otro lo confirma.'), el('li', null, 'Siempre saben quién debe cuánto.'))), 'Las billeteras conectadas son Pro.'));
+      return;
+    }
+    const recibidas = d.lista.filter((x) => x.estado === 'pendiente' && !x.yo_solicite), enviadas = d.lista.filter((x) => x.estado === 'pendiente' && x.yo_solicite);
+    const activas = d.lista.filter((x) => x.estado === 'activa');
+    const codigo = el('div', { class: 'codigo-conexion' }, d.codigo ? codigoBonito(d.codigo) : '—');
+    const generar = async (nuevo) => {
+      if (nuevo && !await confirmar('Cambiar código', 'El código anterior deja de servir. Las conexiones que ya tienes no cambian.', 'Cambiar')) return;
+      try { await conCarga(() => rpc('mi_codigo_conexion', { p_nuevo: !!nuevo })); vConexiones(); } catch (e) { error(e); }
+    };
+    const inp = el('input', { maxlength: 9, placeholder: 'XXXX-XXXX', autocapitalize: 'characters', style: 'text-transform:uppercase;letter-spacing:2px' });
+    const conectar = async () => {
+      if (inp.value.replace(/[^A-Za-z0-9]/g, '').length !== 8) return toast('El código tiene 8 letras y números', { error: true });
+      try { const r = await conCarga(() => rpc('conectar', { p_codigo: inp.value })); toast(r.estado === 'activa' ? '¡Conectado con ' + r.nombre + '! 🤝' : 'Solicitud enviada a ' + r.nombre + ' ✓'); vConexiones(); } catch (e) { error(e); }
+    };
+    const responder = async (x, ok) => { try { await conCarga(() => rpc('conexion_responder', { p_id: x.id, p_aceptar: ok })); toast(ok ? 'Conectados ✓' : 'Solicitud rechazada'); vConexiones(); } catch (e) { error(e); } };
+    const cerrar = async (x) => { if (await confirmar('Cancelar solicitud', '¿Cancelar la solicitud a ' + x.nombre + '?', 'Cancelar solicitud', 'rojo')) { try { await rpc('conexion_cerrar', { p_id: x.id }); vConexiones(); } catch (e) { error(e); } } };
+    const avatarCon = (x) => el('div', { class: 'avatar' + (x.icono ? ' emoji' : ''), style: x.icono ? '' : 'background:' + colorDe(x.nombre) }, x.icono || iniciales(x.nombre));
+    const pct = d.limite ? Math.min(100, Math.round(d.usadas * 100 / d.limite)) : 0;
+    pintar(el('h2', null, '🤝 Billeteras conectadas'), explica,
+      !d.pro ? el('div', { class: 'banda aviso' }, el('span', null, '⏸️ Tus conexiones están en pausa: puedes verlas y confirmar, pero no anotar. Activa Pro para seguir.'), el('a', { class: 'btn chico', href: '#plan' }, 'Ver')) : null,
+      recibidas.length ? el('div', { class: 'tarjeta', style: 'border-color:var(--marca)' }, el('h2', null, 'Te quieren conectar (' + recibidas.length + ')'),
+        el('div', { class: 'lista' }, recibidas.map((x) => el('div', { class: 'item', style: 'cursor:default' }, avatarCon(x), el('div', { class: 'crece nom' }, x.nombre),
+          el('button', { class: 'btn chico', type: 'button', onclick: () => responder(x, false) }, 'Rechazar'), el('button', { class: 'btn chico primario', type: 'button', onclick: () => responder(x, true) }, 'Aceptar'))))) : null,
+      el('div', { class: 'lista' }, activas.length ? activas.map((x) => el('a', { class: 'item', href: '#conexion/' + x.id }, avatarCon(x),
+        el('div', { class: 'crece' }, el('div', { class: 'nom' }, x.nombre), el('div', { class: 'sub' }, x.por_confirmar ? '🔔 ' + x.por_confirmar + ' por confirmar' : x.esperando ? '⏳ Esperando que confirme' : 'Toca para ver la cuenta')),
+        el('div', { class: 'monto ' + (x.saldo > 0 ? 'verde' : x.saldo < 0 ? 'rojo' : '') }, x.saldo > 0 ? 'Te debe ' + pesos(x.saldo) : x.saldo < 0 ? 'Le debes ' + pesos(-x.saldo) : 'Al día ✓')))
+        : el('div', { class: 'vacio' }, el('span', { class: 'ico' }, '🤝'), 'Aún no tienes conexiones.')),
+      enviadas.length ? el('div', { class: 'lista' }, enviadas.map((x) => el('div', { class: 'item', style: 'cursor:default' }, avatarCon(x),
+        el('div', { class: 'crece' }, el('div', { class: 'nom' }, x.nombre), el('div', { class: 'sub' }, '⏳ Esperando que acepte')), el('button', { class: 'btn chico', type: 'button', onclick: () => cerrar(x) }, 'Cancelar')))) : null,
+      d.pro ? el('div', { class: 'dos-col mt' },
+        el('div', { class: 'tarjeta' }, el('h2', null, 'Tu código'), codigo,
+          d.codigo ? el('div', { class: 'grid2 mt' }, el('button', { class: 'btn', type: 'button', onclick: () => copiar(codigoBonito(d.codigo), 'Código copiado ✓') }, '📋 Copiar'),
+            el('button', { class: 'btn wsp', type: 'button', onclick: () => abrir('https://wa.me/?text=' + encodeURIComponent('Conectemos nuestras billeteras en Libreta de Cobros para llevar las cuentas entre nosotros. Mi código es ' + codigoBonito(d.codigo) + ' (Más → Billeteras conectadas).')) }, '💬 Enviar'))
+            : el('button', { class: 'btn primario ancho mt', type: 'button', onclick: () => generar(false) }, 'Generar mi código'),
+          d.codigo ? el('button', { class: 'btn texto ancho', type: 'button', onclick: () => generar(true) }, '🔄 Cambiar código') : null,
+          el('p', { class: 'sutil' }, 'Compártelo solo con personas de confianza.')),
+        el('div', { class: 'tarjeta' }, el('h2', null, 'Conectar con alguien'), el('p', { class: 'sutil' }, 'Escribe el código de la otra persona. Le llega tu solicitud y, cuando acepte, quedan conectados.'),
+          inp, el('button', { class: 'btn primario ancho mt', type: 'button', onclick: conectar }, '🤝 Conectar'),
+          el('div', { class: 'mt' }, el('div', { class: 'fila entre' }, el('span', null, 'Conexiones'), el('strong', null, d.usadas + ' de ' + d.limite)),
+            el('div', { class: 'barra ' + (pct >= 100 ? 'lleno' : pct >= 80 ? 'alerta' : '') }, el('i', { style: 'width:' + pct + '%' }))),
+          el('button', { class: 'btn ancho mt', type: 'button', disabled: d.pago_pendiente, onclick: () => pedirMasConexiones(d) }, d.pago_pendiente ? '⏳ Pago en revisión' : '➕ Más conexiones'))) : null);
+  }
+
+  async function pedirMasConexiones(d) {
+    const cfg = S.st.config, tr = cfg.transferencia || {};
+    const sel = el('select', null, [1, 2, 3, 4, 5, 10].map((n) => el('option', { value: n }, '+' + n * d.paquete + ' conexiones · ' + pesos(n * d.precio_paquete) + ' al mes')));
+    const nota = el('input', { maxlength: 200, placeholder: 'Ej: transferí desde la cuenta de mi esposa' });
+    const ok = await dialogo('Más conexiones', el('div', null,
+      el('p', null, 'Cada ', el('strong', null, d.paquete + ' conexiones extra'), ' cuestan ', el('strong', null, pesos(d.precio_paquete) + ' al mes'), ' y se suman a tu mensualidad Pro.'),
+      el('div', { class: 'campo' }, el('label', null, '¿Cuántas quieres?'), sel),
+      cfg.link_pago ? el('button', { class: 'btn ancho', type: 'button', onclick: () => abrir(cfg.link_pago) }, '💳 Pagar en línea') : null,
+      tr.numero ? el('div', { class: 'tarjeta plana mt' }, [['Banco', tr.banco], ['Tipo', tr.tipo], ['Número', tr.numero], ['RUT', tr.rut], ['Nombre', tr.titular]].filter((x) => x[1]).map(([k, v]) =>
+        el('div', { class: 'copiar-fila' }, el('div', { class: 'crece' }, el('div', { class: 'k' }, k), el('div', { class: 'v' }, v)), el('button', { class: 'btn chico', type: 'button', onclick: () => copiar(String(v)) }, 'Copiar')))) : null,
+      el('div', { class: 'campo mt' }, el('label', null, 'Nota (opcional)'), nota),
+      el('p', { class: 'sutil' }, 'Paga y toca "Ya pagué". Apenas se apruebe, se suman a tu billetera.')),
+    [{ texto: 'Cancelar', valor: null }, { texto: '✅ Ya pagué', clase: 'primario', valor: true }]);
+    if (!ok) return;
+    try { await conCarga(() => rpc('pedir_conexiones', { p_paquetes: Number(sel.value), p_nota: nota.value })); toast('¡Gracias! Te avisaremos apenas se apruebe.'); vConexiones(); } catch (e) { error(e); }
+  }
+
+  async function vConexion(id) {
+    if (soloDueno()) return;
+    let d;
+    try { d = await conCarga(() => rpc('conexion_ver', { p_id: id })); } catch (e) { location.hash = 'conexiones'; return error(e); }
+    const anotar = async (tipo) => {
+      const monto = el('input', { type: 'number', inputmode: 'numeric', min: 1, placeholder: '0' }), desc = el('input', { maxlength: 120, placeholder: tipo === 'presto' ? 'Ej: para el gas' : 'Ej: abono de la semana' });
+      const err = el('div', { class: 'error' });
+      await dialogo(tipo === 'presto' ? 'Le presté a ' + d.nombre : 'Le pagué a ' + d.nombre, el('div', null,
+        el('div', { class: 'campo' }, el('label', null, 'Monto'), monto), el('div', { class: 'campo' }, el('label', null, 'Detalle (opcional)'), desc),
+        el('p', { class: 'sutil' }, d.nombre + ' tiene que confirmarlo para que cuente en el saldo.'), err),
+      [{ texto: 'Cancelar', valor: null }, { texto: 'Anotar', clase: 'primario', valor: true, antes: async () => {
+        const v = Math.round(Number(monto.value));
+        if (!v || v < 1) { err.textContent = 'Escribe el monto'; return false; }
+        try { await conCarga(() => rpc('conexion_anotar', { p_conexion: d.id, p_id: uuid(), p_tipo: tipo, p_monto: v, p_descripcion: desc.value })); return true; }
+        catch (e) { if (e.pista === 'PLAN') { error(e); return true; } err.textContent = LC.traducir(e).message; return false; }
+      } }]).then((ok) => { if (ok) { toast('Anotado ✓ Falta que ' + d.nombre + ' lo confirme.'); vConexion(id); } });
+    };
+    const resolver = async (mv, ok) => {
+      let motivo = null;
+      if (!ok) { motivo = await pedirTexto('Rechazar', 'Motivo (lo verá ' + d.nombre + ')', { min: 3, max: 150, boton: 'Rechazar', clase: 'rojo' }); if (!motivo) return; }
+      try { await conCarga(() => rpc('conexion_resolver', { p_mov: mv.id, p_confirmar: ok, p_motivo: motivo })); toast(ok ? 'Confirmado ✓' : 'Rechazado'); vConexion(id); } catch (e) { error(e); }
+    };
+    const anular = async (mv) => { if (await confirmar('Anular', '¿Anular lo que anotaste por ' + pesos(mv.monto) + '?', 'Anular', 'rojo')) { try { await rpc('conexion_anular', { p_mov: mv.id }); vConexion(id); } catch (e) { error(e); } } };
+    const texto = (mv) => mv.mio ? (mv.tipo === 'presto' ? 'Le prestaste' : 'Le pagaste') : (mv.tipo === 'presto' ? 'Te prestó' : 'Te pagó');
+    const tagEstado = { pendiente: ['naranjo', 'Por confirmar'], confirmado: ['verde', 'Confirmado'], rechazado: ['rojo', 'Rechazado'], anulado: ['', 'Anulado'] };
+    const porConfirmar = d.movs.filter((x) => x.estado === 'pendiente' && !x.mio);
+    pintar(
+      el('div', { class: 'fila mb' }, el('a', { class: 'btn-icono', href: '#conexiones', style: 'text-decoration:none', 'aria-label': 'Volver' }, '←'),
+        el('div', { class: 'avatar' + (d.icono ? ' emoji' : ''), style: d.icono ? '' : 'background:' + colorDe(d.nombre) }, d.icono || iniciales(d.nombre)), el('h2', { class: 'crece', style: 'margin:0' }, d.nombre)),
+      el('div', { class: 'tarjeta centro' }, el('div', { class: 'sutil' }, d.saldo > 0 ? d.nombre + ' te debe' : d.saldo < 0 ? 'Le debes a ' + d.nombre : 'Cuenta entre ustedes'),
+        el('div', { class: 'saldo-gigante ' + (d.saldo > 0 ? 'verde' : d.saldo < 0 ? 'rojo' : 'verde') }, d.saldo ? pesos(Math.abs(d.saldo)) : 'Al día ✓'),
+        el('div', { class: 'sutil' }, 'Solo cuenta lo confirmado por los dos.')),
+      d.estado !== 'activa' ? el('div', { class: 'banda aviso' }, 'Esperando que acepte la conexión.') : null,
+      d.estado === 'activa' ? (d.pro ? el('div', { class: 'grid2 mb' }, el('button', { class: 'btn primario', type: 'button', onclick: () => anotar('presto') }, '➕ Le presté'), el('button', { class: 'btn verde', type: 'button', onclick: () => anotar('pago') }, '💵 Le pagué'))
+        : conPro(el('div', { class: 'grid2 mb' }, el('button', { class: 'btn', type: 'button' }, '➕ Le presté'), el('button', { class: 'btn', type: 'button' }, '💵 Le pagué')), 'Para anotar en tus conexiones necesitas Pro.')) : null,
+      porConfirmar.length ? el('div', { class: 'tarjeta', style: 'border-color:var(--aviso)' }, el('h2', null, '🔔 Por confirmar'),
+        el('div', { class: 'lista' }, porConfirmar.map((mv) => el('div', { class: 'item', style: 'cursor:default' }, el('div', { class: 'crece' }, el('div', { class: 'nom' }, texto(mv) + ' ' + pesos(mv.monto)), el('div', { class: 'sub' }, (mv.descripcion ? mv.descripcion + ' · ' : '') + fechaHora(mv.creado))),
+          el('button', { class: 'btn chico', type: 'button', onclick: () => resolver(mv, false) }, 'Rechazar'), el('button', { class: 'btn chico verde', type: 'button', onclick: () => resolver(mv, true) }, 'Confirmar'))))) : null,
+      el('h3', null, 'Historial'),
+      el('div', { class: 'lista' }, d.movs.length ? d.movs.map((mv) => el('div', { class: 'item', style: 'cursor:default' + (mv.estado === 'anulado' || mv.estado === 'rechazado' ? ';opacity:.55' : '') },
+        el('div', { class: 'crece' }, el('div', { class: 'nom' }, texto(mv) + ' ' + pesos(mv.monto)), el('div', { class: 'sub' }, (mv.descripcion ? mv.descripcion + ' · ' : '') + fechaHora(mv.creado) + (mv.motivo ? ' · ' + mv.motivo : ''))),
+        el('span', { class: 'tag ' + tagEstado[mv.estado][0] }, tagEstado[mv.estado][1]),
+        mv.mio && mv.estado === 'pendiente' ? el('button', { class: 'btn-icono', type: 'button', 'aria-label': 'Anular', onclick: () => anular(mv) }, '🗑️') : null))
+        : el('div', { class: 'vacio' }, 'Aún no anotan nada.')),
+      el('button', { class: 'btn texto ancho mt', type: 'button', style: 'color:var(--deuda)', onclick: async () => {
+        if (!await confirmar('Desconectar', '¿Desconectarte de ' + d.nombre + '? El historial se guarda por si vuelven a conectarse.', 'Desconectar', 'rojo')) return;
+        try { await rpc('conexion_cerrar', { p_id: d.id }); toast('Desconectado'); location.hash = 'conexiones'; } catch (e) { error(e); }
+      } }, d.estado === 'activa' ? 'Desconectar' : 'Cancelar solicitud'));
   }
 
   // ================= SOPORTE: chat directo =================
