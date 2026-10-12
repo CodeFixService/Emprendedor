@@ -1,7 +1,8 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.4.0';
+  const VERSION = '1.5.0';
+  const BD = 6; // versión de la base de datos que necesita esta versión de la app
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
   const sb = global.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, {
@@ -218,7 +219,12 @@
     toast(aviso || 'Copiado ✓');
   }
   const wa = (tel, texto) => 'https://wa.me/' + String(tel || '').replace(/\D/g, '') + '?text=' + encodeURIComponent(texto);
-  function abrir(url) { const w = window.open(url, '_blank', 'noopener'); if (!w) location.href = url; }
+  // Abre en otra pestaña (WhatsApp, link de pago…). Con 'noopener' el navegador devuelve null aunque sí abra,
+  // por eso se corta el vínculo a mano; solo si de verdad se bloqueó se abre en la misma pestaña.
+  function abrir(url) {
+    const w = window.open(url, '_blank');
+    if (w) { try { w.opener = null; } catch (e) { /* nada */ } } else location.href = url;
+  }
 
   // ---------- Imágenes: se achican en el celular antes de subir ----------
   async function achicarImagen(archivo, maxLado, maxBytes) {
@@ -346,7 +352,7 @@
   }
 
   global.LC = {
-    VERSION, C, RAIZ, sb, $, el, vaciar, TEMAS, ICONOS, aplicarColor, pesos, fechaCorta, fechaLarga, hora, fechaHora, hoyISO, fechaISO, sumarDias, diasEntre, relativo, iniciales, colorDe, norm,
+    VERSION, BD, C, RAIZ, sb, $, el, vaciar, TEMAS, ICONOS, aplicarColor, pesos, fechaCorta, fechaLarga, hora, fechaHora, hoyISO, fechaISO, sumarDias, diasEntre, relativo, iniciales, colorDe, norm,
     V, ErrorApp, traducir, rpc, funcion, uuid, toast, cargando, conCarga, dialogo, confirmar, pedirTexto, error, copiar, wa, abrir,
     achicarImagen, blobADataURL, pushSoportado, suscribirPush, pushActual, esIOS, instalada, instalar, registrarSW, versionMenor, revisarVersion, actualizarAhora, repararApp,
     local, descargar, csv, excel, alPlan: null, alSesion: null, alBloqueo: null,

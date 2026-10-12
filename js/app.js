@@ -124,7 +124,7 @@
   async function sha(t) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('lc:' + S.uid + ':' + t)); return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join(''); }
 
   // ================= Datos =================
-  const COLS_CLI = 'id,nombre,apodo,telefono,rut,nota,limite,estado,bloqueado,fuera_de_plan,saldo,prox_venc,atrasado,puntaje,ultimo_mov,link_codigo,link_bloqueado,creado';
+  const COLS_CLI = 'id,nombre,apodo,telefono,rut,nota,limite,estado,bloqueado,fuera_de_plan,saldo,prox_venc,atrasado,puntaje,ultimo_mov,link_codigo,link_bloqueado,creado,link_pago';
   async function cargarClientes() {
     const { data, error: e } = await sb.from('clientes').select(COLS_CLI).neq('estado', 'borrado').order('nombre').limit(5000);
     if (e) throw LC.traducir(e);
@@ -378,19 +378,37 @@
         nuevo ? campo('Saldo que ya te debe (del cuaderno)', f.saldo) : null),
       nuevo ? el('label', { class: 'check', for: 'autoriza' }, f.autoriza, el('span', null, 'El cliente me autorizó a registrar sus datos para llevar su cuenta.')) : null,
       err);
+    // Los errores se muestran pegados al campo que hay que corregir (y la pantalla sube hasta él).
+    const enCampo = (input, msg) => { const e = new Error(msg); e.campo = input; return e; };
+    const revisar = (input, fn) => { try { return fn(); } catch (e) { throw enCampo(input, e.message); } };
+    const mostrarError = (e) => {
+      cont.querySelectorAll('.malo').forEach((x) => x.classList.remove('malo'));
+      cont.querySelectorAll('.error.de-campo').forEach((x) => x.remove());
+      const msg = LC.traducir(e).message;
+      const campo = e.campo || (/tel[eé]fono/i.test(msg) ? f.telefono : /\bRUT\b/.test(msg) ? f.rut : /\bPIN\b/.test(msg) ? f.pin : /saldo inicial/i.test(msg) ? f.saldo : /límite debe/i.test(msg) ? f.limite : null);
+      err.textContent = msg;
+      if (campo && campo.isConnected) {
+        const d = campo.closest('details'); if (d) d.open = true;
+        campo.classList.add('malo');
+        const caja = campo.closest('.campo');
+        if (caja) caja.append(el('div', { class: 'error de-campo' }, '⚠️ ' + msg));
+        campo.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        try { campo.focus({ preventScroll: true }); } catch (x) { /* nada */ }
+      } else err.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    };
     const ok = await dialogo(nuevo ? 'Nuevo cliente' : 'Editar cliente', cont, [{ texto: 'Cancelar', valor: null }, { texto: 'Guardar', clase: 'primario', valor: true, antes: async () => {
       err.textContent = '';
       try {
         const nombre = f.nombre.value.trim().replace(/\s+/g, ' ');
-        if (nombre.length < 2) throw new Error('El nombre debe tener entre 2 y 60 letras');
-        const tel = V.telefono(f.telefono.value); const rut = V.rut(f.rut.value);
+        if (nombre.length < 2) throw enCampo(f.nombre, 'El nombre debe tener entre 2 y 60 letras');
+        const tel = revisar(f.telefono, () => V.telefono(f.telefono.value)); const rut = revisar(f.rut, () => V.rut(f.rut.value));
         const lim = f.limite.value ? Math.round(Number(f.limite.value)) : null;
-        if (lim != null && (lim < 0 || lim > 5000000)) throw new Error('El límite debe ser entre $0 y $5.000.000');
+        if (lim != null && (lim < 0 || lim > 5000000)) throw enCampo(f.limite, 'El límite debe ser entre $0 y $5.000.000');
         if (nuevo) {
-          if (f.pin.value && !/^\d{4}$/.test(f.pin.value)) throw new Error('El PIN debe tener 4 números');
+          if (f.pin.value && !/^\d{4}$/.test(f.pin.value)) throw enCampo(f.pin, 'El PIN debe tener 4 números');
           const saldo = f.saldo.value ? Math.round(Number(f.saldo.value)) : 0;
-          if (saldo < 0 || saldo > 9999999) throw new Error('El saldo inicial debe ser entre $0 y $9.999.999');
-          if (!f.autoriza.checked) throw new Error('Marca que el cliente te autorizó');
+          if (saldo < 0 || saldo > 9999999) throw enCampo(f.saldo, 'El saldo inicial debe ser entre $0 y $9.999.999');
+          if (!f.autoriza.checked) throw enCampo(f.autoriza, 'Marca que el cliente te autorizó');
           local.set('lc-autoriza', true);
           const params = { p_nombre: nombre, p_apodo: f.apodo.value, p_telefono: tel, p_rut: rut, p_nota: f.nota.value, p_limite: lim, p_pin: f.pin.value || null, p_saldo_inicial: saldo, p_forzar: false, p_autorizado: true };
           let r = await conCarga(() => rpc('crear_cliente', params));
@@ -407,7 +425,7 @@
           await cargarClientes(); toast('Guardado ✓'); router(true);
         }
         return true;
-      } catch (e) { if (e.pista === 'PLAN') { error(e); return true; } err.textContent = LC.traducir(e).message; return false; }
+      } catch (e) { if (e.pista === 'PLAN') { error(e); return true; } mostrarError(e); return false; }
     } }]);
     return ok;
   }
@@ -513,7 +531,7 @@
     if (m.tipo !== 'ajuste') botones.push({ texto: '🧾 Recibo' + (prem() ? '' : ' 🔒'), valor: 'recibo' });
     if (puedeAnular) botones.push({ texto: m.venta ? 'Anular venta' : 'Anular', clase: 'peligro', valor: 'anular' });
     const info = el('div', null,
-      el('p', null, el('strong', null, (m.signo === 1 ? '+' : '−') + pesos(m.monto)), ' · ', m.descripcion || m.tipo),
+      el('p', null, el('strong', null, (m.signo === 1 ? '+' : '−') + pesos(m.monto)), ' · ', m.descripcion || (m.tipo === 'cargo' ? (m.venta ? 'Venta en cuotas' : 'Fiado') : m.tipo === 'abono' ? 'Abono' : 'Ajuste')),
       el('p', { class: 'sutil' }, 'Fecha: ' + fechaHora(m.fecha) + (m.vence && m.tipo === 'cargo' ? ' · Vence: ' + fechaCorta(m.vence) : '')),
       m.tipo === 'cargo' ? el('p', { class: 'sutil' }, m.confirmacion === 'reconocido' ? '✓ El cliente confirmó este cargo.' : m.confirmacion === 'reclamado' ? '⚠️ Reclamo del cliente: ' + (m.reclamo_motivo || '') : 'El cliente aún no lo confirma.') : null,
       !puedeAnular && !esDueno() ? el('p', { class: 'sutil' }, 'Como ayudante solo puedes anular lo tuyo en los primeros 10 minutos.') : null);
@@ -545,14 +563,17 @@
     if (!ventas.length) { cuerpo.append(el('div', { class: 'lista' }, el('div', { class: 'vacio' }, el('span', { class: 'ico' }, '📆'), 'Sin ventas en cuotas.'))); return; }
     for (const v of ventas) {
       const cs = (v.cuotas || []).sort((a, b) => a.numero - b.numero);
+      const sig = v.estado === 'activa' ? cs.find((q) => q.pagado < q.monto) : null;
       cuerpo.append(el('div', { class: 'tarjeta' + (v.estado === 'anulada' ? ' anulado' : ''), style: v.estado === 'anulada' ? 'opacity:.55' : '' },
         el('div', { class: 'fila entre' }, el('strong', null, v.descripcion), el('span', { class: 'tag ' + (v.estado === 'pagada' ? 'verde' : v.estado === 'anulada' ? '' : 'marca') }, v.estado)),
         el('div', { class: 'sutil' }, pesos(v.total) + (v.pie ? ' · pie ' + pesos(v.pie) : '') + ' · ' + v.n + ' cuotas ' + v.frecuencia + 's'),
         el('div', { class: 'lista mt' }, cs.map((q) => {
           const pagada = q.pagado >= q.monto, atr = !pagada && q.vence < hoy, pronto = !pagada && !atr && q.vence <= sumarDias(hoy, 3);
-          return el('div', { class: 'item', style: 'cursor:default' }, el('div', { class: 'crece' }, el('div', { class: 'nom' }, 'Cuota ' + q.numero + ' · ' + pesos(q.monto)),
+          const esSig = sig && q.numero === sig.numero, espera = !pagada && !esSig && v.estado === 'activa';
+          return el('div', { class: 'item', style: 'cursor:default' + (espera ? ';opacity:.6' : '') }, el('div', { class: 'crece' }, el('div', { class: 'nom' }, 'Cuota ' + q.numero + ' · ' + pesos(q.monto)),
             el('div', { class: 'sub' }, 'Vence ' + fechaCorta(q.vence) + (q.pagado && !pagada ? ' · pagado ' + pesos(q.pagado) : ''))),
-          el('span', { class: 'tag ' + (pagada ? 'verde' : atr ? 'rojo' : pronto ? 'naranjo' : '') }, pagada ? 'Pagada' : atr ? 'Atrasada' : pronto ? 'Por vencer' : 'Pendiente'));
+          el('span', { class: 'tag ' + (pagada ? 'verde' : atr ? 'rojo' : pronto ? 'naranjo' : '') }, pagada ? 'Pagada ✓' : espera ? '🔒 ' + (atr ? 'Atrasada' : 'Aún no') : atr ? 'Atrasada' : pronto ? 'Por vencer' : 'Pendiente'),
+          esSig ? el('button', { class: 'btn chico verde', type: 'button', onclick: () => marcarPagada(c, v, q) }, '✅ Marcar pagada') : null);
         })),
         v.estado !== 'anulada' && (esDueno() || v.creado_por === S.uid) ? el('button', { class: 'btn peligro chico mt', type: 'button', onclick: async () => {
           const mot = await pedirTexto('Anular venta en cuotas', 'Motivo', { min: 5, max: 100, boton: 'Anular', clase: 'rojo', ayuda: 'Si ya hubo abonos, quedan a favor del cliente o pagan otras deudas.' });
@@ -560,6 +581,33 @@
           try { await conCarga(() => rpc('anular_venta_cuotas', { p_venta: v.id, p_motivo: mot })); await cargarClientes(); toast('Venta anulada'); router(true); } catch (er) { error(er); }
         } }, 'Anular venta') : null));
     }
+  }
+
+  // El cliente pagó la cuota que toca: el servidor calcula cuánto falta para dejarla pagada y anota el abono.
+  async function marcarPagada(c, v, q) {
+    let pre;
+    try { pre = await conCarga(() => rpc('pagar_cuota', { p_id: uuid(), p_venta: v.id, p_numero: q.numero, p_medio: 'efectivo', p_confirmar: false })); } catch (e) { return error(e); }
+    let medio = 'transferencia';
+    const chips = el('div', { class: 'chips' });
+    const pintarM = () => { vaciar(chips).append(...[['transferencia', '🏦 Transferencia'], ['efectivo', '💵 Efectivo'], ['otro', '💳 Link de pago']].map(([k, t]) =>
+      el('button', { type: 'button', class: 'chip' + (medio === k ? ' activo' : ''), onclick: () => { medio = k; pintarM(); } }, t))); };
+    pintarM();
+    const ok = await dialogo('Cuota ' + q.numero + ' de ' + v.n + ' pagada', el('div', null,
+      el('p', { class: 'sutil' }, c.nombre + ' · ' + v.descripcion),
+      el('div', { class: 'saldo-gigante verde', style: 'font-size:1.9em' }, pesos(pre.monto)),
+      pre.previo > 0 ? el('p', { class: 'naranjo' }, 'Incluye ' + pesos(pre.previo) + ' de una deuda más antigua: los pagos siempre cubren primero lo más antiguo.') : null,
+      el('h3', null, '¿Cómo te pagó?'), chips,
+      el('p', { class: 'sutil mt' }, 'Se anota como abono y se habilita la cuota siguiente.')),
+    [{ texto: 'Cancelar', valor: null }, { texto: 'Confirmar pago', clase: 'primario', valor: true }]);
+    if (!ok) return;
+    try {
+      const r = await conCarga(() => rpc('pagar_cuota', { p_id: uuid(), p_venta: v.id, p_numero: q.numero, p_medio: medio, p_confirmar: true }));
+      await cargarClientes();
+      const c2 = cliente(c.id) || c;
+      const mov = { tipo: 'abono', signo: -1, monto: r.monto, fecha: new Date().toISOString(), medio: medio === 'otro' ? 'link de pago' : medio, descripcion: 'Cuota ' + q.numero + ' de ' + v.n + ' · ' + v.descripcion };
+      toast('Cuota ' + q.numero + ' pagada ✓ · Saldo ' + pesos(r.saldo), { accion: { texto: '🧾 Recibo' + (prem() ? '' : ' 🔒'), fn: () => enviarRecibo(mov, c2) } });
+      refrescarEstado().catch(() => {}); router(true);
+    } catch (e) { error(e); }
   }
 
   function calendario(total, pie, n, frec, primera) {
@@ -628,10 +676,16 @@
       el('div', { class: 'tarjeta' },
         dato('Teléfono', V.telBonito(c.telefono) || '—'), dato('RUT', c.rut ? V.rutBonito(c.rut) : '—'), dato('Nota interna', c.nota || '—'),
         dato('Límite de fiado', c.limite ? pesos(c.limite) : S.neg.limite_general ? pesos(S.neg.limite_general) + ' (general)' : 'Sin límite'),
+        dato('Link de pago', prem() && c.link_pago ? c.link_pago : S.neg.link_pago ? 'El general de tus Ajustes' : 'Sin link (agrégalo en Ajustes)'),
         dato('Cliente desde', fechaCorta(c.creado))),
       el('div', { class: 'lista' },
         acc('✏️ Editar datos', () => formCliente(c)),
         acc('🔗 Link y PIN', () => compartirLink(c.id)),
+        conPro(acc('💳 Link de pago propio de este cliente', async () => {
+          const v = await pedirTexto('Link de pago de ' + c.nombre, 'Link (Mercado Pago u otro)', { valor: c.link_pago || '', max: 300, placeholder: 'https://mpago.la/…', ayuda: 'Vacío = usa el link general de tus Ajustes. Útil si cada cliente paga un monto distinto.' });
+          if (v == null) return;
+          try { await conCarga(() => rpc('guardar_link_pago_cliente', { p_id: c.id, p_link: v })); await cargarClientes(); toast(v ? 'Link de pago guardado ✓' : 'Usará el link general ✓'); router(true); } catch (e) { error(e); }
+        }), 'El link de pago propio por cliente es Pro. El link general de tus Ajustes es gratis.'),
         c.fuera_de_plan ? acc('🔓 Incluir en el plan (si hay cupo)', () => est('incluir', 'Cliente incluido ✓')) : null,
         c.estado === 'activo' && !c.fuera_de_plan ? (c.bloqueado ? acc('✅ Permitir fiar de nuevo', () => est('desbloquear', 'Listo ✓')) : acc('🚫 Solo cobro (no fiarle más)', () => est('bloquear', 'Ahora es solo cobro'))) : null,
         c.estado === 'archivado' ? acc('♻️ Reactivar', () => est('reactivar', 'Cliente reactivado ✓')) : acc('🗄️ Archivar (con saldo $0)', () => est('archivar', 'Cliente archivado ✓')),
@@ -678,15 +732,60 @@
 
   // ---------- Cobrar ----------
   const PLANTILLAS = {
-    amable: '¡Hola {nombre}! 😊 Te escribo de {negocio}. Tu saldo pendiente es de {saldo}. Puedes ver el detalle y pagar por transferencia aquí: {link}{pin} ¡Gracias!',
-    neutral: 'Hola {nombre}, te recordamos que en {negocio} tienes un saldo de {saldo}{fecha}. Detalle y datos para pagar: {link}',
-    firme: 'Hola {nombre}. Tu cuenta en {negocio} tiene {saldo} pendiente{fecha}. Te pedimos ponerte al día o escribirnos para acordar una fecha. Detalle: {link}',
+    amable: '¡Hola {nombre}! 😊 Te escribo de {negocio}. {cobro}',
+    neutral: 'Hola {nombre}, te recordamos de parte de {negocio}: {cobro}',
+    firme: 'Hola {nombre}. Te escribimos de {negocio}. {cobro} Te pedimos ponerte al día o escribirnos para acordar una fecha.',
   };
-  function armarMensaje(tono, c) {
-    const base = tono === 'propio' ? (S.neg.plantilla_propia || PLANTILLAS.amable) : PLANTILLAS[tono];
-    return base.replace(/\{nombre\}/g, primerNombre(c.nombre)).replace(/\{negocio\}/g, S.neg.nombre).replace(/\{saldo\}/g, pesos(c.saldo))
-      .replace(/\{link\}/g, linkDe(c)).replace(/\{pin\}/g, S.neg.pin_activo ? ' (tu PIN son los últimos 4 dígitos de tu teléfono).' : '')
-      .replace(/\{fecha\}/g, c.prox_venc && c.atrasado ? ', vencido desde el ' + fechaCorta(c.prox_venc) : c.prox_venc ? ', con vencimiento el ' + fechaCorta(c.prox_venc) : '');
+  const linkPagoDe = (c) => (prem() && c.link_pago) || S.neg.link_pago || '';
+  const incluirCuenta = () => local.get('lc-incluir-cuenta', true);
+  // La próxima cuota por pagar de cada cliente (la más antigua sin pagar de sus ventas activas).
+  async function proximasCuotas(clienteId) {
+    let q = sb.from('ventas_cuotas').select('id,cliente,descripcion,n,cuotas(numero,monto,pagado,vence)').eq('estado', 'activa');
+    if (clienteId) q = q.eq('cliente', clienteId);
+    const { data, error: e } = await q;
+    if (e) throw LC.traducir(e);
+    const m = {};
+    for (const v of data || []) for (const k of v.cuotas || []) {
+      if (k.pagado >= k.monto) continue;
+      const x = { venta: v.id, numero: k.numero, n: v.n, descripcion: v.descripcion, pendiente: k.monto - k.pagado, vence: k.vence };
+      const y = m[v.cliente];
+      if (!y || x.vence < y.vence || (x.vence === y.vence && x.numero < y.numero)) m[v.cliente] = x;
+    }
+    return m;
+  }
+  function textoCobro(c, q) {
+    if (q) {
+      return 'Tu cuota ' + q.numero + ' de ' + q.n + ' (' + q.descripcion + ') es de ' + pesos(q.pendiente) + (q.vence < hoyISO() ? ', vencida desde el ' : ', con vencimiento el ') + fechaCorta(q.vence) + '.'
+        + (c.saldo > q.pendiente ? ' Tu saldo total es de ' + pesos(c.saldo) + '.' : '');
+    }
+    return 'Tu saldo pendiente es de ' + pesos(c.saldo) + (c.prox_venc && c.atrasado ? ', vencido desde el ' + fechaCorta(c.prox_venc) : c.prox_venc ? ', con vencimiento el ' + fechaCorta(c.prox_venc) : '') + '.';
+  }
+  // Mensaje de cobro: monto (cuota que toca o saldo), link de pago, datos de transferencia y, si se quiere, el link para ver su cuenta.
+  function armarMensaje(tono, c, info) {
+    info = info || {};
+    const q = info.cuota, pago = linkPagoDe(c), b = S.neg.banco || {};
+    const cuenta = info.cuenta !== false && c.link_codigo ? linkDe(c) : '';
+    const pinTxt = cuenta && S.neg.pin_activo ? ' (tu PIN son los últimos 4 dígitos de tu teléfono)' : '';
+    const propia = tono === 'propio' && S.neg.plantilla_propia ? S.neg.plantilla_propia : null;
+    let t;
+    if (propia) {
+      t = propia.replace(/\{saldo\}/g, pesos(c.saldo)).replace(/\{cuota\}/g, pesos(q ? q.pendiente : c.saldo))
+        .replace(/\{fecha\}/g, c.prox_venc && c.atrasado ? ', vencido desde el ' + fechaCorta(c.prox_venc) : c.prox_venc ? ', con vencimiento el ' + fechaCorta(c.prox_venc) : '')
+        .replace(/\{link\}/g, cuenta ? cuenta + pinTxt : '').replace(/\{pago\}/g, pago);
+    } else {
+      const cobro = textoCobro(c, q);
+      t = (PLANTILLAS[tono] || PLANTILLAS.amable).replace('{cobro}', tono === 'neutral' ? cobro.charAt(0).toLowerCase() + cobro.slice(1) : cobro);
+    }
+    t = t.replace(/\{nombre\}/g, primerNombre(c.nombre)).replace(/\{negocio\}/g, S.neg.nombre);
+    const extra = [];
+    if (pago && !(propia && propia.includes('{pago}'))) extra.push('💳 Paga aquí: ' + pago);
+    if (b.numero) extra.push('🏦 ' + (pago ? 'O transfiere a: ' : 'Transfiere a: ') + [b.banco, b.tipo, 'N° ' + b.numero, b.rut ? 'RUT ' + V.rutBonito(b.rut) : '', b.titular].filter(Boolean).join(' · '));
+    if (cuenta && !(propia && propia.includes('{link}'))) extra.push('📋 Ve tu cuenta aquí: ' + cuenta + pinTxt);
+    return t + (extra.length ? '\n\n' + extra.join('\n') : '') + (tono === 'amable' && !propia ? '\n\n¡Gracias!' : '');
+  }
+  function casillaCuenta(alCambiar) {
+    const chk = el('input', { type: 'checkbox', id: 'inclCuenta', checked: incluirCuenta(), onchange: () => { local.set('lc-incluir-cuenta', chk.checked); alCambiar(); } });
+    return el('label', { class: 'check mt', for: 'inclCuenta' }, chk, el('span', null, 'Incluir el link para ver su cuenta ', el('span', { class: 'sutil' }, '(con PIN)')));
   }
   async function cobrar(id) {
     const c = cliente(id); if (!c) return;
@@ -701,21 +800,24 @@
       return;
     }
     let tono = 'amable';
-    const prev = el('div', { class: 'tarjeta plana', style: 'white-space:pre-wrap' });
+    const info = { cuota: (await proximasCuotas(id).catch(() => ({})))[id], cuenta: incluirCuenta() };
+    const prev = el('div', { class: 'tarjeta plana', style: 'white-space:pre-wrap;word-break:break-word' });
     const tonos = el('div', { class: 'segmento' });
     const pintarT = () => { vaciar(tonos); [['amable', 'Amable'], ['neutral', 'Neutral'], ['firme', 'Firme'], ['propio', 'Propio']].forEach(([v, t]) => {
       const bloqueado = v !== 'amable' && !prem(); if (v === 'propio' && prem() && !S.neg.plantilla_propia) return;
       tonos.append(el('button', { type: 'button', class: (tono === v ? 'activo' : '') + (bloqueado ? ' bloq-pro' : ''), onclick: () => { if (bloqueado) return alPlan('Los tonos neutral, firme y tu mensaje propio son Pro.'); tono = v; pintarT(); } }, t + (bloqueado ? ' 🔒' : '')));
-    }); prev.textContent = armarMensaje(tono, c); };
+    }); prev.textContent = armarMensaje(tono, c, info); };
     pintarT();
+    const casilla = casillaCuenta(() => { info.cuenta = incluirCuenta(); pintarT(); });
     const botones = [{ texto: 'Cancelar', valor: null }];
     if (p.push) botones.push({ texto: '🔔 Aviso', valor: 'push' });
     botones.push({ texto: '💬 WhatsApp', clase: 'wsp', valor: 'wsp' });
-    const r = await dialogo('Cobrar a ' + c.nombre, el('div', null, tonos, el('div', { class: 'mt' }, prev),
+    const r = await dialogo('Cobrar a ' + c.nombre, el('div', null, tonos, el('div', { class: 'mt' }, prev), casilla,
+      !linkPagoDe(c) && esDueno() ? el('p', { class: 'sutil' }, '💡 Agrega tu link de pago en Ajustes y saldrá aquí.') : null,
       !c.telefono ? el('p', { class: 'rojo' }, 'Este cliente no tiene teléfono. Agrégalo en sus datos.') : null,
       el('p', { class: 'sutil' }, 'Se registra como recordatorio de cobro (máximo 2 por semana).')), botones);
     if (!r) return;
-    const texto = armarMensaje(tono, c);
+    const texto = armarMensaje(tono, c, info);
     try {
       const res = await conCarga(() => rpc('registrar_recordatorio', { p_cliente: id, p_canal: r === 'push' ? 'push' : 'whatsapp', p_tono: tono, p_texto: texto }));
       if (!res.ok) { toast(res.motivo + ' Próximo: ' + fechaLarga(res.proxima), { error: true, ms: 6000 }); return; }
@@ -1114,6 +1216,7 @@
       tipo: el('select', null, el('option', { value: '' }, 'Tipo de cuenta'), ['Cuenta Corriente', 'Cuenta Vista / RUT', 'Cuenta de Ahorro'].map((x) => el('option', { selected: x === b.tipo }, x))),
       numero: el('input', { inputmode: 'numeric', value: b.numero || '', maxlength: 20 }), rut: el('input', { value: b.rut ? V.rutBonito(b.rut) : '', placeholder: '12.345.678-5' }),
       titular: el('input', { maxlength: 60, value: b.titular || '' }), email: el('input', { type: 'email', value: b.email || '', inputmode: 'email' }),
+      linkPago: el('input', { type: 'url', inputmode: 'url', maxlength: 300, value: n.link_pago || '', placeholder: 'https://mpago.la/…' }),
       venc: el('select', null, [['0', 'El mismo día'], ['7', '7 días'], ['15', '15 días'], ['30', '30 días'], ['fin', 'Fin de mes']].map(([v, t]) => el('option', { value: v, selected: v === n.venc_defecto }, t))),
       limite: el('input', { type: 'number', inputmode: 'numeric', min: 0, max: 5000000, value: n.limite_general || '' }),
       pin: el('input', { type: 'checkbox', id: 'pinAct', checked: n.pin_activo }), favor: el('input', { type: 'checkbox', id: 'favor', checked: n.saldo_a_favor }),
@@ -1123,7 +1226,7 @@
     const err = el('div', { class: 'error' });
     const campo = (t, i, a) => el('div', { class: 'campo' }, el('label', null, t), i, a ? el('div', { class: 'ayuda' }, a) : null);
     const premiumBloque = prem() ? el('div', { class: 'tarjeta' }, el('h2', null, '⭐ Tu mensaje de cobro'),
-      campo('Mensaje propio', f.plantilla, 'Usa {nombre}, {negocio}, {saldo}, {fecha} y {link}. No se aceptan amenazas (lo prohíbe la ley).'),
+      campo('Mensaje propio', f.plantilla, 'Usa {nombre}, {negocio}, {saldo}, {cuota}, {fecha}, {pago} (link de pago) y {link} (su cuenta). No se aceptan amenazas (lo prohíbe la ley).'),
       el('a', { class: 'btn chico', href: '#apariencia' }, '🎨 Color e ícono'))
       : conPro(el('div', { class: 'tarjeta' }, el('h2', null, 'Tu mensaje de cobro'), el('p', { class: 'sutil' }, 'Escribe tu propio mensaje para cobrar por WhatsApp, con tu estilo.')), 'El mensaje de cobro propio es Pro.');
     pintar(el('h2', null, 'Ajustes del negocio'),
@@ -1131,9 +1234,10 @@
         el('div', null,
           el('div', { class: 'tarjeta' }, el('h2', null, 'Tu negocio'), campo('Nombre', f.nombre), campo('Rubro', f.rubro), campo('WhatsApp del negocio', f.whatsapp, 'Tus clientes te escriben aquí desde su link.')),
           el('div', { class: 'tarjeta' }, el('h2', null, 'Datos para que te transfieran'), el('p', { class: 'sutil' }, 'Tus clientes los ven en su link con un botón para copiar.'),
+            campo('Link de pago (Mercado Pago u otro)', f.linkPago, 'Va en tus mensajes de cobro y en el link de tus clientes con un botón "Pagar ahora".'),
             campo('Banco', f.banco), campo('Tipo de cuenta', f.tipo), campo('Número de cuenta', f.numero), campo('RUT del titular', f.rut), campo('Nombre del titular', f.titular), campo('Correo para avisar la transferencia', f.email))),
         el('div', null,
-          el('div', { class: 'tarjeta' }, el('h2', null, 'Reglas de fiado'), campo('Vencimiento por defecto', f.venc), campo('Límite de fiado general', f.limite, '0 o vacío = sin límite. Te avisa al pasarlo; los ayudantes no pueden pasarlo.'),
+          el('div', { class: 'tarjeta' }, el('h2', null, 'Reglas de fiado'), campo('Vencimiento por defecto', f.venc), campo('Límite de fiado general', f.limite, '0 o vacío = sin límite. Te avisa cuando un cliente lo pasa.'),
             el('label', { class: 'check', for: 'pinAct' }, f.pin, el('span', null, 'Pedir PIN en el link del cliente ', el('span', { class: 'sutil' }, '(recomendado por privacidad)'))),
             el('label', { class: 'check', for: 'favor' }, f.favor, el('span', null, 'Permitir saldo a favor (abonos mayores a la deuda)'))),
           premiumBloque)),
@@ -1145,7 +1249,7 @@
           const datos = { nombre: f.nombre.value, rubro: f.rubro.value, whatsapp: V.telefono(f.whatsapp.value),
             banco: { banco: f.banco.value || null, tipo: f.tipo.value || null, numero: f.numero.value.replace(/\D/g, '') || null, rut: V.rut(f.rut.value), titular: f.titular.value || null, email: f.email.value.trim() || null },
             venc_defecto: f.venc.value, limite_general: f.limite.value ? Math.round(Number(f.limite.value)) : 0, pin_activo: f.pin.checked, saldo_a_favor: f.favor.checked,
-            plantilla_propia: f.plantilla.value || null };
+            plantilla_propia: f.plantilla.value || null, link_pago: f.linkPago.value.trim() || null };
           if (datos.banco.email && !V.email(datos.banco.email)) throw new Error('Correo de transferencia inválido');
           if (prem() && datos.plantilla_propia && V.prohibida(datos.plantilla_propia)) throw new Error('El mensaje no puede contener "' + V.prohibida(datos.plantilla_propia) + '"');
           await conCarga(() => rpc('guardar_negocio', { p: datos }));
@@ -1543,7 +1647,7 @@
         'Cobrar a todos de una es Pro.'));
       return;
     }
-    const lista = await conCarga(() => rpc('cobranza_lote'));
+    const [lista, cuotas] = await conCarga(() => Promise.all([rpc('cobranza_lote'), proximasCuotas().catch(() => ({}))]));
     const clave = 'lc-lote-' + S.uid + '-' + hoyISO();
     const enviados = new Set(local.get(clave, []));
     const total = lista.reduce((a, x) => a + x.saldo, 0);
@@ -1553,9 +1657,9 @@
       const hecho = enviados.has(x.id);
       return el('div', { class: 'item', style: 'cursor:default' + (hecho ? ';opacity:.55' : '') }, avatar(x.nombre),
         el('a', { class: 'crece', href: '#cliente/' + x.id, style: 'color:inherit;text-decoration:none' }, el('div', { class: 'nom' }, x.nombre),
-          el('div', { class: 'sub ' + (x.atrasado ? 'rojo' : '') }, pesos(x.saldo) + (x.atrasado ? ' · atrasado' : x.prox_venc ? ' · vence ' + fechaCorta(x.prox_venc) : ''))),
+          el('div', { class: 'sub ' + (x.atrasado ? 'rojo' : '') }, (cuotas[x.id] ? 'Cuota ' + cuotas[x.id].numero + ' de ' + cuotas[x.id].n + ': ' + pesos(cuotas[x.id].pendiente) + ' · debe ' : '') + pesos(x.saldo) + (x.atrasado ? ' · atrasado' : x.prox_venc ? ' · vence ' + fechaCorta(x.prox_venc) : ''))),
         hecho ? el('span', { class: 'tag verde' }, 'Enviado ✓') : el('button', { class: 'btn chico wsp', type: 'button', onclick: async (e) => {
-          const texto = armarMensaje(tonoLote, c);
+          const texto = armarMensaje(tonoLote, c, { cuota: cuotas[x.id], cuenta: incluirCuenta() });
           try {
             const r = await rpc('registrar_recordatorio', { p_cliente: x.id, p_canal: 'whatsapp', p_tono: tonoLote, p_texto: texto });
             if (!r.ok) { toast(r.motivo, { error: true }); return; }
@@ -1570,18 +1674,19 @@
         tonos.append(el('button', { type: 'button', class: tonoLote === v ? 'activo' : '', onclick: () => { tonoLote = v; pintarL(); } }, t));
       });
       const hoy = lista.filter((x) => x.ok && x.telefono), sinTel = lista.filter((x) => !x.telefono), despues = lista.filter((x) => x.telefono && !x.ok);
-      vaciar(cuerpo).append(
+      vaciar(cuerpo).append(...[
         el('h3', null, 'Puedes cobrar hoy (' + hoy.length + ')'),
         el('div', { class: 'lista' }, hoy.length ? hoy.map(fila) : el('div', { class: 'vacio' }, 'Nadie para hoy. ' + (lista.length ? 'Mira abajo cuándo puedes volver a cobrar.' : '🎉 Nadie te debe.'))),
         despues.length ? [el('h3', null, 'Todavía no, por la ley de cobranza (' + despues.length + ')'), el('div', { class: 'lista' }, despues.map((x) => el('a', { class: 'item', href: '#cliente/' + x.id }, avatar(x.nombre),
           el('div', { class: 'crece' }, el('div', { class: 'nom' }, x.nombre), el('div', { class: 'sub' }, 'Desde el ' + fechaLarga(x.proxima) + ' · ' + (x.motivo || ''))), el('span', { class: 'monto rojo' }, pesos(x.saldo)))))] : null,
         sinTel.length ? [el('h3', null, 'Sin teléfono (' + sinTel.length + ')'), el('div', { class: 'lista' }, sinTel.map((x) => el('a', { class: 'item', href: '#cliente/' + x.id + '/datos' }, avatar(x.nombre),
-          el('div', { class: 'crece' }, el('div', { class: 'nom' }, x.nombre), el('div', { class: 'sub' }, 'Agrégale un teléfono para cobrarle')), el('span', { class: 'monto rojo' }, pesos(x.saldo)))))] : null);
+          el('div', { class: 'crece' }, el('div', { class: 'nom' }, x.nombre), el('div', { class: 'sub' }, 'Agrégale un teléfono para cobrarle')), el('span', { class: 'monto rojo' }, pesos(x.saldo)))))] : null,
+      ].flat().filter(Boolean));
     };
     pintar(el('h2', null, '📣 Cobrar a todos de una'),
       el('div', { class: 'kpi hero mb' }, el('div', { class: 't' }, 'Te deben en total'), el('div', { class: 'grande' }, pesos(total)), el('div', { class: 't' }, lista.length + ' clientes con deuda')),
       el('p', { class: 'sutil' }, 'Elige el tono y toca "Enviar" en cada uno: se abre WhatsApp con el mensaje listo. La app respeta la ley (lunes a sábado de 08:00 a 20:00, máximo 2 por semana).'),
-      tonos, cuerpo);
+      tonos, casillaCuenta(() => {}), cuerpo);
     pintarL();
   }
 

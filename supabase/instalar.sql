@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '5'),
+  ('version_bd', '6'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -404,6 +404,10 @@ do $$ begin
   end if;
 end $$;
 
+-- ---------- v6: link de pago (general del negocio y uno propio por cliente) ----------
+alter table public.negocios add column if not exists link_pago text check (link_pago is null or (char_length(link_pago) <= 300 and link_pago ~ '^https://'));
+alter table public.clientes add column if not exists link_pago text check (link_pago is null or (char_length(link_pago) <= 300 and link_pago ~ '^https://'));
+
 -- =====================================================================
 --  AYUDANTES INTERNOS (esquema privado: no se pueden llamar desde la app)
 -- =====================================================================
@@ -786,6 +790,7 @@ create or replace function public.config_publica() returns jsonb language sql st
     'transferencia', a.transferencia, 'contacto_whatsapp', a.contacto_whatsapp, 'dias_prueba', a.dias_prueba,
     'lim_normal', a.lim_normal, 'lim_premium', a.lim_premium, 'version_legal', a.version_legal, 'version_min', a.version_min,
     'version_liberada', a.version_liberada,
+    'version_bd', (select valor::int from privado.config where clave = 'version_bd'),
     'vapid_public', (select valor from privado.secretos where nombre = 'vapid_public'))
   from public.ajustes a where a.id = 1
 $$;
@@ -818,7 +823,7 @@ begin
     'terminos_ok', per.terminos_version >= a.version_legal,
     'negocio', jsonb_build_object('id', n.id, 'nombre', n.nombre, 'rubro', n.rubro, 'whatsapp', n.whatsapp, 'banco', n.banco,
       'venc_defecto', n.venc_defecto, 'limite_general', n.limite_general, 'pin_activo', n.pin_activo, 'saldo_a_favor', n.saldo_a_favor,
-      'icono', n.icono, 'color', n.color, 'plantilla_propia', n.plantilla_propia, 'estado', n.estado,
+      'icono', n.icono, 'color', n.color, 'plantilla_propia', n.plantilla_propia, 'estado', n.estado, 'link_pago', n.link_pago,
       'motivo_suspension', n.motivo_suspension, 'creado', n.creado),
     'plan', jsonb_build_object('estado', privado.estado_plan(v_neg), 'premium', prem, 'hasta', n.premium_hasta,
       'en_prueba', privado.estado_plan(v_neg) = 'prueba', 'prueba_hasta', n.prueba_hasta, 'activado', n.activado,
@@ -918,6 +923,7 @@ begin
   update public.negocios set nombre = v_nombre, rubro = coalesce(p ->> 'rubro', 'otro'), whatsapp = privado.telefono(p ->> 'whatsapp'),
     banco = v_banco, venc_defecto = coalesce(p ->> 'venc_defecto', '7'), limite_general = v_lim,
     pin_activo = coalesce((p ->> 'pin_activo')::boolean, true), saldo_a_favor = coalesce((p ->> 'saldo_a_favor')::boolean, false),
+    link_pago = case when p ? 'link_pago' then privado.url_pago(p ->> 'link_pago') else link_pago end,
     plantilla_propia = case when prem then v_plant else plantilla_propia end
    where id = v_neg;
   update public.miembros set nombre = v_nombre where negocio = v_neg and rol = 'dueno';
@@ -930,6 +936,70 @@ begin
   if v_ico is not null and (char_length(v_ico) > 16 or v_ico ~ '[<>&"''a-zA-Z0-9]') then perform privado.fallo('Ícono inválido'); end if;
   if p_color is not null and p_color not in (select unnest(privado.colores())) then perform privado.fallo('Color inválido'); end if;
   update public.negocios set icono = v_ico, color = p_color where id = v_neg;
+end $$;
+
+-- Link de pago (Mercado Pago u otro): solo https, sin espacios. Si viene sin https:// se lo agrega.
+create or replace function privado.url_pago(p text) returns text language plpgsql as $$
+declare v text := nullif(btrim(coalesce(p, '')), '');
+begin
+  if v is null then return null; end if;
+  v := regexp_replace(v, '^http://', '', 'i');
+  if v !~* '^https://' then v := 'https://' || v; end if;
+  if char_length(v) > 300 or v !~ '^https://[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+(:[0-9]+)?([/?#][^\s<>"]*)?$' then
+    perform privado.fallo('El link de pago no es válido. Cópialo completo, por ejemplo https://mpago.la/abc123');
+  end if;
+  return v;
+end $$;
+
+-- Link de pago propio de un cliente (Pro). Vacío = usa el link general del negocio.
+create or replace function public.guardar_link_pago_cliente(p_id uuid, p_link text) returns void language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir();
+begin
+  if not privado.es_premium(v_neg) then perform privado.fallo('El link de pago propio por cliente es Pro.', 'PLAN'); end if;
+  update public.clientes set link_pago = privado.url_pago(p_link) where id = p_id and negocio = v_neg and estado <> 'borrado';
+  if not found then perform privado.fallo('Cliente no encontrado'); end if;
+end $$;
+
+-- Marcar pagada una cuota: calcula cuánto falta para dejarla pagada (los abonos pagan primero lo más antiguo)
+-- y, si p_confirmar, anota ese abono. La cuota anterior de la misma venta debe estar pagada.
+create or replace function public.pagar_cuota(p_id uuid, p_venta uuid, p_numero int, p_medio text, p_confirmar boolean) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(); v record; q record; r record; credito bigint; hasta bigint := 0; v_monto bigint; v_prev bigint;
+begin
+  select * into v from public.ventas_cuotas where id = p_venta and negocio = v_neg;
+  if not found or v.estado = 'anulada' then perform privado.fallo('Venta en cuotas no encontrada'); end if;
+  perform privado.recalcular(v.cliente);
+  select * into q from public.cuotas where venta = p_venta and numero = p_numero;
+  if not found then perform privado.fallo('Cuota no encontrada'); end if;
+  if q.pagado >= q.monto then perform privado.fallo('Esa cuota ya está pagada'); end if;
+  if exists (select 1 from public.cuotas where venta = p_venta and numero < p_numero and pagado < monto) then
+    perform privado.fallo('Primero marca pagada la cuota anterior');
+  end if;
+  select coalesce(sum(monto), 0) into credito from public.movimientos where cliente = v.cliente and anulado_at is null and signo = -1;
+  for r in
+    select 'm'::text k, m.id, 0 num, m.monto::bigint monto, coalesce(m.vence, (m.fecha at time zone 'America/Santiago')::date) due, m.fecha ord
+      from public.movimientos m
+     where m.cliente = v.cliente and m.anulado_at is null and m.signo = 1 and m.venta is null
+    union all
+    select 'c', c.venta, c.numero, c.monto, c.vence, vc.creado
+      from public.cuotas c join public.ventas_cuotas vc on vc.id = c.venta
+     where vc.cliente = v.cliente and vc.estado <> 'anulada'
+    order by due, ord, num
+  loop
+    hasta := hasta + r.monto;
+    exit when r.k = 'c' and r.id = p_venta and r.num = p_numero;
+  end loop;
+  v_monto := hasta - credito;
+  if v_monto <= 0 then perform privado.fallo('Esa cuota ya está cubierta'); end if;
+  if v_monto > 9999999 then perform privado.fallo('El monto supera $9.999.999: anótalo como abonos separados.'); end if;
+  v_prev := greatest(v_monto - (q.monto - q.pagado), 0);
+  if not coalesce(p_confirmar, false) then
+    return jsonb_build_object('ok', false, 'monto', v_monto, 'cuota', q.monto - q.pagado, 'previo', v_prev, 'numero', q.numero, 'n', v.n, 'descripcion', v.descripcion);
+  end if;
+  if coalesce(p_medio, '') not in ('efectivo', 'transferencia', 'otro') then perform privado.fallo('Medio de pago inválido'); end if;
+  return privado.mov_insertar(v_neg, p_id, v.cliente, 'abono', v_monto::int, null,
+      'Cuota ' || q.numero || ' de ' || v.n || ' · ' || v.descripcion || case when p_medio = 'otro' then ' (link de pago)' else '' end,
+      p_medio, null, null, null, false, true) || jsonb_build_object('monto', v_monto);
 end $$;
 
 -- ---------- Clientes ----------
@@ -1735,6 +1805,7 @@ begin
   return jsonb_build_object(
     'negocio', jsonb_build_object('nombre', n.nombre, 'whatsapp', n.whatsapp, 'banco', n.banco,
       'icono', n.icono, 'color', case when prem then n.color end, 'marca', not prem,
+      'link_pago', coalesce(case when prem then c.link_pago end, n.link_pago),
       'estado', n.estado),
     'cliente', jsonb_build_object('nombre', c.nombre, 'saldo', c.saldo, 'prox_venc', c.prox_venc, 'atrasado', c.atrasado),
     'movimientos', coalesce((select jsonb_agg(x order by x.fecha desc) from (
@@ -2350,12 +2421,12 @@ create policy lectura on public.auditoria for select to authenticated using (neg
 
 grant usage on schema public to anon, authenticated, service_role;
 grant select (id, dueno, nombre, rubro, whatsapp, banco, venc_defecto, limite_general, pin_activo, saldo_a_favor, logo_url, color,
-  plantilla_propia, premium_hasta, en_prueba, plan_aplicado, estado, motivo_suspension, eliminar_desde, ultimo_uso, creado, prueba_hasta, activado, quiere_pro_at, meta_ventas, presupuesto_gastos, icono, cupon) on public.negocios to authenticated;
+  plantilla_propia, premium_hasta, en_prueba, plan_aplicado, estado, motivo_suspension, eliminar_desde, ultimo_uso, creado, prueba_hasta, activado, quiere_pro_at, meta_ventas, presupuesto_gastos, icono, cupon, link_pago) on public.negocios to authenticated;
 grant select on public.ajustes, public.feriados, public.perfiles, public.miembros, public.ventas_cuotas, public.cuotas,
   public.movimientos, public.recordatorios, public.productos, public.uso_mensual, public.notificaciones, public.solicitudes_pago,
   public.auditoria, public.caja, public.categorias, public.soporte to authenticated;
 grant select (id, negocio, nombre, apodo, telefono, rut, nota, limite, estado, bloqueado, fuera_de_plan, saldo, prox_venc, atrasado, puntaje,
-  ultimo_mov, link_codigo, link_bloqueado, creado) on public.clientes to authenticated;
+  ultimo_mov, link_codigo, link_bloqueado, creado, link_pago) on public.clientes to authenticated;
 grant select (id, negocio, cliente, monto, fecha, comentario, foto_path, estado, motivo, abono, revisado_at, creado) on public.comprobantes to authenticated;
 grant all on all tables in schema public to service_role;
 grant all on all sequences in schema public to service_role;
@@ -2387,7 +2458,8 @@ grant execute on function public.mi_estado(), public.aceptar_terminos(), public.
   public.admin_soporte_ver(uuid), public.admin_soporte_enviar(uuid, text), public.guardar_metas(int, int), public.pedir_pro(),
   public.admin_oportunidades(), public.admin_negocio_detalle(uuid),
   public.guardar_perfil(text, text), public.usar_cupon(text), public.reporte_pro(date), public.cobranza_lote(),
-  public.admin_segmentos(), public.admin_cupones(), public.admin_guardar_cupon(text, int, int, date), public.admin_cupon_activo(text, boolean) to authenticated;
+  public.admin_segmentos(), public.admin_cupones(), public.admin_guardar_cupon(text, int, int, date), public.admin_cupon_activo(text, boolean),
+  public.guardar_link_pago_cliente(uuid, text), public.pagar_cuota(uuid, uuid, int, text, boolean) to authenticated;
 grant execute on function public.srv_secretos(), public.srv_cola_tomar(int), public.srv_quitar_endpoint(text), public.srv_foto_validar(uuid, text),
   public.srv_foto_lista(uuid, text), public.srv_archivos_por_borrar(int), public.srv_archivos_borrados(bigint[]),
   public.srv_es_admin(uuid), public.srv_crear_negocio(uuid, text, text, int) to service_role;

@@ -8,6 +8,8 @@
   const pintar = (...n) => { vaciar(vista).append(...n.flat().filter((x) => x != null && x !== false)); };
   const kpi = (t, v, cls) => el('div', { class: 'kpi' }, el('div', { class: 't' }, t), el('div', { class: 'v ' + (cls || '') }, v));
   const PLAN = { pro: 'Pro', prueba: 'Prueba Pro', free: 'Free' };
+  const L = (x) => (Array.isArray(x) ? x : []); // listas que pueden faltar si la base de datos es antigua
+  const bdVieja = (cfg) => Number((cfg && cfg.version_bd) || 0) < LC.BD;
   const salir = async () => { await sb.auth.signOut().catch(() => {}); location.replace('../#ingresar'); };
   $('#salir').onclick = salir;
 
@@ -16,6 +18,8 @@
     if (!data.session) { location.replace('../#ingresar'); return; }
     const st = await rpc('mi_estado');
     if (!st.es_admin) { pintar(el('div', { class: 'vacio' }, el('span', { class: 'ico' }, '🔒'), 'Solo el administrador puede entrar aquí.', el('br'), el('a', { href: '../app/' }, 'Volver a la app'))); return; }
+    if (bdVieja(st.config)) document.querySelector('.app').insertBefore(el('a', { class: 'banda error', href: '#ajustes', style: 'text-decoration:none' },
+      el('span', null, '⚠️ La base de datos está en v' + (st.config.version_bd || '4 o menos') + ' y esta versión de la app necesita v' + LC.BD + '. Corre la consulta de actualización.'), el('span', { class: 'btn chico' }, 'Ver cómo')), document.getElementById('vista'));
     LC.revisarVersion(st.config, (txt, fn) => {
       const v = document.getElementById('admUpd'); if (v) v.remove();
       if (txt) document.querySelector('.app').insertBefore(el('div', { id: 'admUpd', class: 'banda info' }, el('span', null, txt + ' Tu celular aún no la tiene.'), el('button', { class: 'btn chico', type: 'button', onclick: fn }, 'Actualizar')), document.getElementById('vista'));
@@ -38,10 +42,10 @@
     const pct = Math.round(r.bd_mb * 100 / 500);
     const conv = r.negocios ? Math.round(r.convertidos * 100 / r.negocios) : 0;
     const dias = []; for (let i = 29; i >= 0; i--) dias.push(LC.sumarDias(LC.hoyISO(), -i));
-    const porDia = Object.fromEntries((r.registros_dia || []).map((x) => [x.dia, x.n]));
+    const porDia = Object.fromEntries(L(r.registros_dia).map((x) => [x.dia, x.n]));
     const maxD = Math.max(1, ...dias.map((d) => porDia[d] || 0));
     const etapa = (t, n, cls) => el('div', { class: 'kpi' }, el('div', { class: 't' }, t), el('div', { class: 'v ' + (cls || '') }, n));
-    const op1 = (titulo, lista, sub, plantilla) => lista.length ? el('div', { class: 'tarjeta' }, el('h2', null, titulo + ' (' + lista.length + ')'),
+    const op1 = (titulo, lista, sub, plantilla) => (lista = L(lista)).length ? el('div', { class: 'tarjeta' }, el('h2', null, titulo + ' (' + lista.length + ')'),
       el('div', { class: 'lista' }, lista.map((n) => el('div', { class: 'item', style: 'cursor:default' },
         el('div', { class: 'avatar', style: 'background:' + LC.colorDe(n.nombre) }, LC.iniciales(n.nombre)),
         el('a', { class: 'crece', href: '#negocios/' + n.id, style: 'color:inherit;text-decoration:none' }, el('div', { class: 'nom' }, n.nombre), el('div', { class: 'sub' }, sub(n))),
@@ -57,8 +61,8 @@
         el('div', { class: 't' }, 'Cobrado este mes: ' + pesos(r.ingresos_mes) + ' · ' + r.convertidos + ' clientes han pagado (' + conv + '% de las billeteras)')),
       el('h3', null, 'Embudo de ventas'),
       el('div', { class: 'grid2 mb' }, etapa('Billeteras creadas', r.negocios), etapa('En prueba Pro', r.en_prueba), etapa('Quieren Pro ⭐', r.quieren_pro, r.quieren_pro ? 'naranjo' : ''),
-        etapa('Pro pagando', r.premium, 'verde'), etapa('En Free', r.free), etapa('Activas 7 días', r.activos_7d, 'verde')),
-      (r.vencen || []).length ? el('div', { class: 'tarjeta', style: 'border-color:var(--aviso)' }, el('h2', null, '⏰ Vencen hoy o mañana (' + r.vencen.length + ')'),
+        etapa('Pro pagando', r.premium, 'verde'), etapa('En Free', r.free != null ? r.free : '—'), etapa('Activas 7 días', r.activos_7d, 'verde')),
+      L(r.vencen).length ? el('div', { class: 'tarjeta', style: 'border-color:var(--aviso)' }, el('h2', null, '⏰ Vencen hoy o mañana (' + r.vencen.length + ')'),
         el('div', { class: 'lista' }, r.vencen.map((n) => el('div', { class: 'item', style: 'cursor:default' },
           el('div', { class: 'avatar', style: 'background:' + LC.colorDe(n.nombre) }, LC.iniciales(n.nombre)),
           el('a', { class: 'crece', href: '#negocios/' + n.id, style: 'color:inherit;text-decoration:none' }, el('div', { class: 'nom' }, n.nombre),
@@ -74,7 +78,7 @@
       op1('⏳ Su prueba Pro termina pronto', op.prueba_termina, (n) => 'Termina ' + LC.relativo(n.fecha.slice(0, 10)) + ' · usó la app ' + (n.ultimo_uso ? LC.relativo(n.ultimo_uso.slice(0, 10)) : 'nunca'), (n) => 'Hola ' + n.nombre + ', tu prueba Pro de Libreta de Cobros termina pronto. Después sigues gratis, pero sin las funciones Pro. ¿Te ayudo a activarlo?'),
       op1('💳 Pro por vencer', op.pro_vence, (n) => 'Vence ' + LC.relativo(n.fecha.slice(0, 10)), (n) => 'Hola ' + n.nombre + ', te recuerdo que tu mensualidad de Pro vence pronto. ¿Te paso los datos para pagar?'),
       op1('🙂 En Free y usando la app', op.free, (n) => (n.activado ? 'Venció su Pro' : 'Terminó su prueba') + ' · entró ' + (n.ultimo_uso ? LC.relativo(n.ultimo_uso.slice(0, 10)) : '—'), (n) => 'Hola ' + n.nombre + ', vi que sigues usando tu billetera 🙌 Si activas Pro tienes cobro a todos de una, recibos, reportes y todo sin límites. ¿Te cuento?'),
-      !op.quieren_pro.length && !op.prueba_termina.length && !op.pro_vence.length && !op.free.length ? el('div', { class: 'lista' }, el('div', { class: 'vacio' }, 'Sin oportunidades por ahora.')) : null,
+      !L(op.quieren_pro).length && !L(op.prueba_termina).length && !L(op.pro_vence).length && !L(op.free).length ? el('div', { class: 'lista' }, el('div', { class: 'vacio' }, 'Sin oportunidades por ahora.')) : null,
       el('button', { class: 'btn primario ancho mb mt', type: 'button', onclick: crearCuenta }, '＋ Crear cuenta para un cliente'),
       el('div', { class: 'tarjeta' }, el('h2', null, 'Uso del servidor'),
         el('div', { class: 'fila entre' }, el('span', null, 'Base de datos'), el('strong', null, r.bd_mb + ' MB de 500 MB')),
@@ -294,7 +298,7 @@
         el('div', null,
           el('div', { class: 'tarjeta' }, el('h2', null, 'Límites del plan Free'), el('p', { class: 'sutil' }, 'Después de la prueba Pro, cada billetera sigue gratis con estos límites.'),
             el('div', { class: 'grid2' }, campo('Clientes activos', f.lc), campo('Fiados y abonos/mes', f.lm), campo('Ingresos y gastos/mes', f.lcaja), campo('Cuotas activas', f.lq), campo('Productos', f.lp), campo('Comprobantes/mes', f.lk), campo('Categorías propias', f.lcat), campo('Historial (meses)', f.lh))),
-          tarjetaVersiones(a),
+          tarjetaVersiones(a, cfg),
           el('div', { class: 'tarjeta' }, el('h2', null, 'Avanzado'), campo('Versión de los textos legales', f.vlegal, 'Súbela si cambias los Términos: todos deberán aceptarlos de nuevo.'),
             campo('Versión mínima obligatoria', f.vmin, 'Quien tenga una versión menor ve un aviso rojo para actualizar. Úsalo solo si una versión vieja deja de funcionar.')),
           el('div', { class: 'tarjeta' }, el('h2', null, 'Notificaciones push'), el('p', null, cfg.vapid_public ? '✅ Claves push configuradas' : '⚠️ Falta generar las claves push'),
@@ -314,17 +318,28 @@
         } catch (er) { error(er); }
       } }, 'Guardar ajustes'));
   }
-  function tarjetaVersiones(a) {
+  function tarjetaVersiones(a, cfg) {
     const estado = el('p', null, 'Revisando…'), btn = el('button', { class: 'btn primario', type: 'button', disabled: true }, 'Liberar actualización');
-    const tuyo = el('div');
+    const tuyo = el('div'), aviso = el('div');
     let pub = '';
-    fetch('../version.json', { cache: 'no-store' }).then((r) => r.json()).then((j) => {
+    const bd = Number((cfg && cfg.version_bd) || 0);
+    fetch('../version.json?t=' + Date.now(), { cache: 'no-store' }).then((r) => r.json()).then((j) => {
       pub = String(j.version || '');
+      const necesita = Number(j.bd || 0);
       vaciar(estado).append('Tu celular: ', el('strong', null, 'v' + LC.VERSION), ' · Publicada en GitHub: ', el('strong', null, 'v' + (pub || '?')),
-        ' · Liberada para todos: ', el('strong', null, 'v' + a.version_liberada));
+        ' · Liberada para todos: ', el('strong', null, 'v' + a.version_liberada), ' · Base de datos: ', el('strong', null, bd ? 'v' + bd : 'v4 o menos'));
       btn.textContent = 'Liberar v' + pub + ' para todos';
       btn.disabled = !pub || !LC.versionMenor(a.version_liberada, pub);
       if (pub && !LC.versionMenor(a.version_liberada, pub)) btn.textContent = '✓ La última versión ya está liberada';
+      else if (necesita > bd) {
+        // No se puede liberar una versión que necesita una base de datos más nueva: primero se corre la consulta.
+        btn.disabled = true; btn.textContent = '🔒 Primero actualiza la base de datos';
+        vaciar(aviso).append(el('div', { class: 'banda error', style: 'display:block' },
+          el('p', { style: 'margin:0 0 8px' }, el('strong', null, 'Paso 1: actualiza la base de datos. '), 'La v' + pub + ' necesita la base v' + necesita + ' y tienes ' + (bd ? 'v' + bd : 'una más antigua') + '.'),
+          el('p', { style: 'margin:0 0 8px' }, 'Copia la consulta, pégala en Supabase → SQL Editor → Run. Debe responder "Libreta instalada v' + necesita + '".'),
+          el('div', { class: 'grid2' }, el('button', { class: 'btn', type: 'button', onclick: copiarConsulta }, '📋 Copiar consulta'),
+            el('button', { class: 'btn', type: 'button', onclick: () => vAjustes() }, '🔄 Ya la corrí'))));
+      }
     }).catch(() => { estado.textContent = 'No se pudo leer la versión publicada.'; });
     LC.revisarVersion({ version_liberada: a.version_liberada }, (txt, fn) => { vaciar(tuyo); if (txt) tuyo.append(el('button', { class: 'btn primario ancho mt', type: 'button', onclick: fn }, '⬇️ Actualizar mi celular a la v' + a.version_liberada)); });
     tuyo.append(el('button', { class: 'btn texto ancho', type: 'button', onclick: async () => { if (await confirmar('Reparar la app', 'Vuelve a descargar la app en este celular. No borra datos.', 'Reparar')) LC.repararApp(); } }, '🛠️ Reparar la app en este celular'));
@@ -336,9 +351,16 @@
         if (LC.versionMenor(LC.VERSION, pub)) LC.actualizarAhora(); else vAjustes();
       } catch (e) { error(e); }
     };
-    return el('div', { class: 'tarjeta' }, el('h2', null, 'Actualizaciones'),
+    return el('div', { class: 'tarjeta', id: 'actualizaciones' }, el('h2', null, 'Actualizaciones'),
       el('p', { class: 'sutil' }, 'Cuando se publique una versión nueva en GitHub, pruébala en tu celular y después libérala. Nadie recibe cambios hasta que tú los apruebas.'),
-      estado, btn, tuyo);
+      estado, aviso, btn, tuyo);
+  }
+  async function copiarConsulta() {
+    try {
+      const t = await (await fetch('../supabase/instalar-corto.sql?t=' + Date.now(), { cache: 'no-store' })).text();
+      if (!/http_get/.test(t)) throw new Error('No se pudo leer la consulta');
+      copiar(t.split('\n').filter((x) => !x.startsWith('--')).join('\n').trim(), 'Consulta copiada ✓ Pégala en Supabase → SQL Editor');
+    } catch (e) { toast('No se pudo copiar: ' + e.message, { error: true }); }
   }
   const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   async function generarVapid() {
