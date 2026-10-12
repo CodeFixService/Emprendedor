@@ -3,7 +3,7 @@
 > Fiado, ventas en cuotas y abonos, en el celular. El negocio anota en 3 segundos, el cliente ve
 > su cuenta con un link (sin descargar nada) y paga por transferencia. **"Recupera la plata que te deben."**
 
-**Estado:** ✅ **versión 1.3.0 lista y probada** (billetera completa: caja, me deben, soporte, prueba de 7 días y Pro mensual). Para instalarla sigue [docs/08-PREPARATIVOS.md](docs/08-PREPARATIVOS.md) (parte B).
+**Estado:** ✅ **versión 1.4.0 lista y probada** (billetera completa: caja, me deben, soporte; Free gratis para siempre, 7 días de Pro de regalo y Pro mensual con cupones). Para instalarla sigue [docs/08-PREPARATIVOS.md](docs/08-PREPARATIVOS.md) (parte B).
 
 App **100 % independiente**: repo propio (`CodeFixService/Emprendedor`), proyecto Supabase propio y dirección propia
 (`https://codefixservice.github.io/Emprendedor/`). No comparte código, base de datos, usuarios ni claves con CodeFix Apps

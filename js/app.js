@@ -1599,7 +1599,7 @@
     g.font = 'bold 42px ' + F; g.fillText(corta(S.neg.nombre, W - 80), W / 2, 180);
     g.fillStyle = '#334155'; g.font = '600 32px ' + F; g.fillText(abono ? 'Comprobante de pago' : 'Detalle de compra', W / 2, 300);
     g.fillStyle = abono ? '#16a34a' : '#dc2626'; g.font = 'bold 104px ' + F; g.fillText(pesos(m.monto), W / 2, 420);
-    const filas = [['Cliente', c.nombre], ['Fecha', fechaLarga(m.fecha) + ' ' + hora(m.fecha)], ['Detalle', m.descripcion || (abono ? 'Abono' : 'Fiado')],
+    const filas = [['Cliente', c.nombre], ['Fecha', fechaCorta(m.fecha) + ' · ' + hora(m.fecha)], ['Detalle', m.descripcion || (abono ? 'Abono' : 'Fiado')],
       abono ? ['Medio', m.medio || 'efectivo'] : (m.vence ? ['Vence', fechaLarga(m.vence)] : null), ['Saldo actual', c.saldo > 0 ? pesos(c.saldo) : 'Al día ✓']].filter(Boolean);
     let y = 520; g.textAlign = 'left';
     for (const [k, v] of filas) {

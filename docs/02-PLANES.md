@@ -1,16 +1,17 @@
-# 2. Planes: Prueba gratis (7 días) y Pro (mensual)
+# 2. Planes: Free (gratis siempre), Prueba Pro (7 días) y Pro (mensual)
 
 ## Cómo funciona
 | Etapa | Qué puede hacer |
 |---|---|
-| **Prueba gratis** (7 días desde que se crea la cuenta) | Todo funciona, con límites amplios (tabla abajo). Avisos el día 4, el 6 y el último día |
-| **Bloqueada** (terminó la prueba o venció la mensualidad) | Puede entrar, **ver y exportar** todo, escribir a soporte y pagar. **No puede anotar** nada. El link de sus clientes queda "en pausa". No se borra nada |
+| **Prueba Pro** (7 días desde que se crea la cuenta) | **Todo Pro, sin límites.** Avisos 3 y 1 día antes y el último día |
+| **Free** (terminó la prueba o venció la mensualidad) | Sigue usando su billetera gratis, con los límites de la tabla. Las funciones Pro se ven **en plomo con candado 🔒** y al tocarlas explican cómo activar Pro. Lo que creó con Pro (metas, clientes extra) **no se borra**: queda en pausa. Los clientes que pasan del límite quedan en "solo cobro" (se respetan los más usados) |
 | **Pro** (pagado) | Todo **sin límites** + funciones Pro |
 
-- La prueba es **una vez por correo**. El admin puede **extenderla** desde su panel.
+- La prueba es **una vez por correo**. El admin puede **extenderla, terminarla, dar Pro o quitarlo** desde la ficha de la billetera.
 - **Precio Pro**: activación **$10.000** (una vez) + mensualidad (parte en **$4.990**). Ambos se cambian en Administración → Ajustes.
-  El primer pago es activación + mensualidad; los siguientes, solo la mensualidad.
-- Avisos de mensualidad: 7, 3 y 1 día antes y el mismo día. Después, **3 días de gracia** con aviso en rojo; luego se bloquea.
+  El primer pago es activación + mensualidad; los siguientes, solo la mensualidad. La activación acepta **cupones de descuento** (Administración → Resumen → Cupones).
+- Avisos de mensualidad: 7, 3 y 1 día antes y el mismo día. Después, **3 días de gracia** con aviso en rojo; luego vuelve a Free.
+- Al administrador le llega cada mañana un aviso con las billeteras que vencen hoy o mañana.
 
 ## Cómo se activa Pro
 1. El cliente toca **Quiero Pro** (llega un mensaje a tu chat de soporte y una notificación) o **Ya pagué** (con comprobante opcional).
@@ -18,8 +19,8 @@
 3. También puedes vender **keys** en persona (1, 3, 6 o 12 meses).
 4. Si vendes en persona, **creas tú la cuenta** desde tu panel (con Pro desde el inicio) y le mandas los datos por WhatsApp.
 
-## Límites de la prueba gratis
-| Función | Prueba gratis | Pro |
+## Free y Pro
+| Función | Free | Pro (y Prueba Pro) |
 |---|---|---|
 | Clientes activos (me deben) | 20 | Sin límite |
 | Fiados y abonos al mes | 250 | Sin límite |
@@ -32,7 +33,11 @@
 | Tonos de cobro | Amable | Amable, neutral, firme y propio |
 | Avisos automáticos al cliente, puntaje, límite por cliente | — | ✓ |
 | Reportes históricos, Excel y PDF | Mes actual y CSV | ✓ |
-| Logo y colores en el link del cliente | — | ✓ |
+| Color e ícono de la billetera | ✓ | ✓ |
+| Tu color en el link del cliente | — | ✓ |
+| Cobrar a todos de una (lista con quién se puede cobrar hoy según la ley) | — | ✓ |
+| Recibo con imagen para WhatsApp | — | ✓ |
+| Reporte Pro: ganancia, comparación con el mes anterior, proyección, mejores clientes y mejores días | — | ✓ |
 | Meta de ventas y presupuesto de gastos del mes (con alertas) | — | ✓ |
 | Resumen semanal al celular (lunes: entró, salió, balance) | — | ✓ |
 | Chat de soporte | ✓ | ✓ |

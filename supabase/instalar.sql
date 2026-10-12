@@ -1887,6 +1887,7 @@ begin
         from public.negocios n join auth.users u on u.id = n.dueno where n.estado = 'activo' and privado.estado_plan(n.id) = 'prueba' and n.prueba_hasta < now() + interval '3 days') x), '[]'::jsonb),
     'pro_vence', coalesce((select jsonb_agg(x order by x.fecha) from (select n.id, n.nombre, n.whatsapp, u.email, n.premium_hasta fecha
         from public.negocios n join auth.users u on u.id = n.dueno where n.estado = 'activo' and privado.estado_plan(n.id) = 'pro' and n.premium_hasta < now() + interval '7 days') x), '[]'::jsonb),
+    'bloqueados', '[]'::jsonb, -- compatibilidad con el panel v1.3 mientras se actualiza
     'free', coalesce((select jsonb_agg(x order by x.ultimo_uso desc nulls last) from (select n.id, n.nombre, n.whatsapp, u.email, n.ultimo_uso, n.activado
         from public.negocios n join auth.users u on u.id = n.dueno where n.estado = 'activo' and privado.estado_plan(n.id) = 'free' and n.ultimo_uso > now() - interval '30 days' limit 50) x), '[]'::jsonb));
 end $$;
