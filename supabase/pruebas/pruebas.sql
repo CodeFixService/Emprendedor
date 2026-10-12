@@ -136,6 +136,7 @@ select pruebas.ok((public.registrar_movimiento(gen_random_uuid(), current_settin
 select pruebas.falla($$select public.registrar_recordatorio(current_setting('t.f1')::uuid, 'whatsapp', 'firme', '')$$, 'Pro');
 select pruebas.falla($$select public.reporte_pro(null)$$, 'Pro');
 select pruebas.falla($$select public.cobranza_lote()$$, 'Pro');
+select pruebas.falla($$select public.guardar_link_pago_cliente(current_setting('t.f1')::uuid, 'https://mpago.la/x')$$, 'Pro');
 select pruebas.falla($$select public.guardar_metas(1, 1)$$, 'Pro');
 reset role;
 update public.uso_mensual set movimientos = 250 where negocio = (select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d2');
@@ -221,6 +222,7 @@ select pruebas.falla($$select public.portal_entrar('codigo-falso', '1234')$$, 'n
 select pruebas.falla($$select public.portal_ver('token-falso')$$, 'sesión terminó');
 select set_config('t.ses', public.portal_entrar(current_setting('t.cod'), '1234') ->> 'sesion', false);
 select pruebas.ok((public.portal_ver(current_setting('t.ses')) -> 'cliente' ->> 'saldo')::int = 95000, 'cliente ve su saldo');
+select pruebas.ok(public.portal_ver(current_setting('t.ses')) -> 'negocio' ? 'link_pago', 'portal trae el link de pago');
 select pruebas.ok(position('nota' in (public.portal_ver(current_setting('t.ses')))::text) = 0, 'no ve notas internas');
 select pruebas.ok((public.portal_comprobante(current_setting('t.ses'), 20000, (now() at time zone 'America/Santiago')::date, 'transferí', true) ->> 'foto_token') is not null, 'sube comprobante');
 select pruebas.falla($$select public.portal_comprobante(current_setting('t.ses'), 999999999, (now() at time zone 'America/Santiago')::date, null, false)$$, 'Revisa el monto');
@@ -237,6 +239,23 @@ select pruebas.falla($$select public.revisar_comprobante((select id from public.
 select pruebas.ok((public.tablero() ->> 'por_cobrar')::int > 0, 'tablero');
 select pruebas.ok((public.reporte(current_date - 30, current_date) ->> 'cobrado')::int >= 20000, 'reporte');
 select pruebas.ok(jsonb_array_length(public.exportar_datos() -> 'movimientos') > 0, 'exportar');
+-- v1.5: link de pago y marcar cuota pagada
+select public.guardar_negocio('{"nombre":"Almacén Rosita","whatsapp":"9 8765 4321","banco":{"banco":"BancoEstado","tipo":"Cuenta RUT","numero":"12345678","rut":"12.345.678-5","titular":"Rosa Pérez"},"link_pago":"mpago.la/rosita"}');
+select pruebas.ok((select link_pago = 'https://mpago.la/rosita' from public.negocios where dueno = auth.uid()), 'link de pago general (agrega https)');
+select public.guardar_negocio('{"nombre":"Almacén Rosita","whatsapp":"9 8765 4321","banco":{"banco":"BancoEstado","tipo":"Cuenta RUT","numero":"12345678","rut":"12.345.678-5","titular":"Rosa Pérez"}}');
+select pruebas.ok((select link_pago = 'https://mpago.la/rosita' from public.negocios where dueno = auth.uid()), 'guardar sin link no borra el link');
+select pruebas.falla($$select public.guardar_negocio('{"nombre":"Almacén Rosita","link_pago":"hola mundo"}')$$, 'no es válido');
+select public.guardar_link_pago_cliente(current_setting('t.c2')::uuid, 'https://link.mercadopago.cl/maria?x=1');
+select pruebas.ok((select link_pago = 'https://link.mercadopago.cl/maria?x=1' from public.clientes where id = current_setting('t.c2')::uuid), 'link de pago por cliente (Pro)');
+select pruebas.falla($$select public.pagar_cuota(gen_random_uuid(), '20000000-0000-0000-0000-000000000001', 2, 'efectivo', false)$$, 'cuota anterior');
+select set_config('t.pc', public.pagar_cuota(gen_random_uuid(), '20000000-0000-0000-0000-000000000001', 1, 'efectivo', false)::text, false);
+select pruebas.ok((current_setting('t.pc')::jsonb ->> 'monto')::int > 0 and (current_setting('t.pc')::jsonb ->> 'previo')::int = 0, 'vista previa de la cuota');
+select pruebas.ok((public.pagar_cuota('40000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 1, 'transferencia', true) ->> 'ok')::boolean, 'marcar cuota pagada');
+select pruebas.ok((select pagado = monto from public.cuotas where venta = '20000000-0000-0000-0000-000000000001' and numero = 1), 'la cuota 1 quedó pagada');
+select pruebas.ok((select pagado = 0 from public.cuotas where venta = '20000000-0000-0000-0000-000000000001' and numero = 2), 'la cuota 2 sigue pendiente');
+select pruebas.falla($$select public.pagar_cuota(gen_random_uuid(), '20000000-0000-0000-0000-000000000001', 1, 'efectivo', true)$$, 'ya está pagada');
+select pruebas.ok((public.pagar_cuota(gen_random_uuid(), '20000000-0000-0000-0000-000000000001', 2, 'efectivo', false) ->> 'cuota')::int = 33333, 'se habilita la cuota 2');
+select pruebas.ok((public.config_publica() ->> 'version_bd')::int = 6, 'versión de la base visible');
 reset role;
 
 -- ===== v1.3: metas (Pro), Quiero Pro, oportunidades y detalle para el admin =====

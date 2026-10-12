@@ -35,6 +35,10 @@
 | Reportes históricos, Excel y PDF | Mes actual y CSV | ✓ |
 | Color e ícono de la billetera | ✓ | ✓ |
 | Tu color en el link del cliente | — | ✓ |
+| Cobro por WhatsApp con el monto de la cuota, link de pago y datos de transferencia | ✓ | ✓ |
+| Marcar una cuota pagada (se habilita la siguiente) | ✓ | ✓ |
+| Link de pago general (Ajustes) | ✓ | ✓ |
+| Link de pago propio por cliente | — | ✓ |
 | Cobrar a todos de una (lista con quién se puede cobrar hoy según la ley) | — | ✓ |
 | Recibo con imagen para WhatsApp | — | ✓ |
 | Reporte Pro: ganancia, comparación con el mes anterior, proyección, mejores clientes y mejores días | — | ✓ |
@@ -43,3 +47,9 @@
 | Chat de soporte | ✓ | ✓ |
 
 Cada billetera es **personal** (una sola persona, sin ayudantes). Todo se valida en el servidor.
+
+## Cobro y pagos (v1.5)
+1. Cobras desde la ficha del cliente (o "Cobrar a todos"). El WhatsApp lleva **el monto de la cuota que toca** (o el saldo), tu **link de pago**, tus **datos de transferencia** y, si quieres, el **link para ver su cuenta** (protegido con PIN).
+2. El cliente paga. Te llega el aviso de tu banco o de Mercado Pago.
+3. En la pestaña **Cuotas** tocas **✅ Marcar pagada** en la cuota que toca y eliges cómo pagó. Se anota el abono y se habilita la siguiente; las demás quedan con 🔒 "Aún no".
+   Si el cliente tiene una deuda más antigua, la app te avisa: los pagos siempre cubren primero lo más antiguo.
