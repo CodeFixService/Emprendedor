@@ -13,6 +13,13 @@ let reinstalando = null;
 // "?t=" evita copias viejas guardadas por GitHub (su CDN guarda archivos hasta 10 minutos).
 const pedirVersion = () => fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then((r) => r.json()).then((j) => String(j.version));
 
+// Algunos hostings (Cloudflare) redirigen ".../index.html" a ".../". Chrome no acepta una página redirigida
+// guardada en caché (ERR_FAILED), así que se guarda y se entrega siempre una copia "limpia", sin la marca de redirección.
+async function limpia(res) {
+  if (!res || !res.redirected) return res;
+  return new Response(await res.blob(), { status: res.status, statusText: res.statusText, headers: res.headers });
+}
+
 async function versionActual() {
   const r = await (await caches.open(META)).match('actual');
   return r ? r.text() : null;
@@ -26,9 +33,9 @@ async function instalarVersion(v) {
   const core = await (await fetch('js/core.js' + marca, { cache: 'no-store' })).text();
   if (!core.includes("VERSION = '" + v + "'")) throw new Error('La versión ' + v + ' aún se está publicando. Prueba de nuevo en unos minutos.');
   await Promise.all(ARCHIVOS.map(async (f) => {
-    const res = await fetch(f + (f.endsWith('/') ? 'index.html' : '') + marca, { cache: 'no-store' });
+    const res = await fetch(f + marca, { cache: 'no-store' });
     if (!res.ok) throw new Error('No se pudo descargar ' + f);
-    await c.put(new Request(f), res);
+    await c.put(new Request(f), await limpia(res));
   }));
   await (await caches.open(META)).put('actual', new Response(v));
   for (const k of await caches.keys()) if (k.startsWith('lc-') && k !== META && k !== 'lc-app-' + v) await caches.delete(k);
@@ -57,6 +64,7 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return; // Supabase y otros: siempre a internet
   if (/\/(version\.json|sw\.js)$/.test(url.pathname)) return;          // siempre desde internet
+  if (/^\/(rest|auth|storage|functions|realtime)\/v1\//.test(url.pathname)) return; // datos: nunca desde la copia guardada
   e.respondWith((async () => {
     const v = await versionActual();
     if (!v && !reinstalando) { // la copia guardada se borró (por ejemplo, al limpiar el navegador): se vuelve a armar
@@ -64,13 +72,13 @@ self.addEventListener('fetch', (e) => {
     }
     const c = v ? await caches.open('lc-app-' + v) : null;
     const hit = c && await c.match(req, { ignoreSearch: true });
-    if (hit) return hit;
+    if (hit) return limpia(hit);
     try {
-      const res = await fetch(req);
+      const res = await limpia(await fetch(req));
       if (res.ok && c && url.pathname.startsWith(new URL(self.registration.scope).pathname)) c.put(req, res.clone());
       return res;
     } catch (err) {
-      if (req.mode === 'navigate' && c) return (await c.match('index.html')) || Response.error();
+      if (req.mode === 'navigate' && c) return (await limpia(await c.match('index.html'))) || Response.error();
       return Response.error();
     }
   })());
