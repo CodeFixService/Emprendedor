@@ -334,3 +334,14 @@ table.comparar th:last-child, table.comparar td:last-child { color: var(--marca)
 input.malo, textarea.malo, select.malo { border-color: var(--deuda) !important; box-shadow: 0 0 0 3px var(--deuda-suave); }
 .codigo-conexion { font: 800 1.9em/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 4px; text-align: center; padding: 14px; border: 2px dashed var(--marca); border-radius: 14px; background: var(--marca-suave); color: var(--texto); }
 .avatar.emoji { background: var(--marca-suave); font-size: 1.3em; }
+/* v1.7: misma línea visual que BiciTaller */
+.barra-sup { background: color-mix(in srgb, var(--fondo) 88%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-bottom-color: var(--borde); }
+.slotpago { border: 1px solid var(--borde); border-radius: 14px; padding: 12px; margin-bottom: 10px; }
+.slotpago.on { border-color: var(--marca); box-shadow: 0 0 0 3px var(--marca-suave); }
+.slotpago .check { margin-bottom: 8px; }
+.subtabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 12px; scrollbar-width: none; }
+.subtabs::-webkit-scrollbar { display: none; }
+.subtabs .chip { flex: none; }
+table.uso { width: 100%; border-collapse: collapse; font-size: .88em; }
+table.uso td { padding: 6px 0; border-bottom: 1px solid var(--borde); }
+table.uso td.r { text-align: right; font-variant-numeric: tabular-nums; }

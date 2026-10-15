@@ -18,7 +18,7 @@
     if (!data.session) { location.replace('../#ingresar'); return; }
     const st = await rpc('mi_estado');
     if (!st.es_admin) { pintar(el('div', { class: 'vacio' }, el('span', { class: 'ico' }, '🔒'), 'Solo el administrador puede entrar aquí.', el('br'), el('a', { href: '../app/' }, 'Volver a la app'))); return; }
-    if (bdVieja(st.config)) document.querySelector('.app').insertBefore(el('a', { class: 'banda error', href: '#ajustes', style: 'text-decoration:none' },
+    if (bdVieja(st.config)) document.querySelector('.app').insertBefore(el('a', { class: 'banda error', href: '#ajustes/versiones', style: 'text-decoration:none' },
       el('span', null, '⚠️ La base de datos está en v' + (st.config.version_bd || '4 o menos') + ' y esta versión de la app necesita v' + LC.BD + '. Corre la consulta de actualización.'), el('span', { class: 'btn chico' }, 'Ver cómo')), document.getElementById('vista'));
     LC.revisarVersion(st.config, (txt, fn) => {
       const v = document.getElementById('admUpd'); if (v) v.remove();
@@ -52,9 +52,10 @@
         n.whatsapp ? el('button', { class: 'btn-icono', type: 'button', 'aria-label': 'WhatsApp', onclick: () => abrir(wa(n.whatsapp, plantilla(n))) }, '💬') : null,
         el('a', { class: 'btn-icono', href: '#soporte/' + n.id, style: 'text-decoration:none', 'aria-label': 'Chat' }, '✉️'))))) : null;
     const cfgP = r.mrr;
+    pintarUso();
     pintar(el('h2', null, 'Resumen'),
       !r.cron_ok ? el('div', { class: 'banda error' }, '⚠️ Las tareas automáticas no están activas: en Supabase → Database → Extensions enciende pg_cron y pg_net, y vuelve a correr el SQL de actualización.') : null,
-      !r.push_ok ? el('div', { class: 'banda aviso' }, '⚠️ Falta generar las claves push.', el('a', { class: 'btn chico', href: '#ajustes' }, 'Ir')) : null,
+      !r.push_ok ? el('div', { class: 'banda aviso' }, '⚠️ Falta generar las claves push.', el('a', { class: 'btn chico', href: '#ajustes/push' }, 'Ir')) : null,
       r.pagos_pendientes ? el('a', { class: 'banda info', href: '#pagos', style: 'text-decoration:none' }, '💳 ' + r.pagos_pendientes + ' pago(s) por revisar', el('span', { class: 'btn chico' }, 'Revisar')) : null,
       r.soporte_sin_leer ? el('a', { class: 'banda info', href: '#soporte', style: 'text-decoration:none' }, '💬 ' + r.soporte_sin_leer + ' chat(s) de soporte sin leer', el('span', { class: 'btn chico' }, 'Ver')) : null,
       el('div', { class: 'kpi hero mb' }, el('div', { class: 't' }, 'Ingreso mensual recurrente (Pro activos × mensualidad)'), el('div', { class: 'grande' }, pesos(cfgP)),
@@ -86,10 +87,23 @@
         el('div', { class: 'barra ' + (pct >= 85 ? 'lleno' : pct >= 70 ? 'alerta' : '') }, el('i', { style: 'width:' + Math.min(pct, 100) + '%' })),
         el('div', { class: 'fila entre mt' }, el('span', null, 'Archivos (fotos)'), el('strong', null, r.archivos_mb + ' MB de 1.024 MB')),
         pct >= 70 ? el('p', { class: 'naranjo mt' }, 'Pasaste el 70%: es momento de pasar a Supabase Pro.') : null,
-        el('p', { class: 'sutil mt' }, 'Avisos en cola: ' + r.cola_push)),
+        el('p', { class: 'sutil mt' }, 'Avisos en cola: ' + r.cola_push),
+        el('details', { class: 'mt' }, el('summary', { class: 'sutil', style: 'cursor:pointer' }, 'Ver cada tabla y limpiar'), usoDetalle)),
       el('div', { class: 'grid3' }, el('a', { class: 'btn', href: '#avisos' }, '📣 Mensajes'), el('a', { class: 'btn', href: '#cupones' }, '🏷️ Cupones'), el('a', { class: 'btn', href: '#keys' }, '🔑 Keys')),
       el('button', { class: 'btn ancho mt', type: 'button', onclick: probar }, '🩺 Probar servidor de avisos'),
       el('button', { class: 'btn texto ancho mt', type: 'button', onclick: salir }, '🚪 Cerrar sesión'));
+  }
+  const usoDetalle = el('div', { class: 'mt' });
+  async function pintarUso() {
+    const u = await rpc('admin_uso').catch(() => null); if (!u) return;
+    const limpiar = async (que, tx) => { if (!await confirmar('Limpiar', tx, 'Limpiar', 'rojo')) return; try { const n = await conCarga(() => rpc('admin_limpiar', { p_que: que })); toast('Listo ✓ (' + n + ')'); pintarUso(); } catch (e) { error(e); } };
+    vaciar(usoDetalle).append(el('table', { class: 'uso' }, (u.tablas || []).slice(0, 25).map((x) => el('tr', null, el('td', null, x.tabla), el('td', { class: 'r sutil' }, Math.max(0, x.filas) + ' filas'), el('td', { class: 'r' }, (x.bytes / 1024 / 1024).toFixed(2) + ' MB')))),
+      (u.archivos || []).length ? el('p', { class: 'sutil mt' }, 'Archivos: ' + u.archivos.map((x) => x.bucket + ' ' + x.n + ' (' + x.mb + ' MB)').join(' · ')) : null,
+      el('div', { class: 'grid2 mt' }, el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('comprobantes', 'Borra las fotos de comprobantes revisados más antiguas que los días de Ajustes → Reglas.') }, '🧾 Comprobantes viejos'),
+        el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('avisos', 'Borra los avisos leídos de más de 30 días.') }, '🔔 Avisos leídos'),
+        el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('cola', 'Borra la cola de push ya enviada.') }, '📤 Cola de push'),
+        el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('sesiones', 'Borra sesiones vencidas de los links de clientes.') }, '🔗 Sesiones vencidas'),
+        el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('auditoria', 'Borra el registro de cambios de más de 180 días.') }, '📜 Registro antiguo')));
   }
   async function probar() {
     try { const r = await conCarga(() => LC.funcion({ accion: 'ping' })); toast(r.ok ? '✅ Función "enviar" v' + r.version + (r.servicio ? '' : ' · falta clave de servicio') : '❌ ' + (r.error || 'Sin respuesta')); }
@@ -116,7 +130,7 @@
     };
     inp.oninput = () => { busca = inp.value; clearTimeout(t); t = setTimeout(() => cargar().catch(error), 300); };
     pintar(el('div', { class: 'fila entre mb' }, el('h2', { style: 'margin:0' }, 'Billeteras'), el('button', { class: 'btn chico primario', type: 'button', onclick: crearCuenta }, '＋ Crear cuenta')), inp,
-      el('div', { class: 'chips mt' }, [['todos', 'Todas'], ['pro', 'Pro'], ['prueba', 'En prueba'], ['free', 'Free'], ['suspendido', 'Suspendidas'], ['eliminado', 'Por borrar']].map(([v, tx]) =>
+      el('div', { class: 'chips mt' }, [['todos', 'Todas'], ['pro', '⭐ Pro'], ['prueba', 'En prueba'], ['free', 'Free'], ['vence', '⏳ Por vencer'], ['inactivos', '💤 Sin actividad 7 días'], ['suspendido', '⛔ Suspendidas'], ['eliminado', 'Por borrar']].map(([v, tx]) =>
         el('button', { class: 'chip' + (filtro === v ? ' activo' : ''), type: 'button', onclick: () => { filtro = v; vNegocios(); } }, tx))),
       lista,
       el('button', { class: 'btn ancho mt', type: 'button', onclick: () => {
@@ -192,13 +206,16 @@
   }
 
   // ---------- Pagos ----------
+  let filtroPago = 'pendiente';
   async function vPagos() {
-    const d = await conCarga(() => rpc('admin_pagos'));
+    const todos = await conCarga(() => rpc('admin_pagos'));
+    const d = filtroPago ? todos.filter((x) => x.estado === filtroPago) : todos;
     const lista = el('div', { class: 'col' });
-    if (!d.length) lista.append(el('div', { class: 'lista' }, el('div', { class: 'vacio' }, 'Sin solicitudes de pago.')));
+    if (!d.length) lista.append(el('div', { class: 'lista' }, el('div', { class: 'vacio' }, 'Sin pagos aquí.')));
     for (const s of d) {
       const foto = el('div');
-      if (s.comprobante_path) sb.storage.from('pagos').createSignedUrl(s.comprobante_path, 600).then(({ data: u }) => { if (u) foto.append(el('img', { class: 'foto-comp mt', src: u.signedUrl, alt: 'Comprobante', onclick: () => abrir(u.signedUrl) })); });
+      if (s.comprobante_path) sb.storage.from('pagos').createSignedUrl(s.comprobante_path, 600).then(({ data: u }) => { if (u) foto.append(el('img', { class: 'foto-comp mt', src: u.signedUrl, alt: 'Comprobante', onclick: () => abrir(u.signedUrl) }),
+        el('button', { class: 'btn chico mt', type: 'button', onclick: async () => { try { LC.descargar('pago-' + LC.norm(s.negocio_nombre).replace(/[^a-z0-9]+/g, '-') + '-' + String(s.creado).slice(0, 10) + '.jpg', await (await fetch(u.signedUrl)).blob()); } catch (e) { abrir(u.signedUrl); } } }, '⬇️ Descargar')); });
       lista.append(el('div', { class: 'tarjeta' },
         el('div', { class: 'fila entre' }, el('strong', null, s.negocio_nombre), el('span', { class: 'tag ' + (s.estado === 'aprobada' ? 'verde' : s.estado === 'rechazada' ? 'rojo' : 'naranjo') }, s.estado)),
         el('div', null, (s.tipo === 'conexiones' ? '🤝 ' + s.paquetes + ' paquete' + (s.paquetes > 1 ? 's' : '') + ' de conexiones' : 'Pro 1 mes') + ' · ' + pesos(s.monto) + ' · ' + fechaHora(s.creado)), s.cupon ? el('div', { class: 'verde' }, '🏷️ Usó el cupón ' + s.cupon) : null,
@@ -207,7 +224,10 @@
           el('button', { class: 'btn peligro', type: 'button', onclick: async () => { const m = await pedirTexto('Rechazar pago', 'Motivo (lo verá el negocio)', { min: 3, max: 150, boton: 'Rechazar', clase: 'rojo' }); if (m) { try { await conCarga(() => rpc('admin_resolver_pago', { p_id: s.id, p_aprobar: false, p_motivo: m })); vPagos(); } catch (e) { error(e); } } } }, 'Rechazar'),
           el('button', { class: 'btn verde', type: 'button', onclick: async () => { if (await confirmar('Aprobar pago', 'Revisa que el dinero (' + pesos(s.monto) + ') haya llegado. ¿Aprobar ' + (s.tipo === 'conexiones' ? s.paquetes + ' paquete(s) de conexiones' : '1 mes de Pro') + '?', 'Aprobar')) { try { await conCarga(() => rpc('admin_resolver_pago', { p_id: s.id, p_aprobar: true, p_motivo: null })); toast('Aprobado ✓'); vPagos(); } catch (e) { error(e); } } } }, 'Aprobar')) : null));
     }
-    pintar(el('h2', null, 'Pagos'), el('p', { class: 'sutil' }, 'Aquí llegan los avisos de "Ya pagué" de tus clientes (con comprobante si lo subieron). Revisa que la plata llegó a tu cuenta y aprueba: se le suma 1 mes de Pro al instante.'), lista);
+    const cuenta = (e) => todos.filter((x) => !e || x.estado === e).length;
+    pintar(el('h2', null, 'Pagos'), el('div', { class: 'subtabs' }, [['pendiente', '🧾 Por revisar'], ['aprobada', '✅ Aprobados'], ['rechazada', '❌ Rechazados'], ['', 'Todos']].map(([k, tx]) =>
+      el('button', { class: 'chip' + (filtroPago === k ? ' activo' : ''), type: 'button', onclick: () => { filtroPago = k; vPagos(); } }, tx + ' (' + cuenta(k) + ')'))),
+      el('p', { class: 'sutil' }, 'Aquí llegan los "Ya pagué" de las billeteras (Pro y conexiones extra). Revisa que la plata llegó y aprueba.'), lista);
   }
 
   // ---------- Keys ----------
@@ -279,53 +299,98 @@
   }
 
   // ---------- Ajustes ----------
-  async function vAjustes() {
+  // ---------- Ajustes (sub-pestañas, todo editable desde aquí) ----------
+  let secAj = 'precios';
+  const SECCIONES = [['precios', '💳 Precios y links'], ['planes', '⭐ Planes'], ['reglas', '⚖️ Reglas'], ['textos', '✏️ Textos'], ['ventas', '🏷️ Cupones y keys'],
+    ['avisos', '📣 Avisos'], ['push', '🔔 Notificaciones'], ['registro', '📜 Registro'], ['versiones', '🔄 Versiones'], ['cuenta', '👤 Mi cuenta']];
+  async function vAjustes(sec) {
+    if (sec && SECCIONES.some((x) => x[0] === sec)) secAj = sec;
     const { data: a, error: e } = await sb.from('ajustes').select('*').single();
     if (e) throw LC.traducir(e);
     const cfg = await rpc('config_publica');
-    const t = a.transferencia || {}, ln = a.lim_normal || {};
     const inp = (v, attrs) => { const i = el('input', attrs || {}); i.value = v == null ? '' : v; return i; };
-    const f = {
-      mensual: inp(a.precio_mensual, { type: 'number', inputmode: 'numeric' }), activacion: inp(a.precio_activacion, { type: 'number', inputmode: 'numeric' }), anual: inp(a.precio_anual, { type: 'number', inputmode: 'numeric' }),
-      link: inp(a.link_pago, { type: 'url', placeholder: 'https://mpago.la/…' }), wsp: inp(a.contacto_whatsapp, { type: 'tel', placeholder: '+56 9 …' }),
-      prueba: inp(a.dias_prueba, { type: 'number' }), gracia: inp(a.dias_gracia, { type: 'number' }),
-      conInc: inp(a.conexiones_incluidas, { type: 'number' }), conPaq: inp(a.conexiones_paquete, { type: 'number' }), conPrecio: inp(a.precio_paquete, { type: 'number', inputmode: 'numeric' }),
-      tb: inp(t.banco), tt: inp(t.tipo), tn: inp(t.numero, { inputmode: 'numeric' }), tr: inp(t.rut), ttit: inp(t.titular), te: inp(t.email, { type: 'email' }),
-      lc: inp(ln.clientes, { type: 'number' }), lm: inp(ln.movimientos, { type: 'number' }), lq: inp(ln.cuotas, { type: 'number' }), lp: inp(ln.productos, { type: 'number' }), lk: inp(ln.comprobantes, { type: 'number' }), lh: inp(ln.historial_meses, { type: 'number' }), lcaja: inp(ln.caja, { type: 'number' }), lcat: inp(ln.categorias, { type: 'number' }),
-      vlegal: inp(a.version_legal, { type: 'number' }), vmin: inp(a.version_min),
-    };
+    const num = (i) => Math.round(Number(i.value));
     const campo = (tx, i, ay) => el('div', { class: 'campo' }, el('label', null, tx), i, ay ? el('div', { class: 'ayuda' }, ay) : null);
-    pintar(el('h2', null, 'Ajustes'),
-      el('div', { class: 'dos-col' },
-        el('div', null,
-          el('div', { class: 'tarjeta' }, el('h2', null, 'Venta de Pro'), el('div', { class: 'grid2' }, campo('Activación (una vez)', f.activacion), campo('Mensualidad Pro', f.mensual)),
-            el('p', { class: 'sutil' }, 'El primer pago es activación + mensualidad; después solo la mensualidad.'),
-            campo('Link de pago (Mercado Pago u otro)', f.link), campo('Tu WhatsApp de soporte', f.wsp), el('div', { class: 'grid2' }, campo('Días de prueba Pro', f.prueba), campo('Días de gracia', f.gracia)),
-            el('h3', null, '🤝 Billeteras conectadas'), el('div', { class: 'grid3' }, campo('Incluidas', f.conInc), campo('Por paquete', f.conPaq), campo('Precio paquete/mes', f.conPrecio))),
-          el('div', { class: 'tarjeta' }, el('h2', null, 'Tus datos para transferencias de Pro'), campo('Banco', f.tb), campo('Tipo de cuenta', f.tt), campo('Número', f.tn), campo('RUT', f.tr), campo('Titular', f.ttit), campo('Correo', f.te))),
-        el('div', null,
-          el('div', { class: 'tarjeta' }, el('h2', null, 'Límites del plan Free'), el('p', { class: 'sutil' }, 'Después de la prueba Pro, cada billetera sigue gratis con estos límites.'),
-            el('div', { class: 'grid2' }, campo('Clientes activos', f.lc), campo('Fiados y abonos/mes', f.lm), campo('Ingresos y gastos/mes', f.lcaja), campo('Cuotas activas', f.lq), campo('Productos', f.lp), campo('Comprobantes/mes', f.lk), campo('Categorías propias', f.lcat), campo('Historial (meses)', f.lh))),
-          tarjetaVersiones(a, cfg),
-          el('div', { class: 'tarjeta' }, el('h2', null, 'Avanzado'), campo('Versión de los textos legales', f.vlegal, 'Súbela si cambias los Términos: todos deberán aceptarlos de nuevo.'),
-            campo('Versión mínima obligatoria', f.vmin, 'Quien tenga una versión menor ve un aviso rojo para actualizar. Úsalo solo si una versión vieja deja de funcionar.')),
-          el('div', { class: 'tarjeta' }, el('h2', null, 'Notificaciones push'), el('p', null, cfg.vapid_public ? '✅ Claves push configuradas' : '⚠️ Falta generar las claves push'),
-            el('button', { class: 'btn', type: 'button', onclick: generarVapid }, cfg.vapid_public ? 'Regenerar claves push' : 'Generar claves push'),
-            el('button', { class: 'btn texto', type: 'button', onclick: probar }, 'Probar servidor')),
-          el('div', { class: 'tarjeta' }, el('h2', null, 'Feriados'), el('p', { class: 'sutil' }, 'Vienen cargados 2026 y 2027. En feriados no se puede cobrar.'),
-            el('button', { class: 'btn', type: 'button', onclick: feriados }, 'Ver y editar feriados')))),
-      el('button', { class: 'btn primario ancho', type: 'button', onclick: async () => {
-        try {
-          const num = (i) => Math.round(Number(i.value));
-          const datos = { precio_mensual: num(f.mensual), precio_activacion: num(f.activacion), link_pago: f.link.value.trim(), contacto_whatsapp: f.wsp.value.trim() ? V.telefono(f.wsp.value) : '',
-            dias_prueba: num(f.prueba), dias_gracia: num(f.gracia),
-            conexiones_incluidas: f.conInc.value === '' ? undefined : num(f.conInc), conexiones_paquete: f.conPaq.value === '' ? undefined : num(f.conPaq), precio_paquete: f.conPrecio.value === '' ? undefined : num(f.conPrecio),
-            transferencia: { banco: f.tb.value.trim(), tipo: f.tt.value.trim(), numero: f.tn.value.replace(/\D/g, ''), rut: f.tr.value ? V.rutBonito(V.rut(f.tr.value)) : '', titular: f.ttit.value.trim(), email: f.te.value.trim() },
-            lim_normal: { clientes: num(f.lc), movimientos: num(f.lm), cuotas: num(f.lq), productos: num(f.lp), comprobantes: num(f.lk), historial_meses: num(f.lh), caja: num(f.lcaja), categorias: num(f.lcat) },
-            version_legal: num(f.vlegal), version_min: f.vmin.value.trim() };
-          await conCarga(() => rpc('admin_guardar_ajustes', { p: datos })); toast('Ajustes guardados ✓');
-        } catch (er) { error(er); }
-      } }, 'Guardar ajustes'));
+    const guardar = (fn) => el('button', { class: 'btn primario ancho', type: 'button', onclick: async () => {
+      try { await conCarga(() => rpc('admin_guardar_ajustes', { p: fn() })); toast('Guardado ✓'); vAjustes(); } catch (er) { error(er); } } }, 'Guardar');
+    const cuerpo = el('div');
+    const t = a.transferencia || {}, ln = a.lim_normal || {};
+    if (secAj === 'precios') {
+      const f = { act: inp(a.precio_activacion, { type: 'number', inputmode: 'numeric' }), mes: inp(a.precio_mensual, { type: 'number', inputmode: 'numeric' }),
+        wsp: inp(a.contacto_whatsapp, { type: 'tel', placeholder: '+56 9 …' }), conInc: inp(a.conexiones_incluidas, { type: 'number' }), conPaq: inp(a.conexiones_paquete, { type: 'number' }),
+        conPrecio: inp(a.precio_paquete, { type: 'number', inputmode: 'numeric' }), tb: inp(t.banco), tt: inp(t.tipo), tn: inp(t.numero, { inputmode: 'numeric' }), tr: inp(t.rut), ttit: inp(t.titular), te: inp(t.email, { type: 'email' }) };
+      const ls = espacios(a.links_pro && a.links_pro.length ? a.links_pro : (a.link_pago ? [{ texto: 'Mercado Pago', url: a.link_pago, activo: true }] : []));
+      cuerpo.append(el('div', { class: 'tarjeta' }, el('h2', null, 'Precio Pro'), el('div', { class: 'grid2' }, campo('Activación (una vez)', f.act), campo('Mensualidad', f.mes)),
+          el('p', { class: 'sutil' }, 'El primer pago es activación + mensualidad; después solo la mensualidad.')),
+        el('div', { class: 'tarjeta' }, el('h2', null, 'Tus links de pago (2 espacios)'), ls.caja, el('p', { class: 'sutil' }, 'El activo es el que ven las billeteras al pagar Pro, conexiones extra y cupones.')),
+        el('div', { class: 'tarjeta' }, el('h2', null, '🤝 Conexiones extra'), el('div', { class: 'grid3' }, campo('Incluidas', f.conInc), campo('Por paquete', f.conPaq), campo('Precio/mes', f.conPrecio))),
+        el('div', { class: 'tarjeta' }, el('h2', null, 'Tus datos de transferencia'), campo('Banco', f.tb), campo('Tipo de cuenta', f.tt), campo('Número', f.tn), campo('RUT', f.tr), campo('Titular', f.ttit), campo('Correo', f.te), campo('Tu WhatsApp de soporte', f.wsp)),
+        guardar(() => ({ precio_activacion: num(f.act), precio_mensual: num(f.mes), links_pro: ls.valor(), contacto_whatsapp: f.wsp.value.trim() ? V.telefono(f.wsp.value) : '',
+          conexiones_incluidas: num(f.conInc), conexiones_paquete: num(f.conPaq), precio_paquete: num(f.conPrecio),
+          transferencia: { banco: f.tb.value.trim(), tipo: f.tt.value.trim(), numero: f.tn.value.replace(/\D/g, ''), rut: f.tr.value ? V.rutBonito(V.rut(f.tr.value)) : '', titular: f.ttit.value.trim(), email: f.te.value.trim() } })));
+    } else if (secAj === 'planes') {
+      const pf = LC.plan(cfg, 'free'), pp = LC.plan(cfg, 'pro');
+      const bloque = (p) => ({ nombre: inp(p.nombre, { maxlength: 30 }), desc: inp(p.descripcion, { maxlength: 160 }), ben: (() => { const x = el('textarea', { rows: 6, maxlength: 3000 }); x.value = (p.beneficios || []).join('\n'); return x; })() });
+      const bf = bloque(pf), bp = bloque(pp);
+      const l = { lc: inp(ln.clientes, { type: 'number' }), lm: inp(ln.movimientos, { type: 'number' }), lcaja: inp(ln.caja, { type: 'number' }), lq: inp(ln.cuotas, { type: 'number' }),
+        lp: inp(ln.productos, { type: 'number' }), lk: inp(ln.comprobantes, { type: 'number' }), lcat: inp(ln.categorias, { type: 'number' }), lh: inp(ln.historial_meses, { type: 'number' }) };
+      const tarjeta = (tit, b) => el('div', { class: 'tarjeta' }, el('h2', null, tit), campo('Nombre', b.nombre), campo('Descripción', b.desc), campo('Beneficios (uno por línea)', b.ben, 'Salen en la portada, en "Mi plan" y en el aviso de Pro.'));
+      const pl = (b) => ({ nombre: b.nombre.value.trim(), descripcion: b.desc.value.trim(), beneficios: b.ben.value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 20) });
+      cuerpo.append(tarjeta('Plan gratis', bf), el('div', { class: 'tarjeta' }, el('h2', null, 'Límites del plan gratis'), el('p', { class: 'sutil' }, 'Pro y la prueba no tienen límites.'),
+          el('div', { class: 'grid2' }, campo('Clientes activos', l.lc), campo('Fiados y abonos/mes', l.lm), campo('Ingresos y gastos/mes', l.lcaja), campo('Cuotas activas', l.lq), campo('Productos', l.lp), campo('Comprobantes/mes', l.lk), campo('Categorías propias', l.lcat), campo('Historial (meses)', l.lh))),
+        tarjeta('Plan Pro', bp),
+        guardar(() => ({ planes: { free: pl(bf), pro: pl(bp) }, lim_normal: { clientes: num(l.lc), movimientos: num(l.lm), cuotas: num(l.lq), productos: num(l.lp), comprobantes: num(l.lk), historial_meses: num(l.lh), caja: num(l.lcaja), categorias: num(l.lcat) } })));
+    } else if (secAj === 'reglas') {
+      const f = { prueba: inp(a.dias_prueba, { type: 'number' }), gracia: inp(a.dias_gracia, { type: 'number' }), comp: inp(a.dias_comprobantes, { type: 'number' }), aviso: inp(a.dias_aviso, { type: 'number' }),
+        vlegal: inp(a.version_legal, { type: 'number' }), vmin: inp(a.version_min) };
+      cuerpo.append(el('div', { class: 'tarjeta' }, el('h2', null, 'Reglas'),
+          el('div', { class: 'grid2' }, campo('Días de prueba Pro', f.prueba, 'Al crear una billetera.'), campo('Días de gracia', f.gracia, 'Después de vencer la mensualidad.'),
+            campo('Días que se guardan los comprobantes', f.comp, 'Después la foto se borra sola.'), campo('Aviso antes de vencer (días)', f.aviso, 'Además avisa 3 y 1 día antes y el mismo día.'))),
+        el('div', { class: 'tarjeta' }, el('h2', null, 'Avanzado'), campo('Versión de los textos legales', f.vlegal, 'Súbela si cambias los Términos: todos deberán aceptarlos de nuevo.'),
+          campo('Versión mínima obligatoria', f.vmin, 'Quien tenga una versión menor ve un aviso rojo para actualizar.')),
+        el('div', { class: 'tarjeta' }, el('h2', null, 'Feriados'), el('p', { class: 'sutil' }, 'En feriados no se puede cobrar.'), el('button', { class: 'btn', type: 'button', onclick: feriados }, 'Ver y editar feriados')),
+        guardar(() => ({ dias_prueba: num(f.prueba), dias_gracia: num(f.gracia), dias_comprobantes: num(f.comp), dias_aviso: num(f.aviso), version_legal: num(f.vlegal), version_min: f.vmin.value.trim() })));
+    } else if (secAj === 'textos') {
+      const nombres = { landing_titulo: 'Título de la portada', landing_bajada: 'Texto bajo el título', pro_titulo: 'Título del aviso de Pro', pago_instrucciones: 'Instrucciones de pago en el link del cliente ({negocio} = nombre)' };
+      const campos = Object.keys(LC.TEXTOS_DEF).map((k) => { const x = el('textarea', { rows: 3, maxlength: 1000 }); x.value = LC.texto(cfg, k); return [k, x]; });
+      cuerpo.append(el('div', { class: 'tarjeta' }, el('h2', null, 'Textos de la app'), ...campos.map(([k, x]) => campo(nombres[k] || k, x))),
+        guardar(() => ({ textos: Object.fromEntries(campos.map(([k, x]) => [k, x.value.trim()]).filter(([k, v]) => v && v !== LC.TEXTOS_DEF[k])) })));
+    } else if (secAj === 'ventas') {
+      cuerpo.append(el('div', { class: 'col' }, el('a', { class: 'btn', href: '#cupones' }, '🏷️ Cupones de descuento'), el('a', { class: 'btn', href: '#keys' }, '🔑 Keys Pro')));
+    } else if (secAj === 'avisos') {
+      return vAvisos();
+    } else if (secAj === 'push') {
+      cuerpo.append(el('div', { class: 'tarjeta' }, el('h2', null, 'Notificaciones push'), el('p', null, cfg.vapid_public ? '✅ Claves push configuradas' : '⚠️ Falta generar las claves push'),
+        el('div', { class: 'col' }, el('button', { class: 'btn', type: 'button', onclick: generarVapid }, cfg.vapid_public ? 'Regenerar claves push' : 'Generar claves push'),
+          el('button', { class: 'btn', type: 'button', onclick: probar }, '🩺 Probar servidor'))));
+    } else if (secAj === 'registro') {
+      const d = await rpc('admin_auditoria').catch(() => []);
+      cuerpo.append(el('div', { class: 'lista' }, d.length ? d.map((x) => el('div', { class: 'item', style: 'cursor:default' }, el('div', { class: 'crece' },
+        el('div', { class: 'nom' }, x.accion + (x.negocio ? ' · ' + x.negocio : '')), el('div', { class: 'sub', style: 'white-space:normal' }, JSON.stringify(x.detalle || {}).slice(0, 160))),
+        el('span', { class: 'sutil' }, fechaHora(x.at)))) : el('div', { class: 'vacio' }, 'Sin registros.')));
+    } else if (secAj === 'versiones') {
+      cuerpo.append(tarjetaVersiones(a, cfg));
+    } else if (secAj === 'cuenta') {
+      const { data: u } = await sb.auth.getSession();
+      cuerpo.append(el('div', { class: 'tarjeta' }, el('h2', null, 'Mi cuenta'), el('p', null, (u.session && u.session.user.email) || ''),
+        el('div', { class: 'col' }, el('button', { class: 'btn', type: 'button', onclick: async () => {
+          const c1 = await pedirTexto('Cambiar contraseña', 'Nueva contraseña', { tipo: 'password', min: 8, max: 72 }); if (!c1) return;
+          const { error: er } = await sb.auth.updateUser({ password: c1 }); if (er) error(er); else toast('Contraseña cambiada ✓');
+        } }, '🔑 Cambiar contraseña'), el('button', { class: 'btn texto', type: 'button', style: 'color:var(--deuda)', onclick: salir }, '🚪 Cerrar sesión'))));
+    }
+    pintar(el('h2', null, 'Ajustes'), el('div', { class: 'subtabs' }, SECCIONES.map(([k, tx]) => el('button', { class: 'chip' + (secAj === k ? ' activo' : ''), type: 'button', onclick: () => { secAj = k; vAjustes(); } }, tx))), cuerpo);
+  }
+  // 2 espacios de link (texto + link) con interruptor: solo uno activo.
+  function espacios(lista) {
+    const ls = [0, 1].map((i) => ({ texto: (lista[i] && lista[i].texto) || '', url: (lista[i] && lista[i].url) || '', activo: !!(lista[i] && lista[i].activo) }));
+    if (!ls.some((x) => x.activo)) ls[0].activo = true;
+    const caja = el('div');
+    const pintarS = () => vaciar(caja).append(...ls.map((x, i) => el('div', { class: 'slotpago' + (x.activo ? ' on' : '') },
+      el('label', { class: 'check' }, el('input', { type: 'radio', name: 'slotPro', checked: x.activo, onchange: () => { ls.forEach((y, j) => { y.activo = j === i; }); pintarS(); } }), el('strong', null, 'Espacio ' + (i + 1) + (x.activo ? ' · activo' : ''))),
+      el('input', { maxlength: 60, placeholder: 'Nombre (ej: Mercado Pago)', value: x.texto, oninput: (ev) => { x.texto = ev.target.value; } }),
+      el('input', { type: 'url', inputmode: 'url', maxlength: 300, placeholder: 'https://mpago.la/…', value: x.url, style: 'margin-top:6px', oninput: (ev) => { x.url = ev.target.value; } }))));
+    pintarS();
+    return { caja, valor: () => ls.map((x) => ({ texto: x.texto.trim(), url: x.url.trim(), activo: x.activo })) };
   }
   function tarjetaVersiones(a, cfg) {
     const estado = el('p', null, 'Revisando…'), btn = el('button', { class: 'btn primario', type: 'button', disabled: true }, 'Liberar actualización');

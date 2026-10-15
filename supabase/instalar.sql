@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '7'),
+  ('version_bd', '8'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -418,6 +418,23 @@ alter table public.ajustes add column if not exists conexiones_paquete int not n
 alter table public.ajustes add column if not exists precio_paquete int not null default 2000 check (precio_paquete between 0 and 1000000);
 alter table public.solicitudes_pago add column if not exists tipo text not null default 'pro' check (tipo in ('pro','conexiones'));
 alter table public.solicitudes_pago add column if not exists paquetes int not null default 0 check (paquetes between 0 and 50);
+
+-- ---------- v8: todo administrable (textos, planes, reglas, 2 espacios de links de pago) ----------
+alter table public.ajustes add column if not exists textos jsonb not null default '{}'::jsonb;
+alter table public.ajustes add column if not exists planes jsonb not null default '{}'::jsonb;
+alter table public.ajustes add column if not exists links_pro jsonb not null default '[]'::jsonb;
+alter table public.ajustes add column if not exists dias_comprobantes int not null default 30 check (dias_comprobantes between 7 and 365);
+alter table public.ajustes add column if not exists dias_aviso int not null default 7 check (dias_aviso between 1 and 30);
+alter table public.negocios add column if not exists links_pago jsonb not null default '[]'::jsonb;
+do $$ begin
+  if not exists (select 1 from privado.config where clave = 'migracion_v8') then
+    update public.ajustes set links_pro = jsonb_build_array(jsonb_build_object('texto', 'Mercado Pago', 'url', link_pago, 'activo', true),
+      jsonb_build_object('texto', '', 'url', '', 'activo', false)) where id = 1 and links_pro = '[]'::jsonb;
+    update public.negocios set links_pago = jsonb_build_array(jsonb_build_object('texto', 'Mercado Pago', 'url', link_pago, 'activo', true),
+      jsonb_build_object('texto', '', 'url', '', 'activo', false)) where link_pago is not null and links_pago = '[]'::jsonb;
+    insert into privado.config values ('migracion_v8', '1');
+  end if;
+end $$;
 
 -- Conexión entre dos billeteras (siempre a < b). Cada una solo ve el nombre y el ícono de la otra, y la cuenta entre ambas.
 create table if not exists public.conexiones (
@@ -1081,6 +1098,7 @@ create or replace function public.config_publica() returns jsonb language sql st
     'version_liberada', a.version_liberada,
     'version_bd', (select valor::int from privado.config where clave = 'version_bd'),
     'conexiones_incluidas', a.conexiones_incluidas, 'conexiones_paquete', a.conexiones_paquete, 'precio_paquete', a.precio_paquete,
+    'textos', a.textos, 'planes', a.planes, 'links_pro', a.links_pro, 'dias_comprobantes', a.dias_comprobantes,
     'vapid_public', (select valor from privado.secretos where nombre = 'vapid_public'))
   from public.ajustes a where a.id = 1
 $$;
@@ -1113,7 +1131,7 @@ begin
     'terminos_ok', per.terminos_version >= a.version_legal,
     'negocio', jsonb_build_object('id', n.id, 'nombre', n.nombre, 'rubro', n.rubro, 'whatsapp', n.whatsapp, 'banco', n.banco,
       'venc_defecto', n.venc_defecto, 'limite_general', n.limite_general, 'pin_activo', n.pin_activo, 'saldo_a_favor', n.saldo_a_favor,
-      'icono', n.icono, 'color', n.color, 'plantilla_propia', n.plantilla_propia, 'estado', n.estado, 'link_pago', n.link_pago,
+      'icono', n.icono, 'color', n.color, 'plantilla_propia', n.plantilla_propia, 'estado', n.estado, 'link_pago', n.link_pago, 'links_pago', n.links_pago,
       'motivo_suspension', n.motivo_suspension, 'creado', n.creado),
     'plan', jsonb_build_object('estado', privado.estado_plan(v_neg), 'premium', prem, 'hasta', n.premium_hasta,
       'en_prueba', privado.estado_plan(v_neg) = 'prueba', 'prueba_hasta', n.prueba_hasta, 'activado', n.activado,
@@ -1214,7 +1232,9 @@ begin
   update public.negocios set nombre = v_nombre, rubro = coalesce(p ->> 'rubro', 'otro'), whatsapp = privado.telefono(p ->> 'whatsapp'),
     banco = v_banco, venc_defecto = coalesce(p ->> 'venc_defecto', '7'), limite_general = v_lim,
     pin_activo = coalesce((p ->> 'pin_activo')::boolean, true), saldo_a_favor = coalesce((p ->> 'saldo_a_favor')::boolean, false),
-    link_pago = case when p ? 'link_pago' then privado.url_pago(p ->> 'link_pago') else link_pago end,
+    link_pago = case when p ? 'links_pago' then privado.link_activo(privado.links_validos(p -> 'links_pago'))
+      when p ? 'link_pago' then privado.url_pago(p ->> 'link_pago') else link_pago end,
+    links_pago = case when p ? 'links_pago' then privado.links_validos(p -> 'links_pago') else links_pago end,
     plantilla_propia = case when prem then v_plant else plantilla_propia end
    where id = v_neg;
   update public.miembros set nombre = v_nombre where negocio = v_neg and rol = 'dueno';
@@ -1241,6 +1261,25 @@ begin
   end if;
   return v;
 end $$;
+
+-- 2 espacios de link de pago (texto + link + activo). Devuelve la lista limpia; solo uno queda activo.
+create or replace function privado.links_validos(p jsonb) returns jsonb language plpgsql as $$
+declare r jsonb := '[]'::jsonb; x jsonb; i int := 0; hay boolean := false; u text;
+begin
+  if jsonb_typeof(coalesce(p, '[]'::jsonb)) <> 'array' or jsonb_array_length(coalesce(p, '[]'::jsonb)) > 2 then perform privado.fallo('Máximo 2 links de pago'); end if;
+  for x in select * from jsonb_array_elements(coalesce(p, '[]'::jsonb)) loop
+    i := i + 1;
+    u := privado.url_pago(x ->> 'url');
+    r := r || jsonb_build_object('texto', coalesce(privado.limpio(x ->> 'texto', 60), ''), 'url', coalesce(u, ''),
+      'activo', u is not null and coalesce((x ->> 'activo')::boolean, false) and not hay);
+    if u is not null and coalesce((x ->> 'activo')::boolean, false) then hay := true; end if;
+  end loop;
+  return r;
+end $$;
+create or replace function privado.link_activo(p jsonb) returns text language sql immutable as $$
+  select coalesce((select x ->> 'url' from jsonb_array_elements(coalesce(p, '[]'::jsonb)) x where (x ->> 'activo')::boolean and x ->> 'url' <> '' limit 1),
+                  (select x ->> 'url' from jsonb_array_elements(coalesce(p, '[]'::jsonb)) x where x ->> 'url' <> '' limit 1))
+$$;
 
 -- Link de pago propio de un cliente (Pro). Vacío = usa el link general del negocio.
 create or replace function public.guardar_link_pago_cliente(p_id uuid, p_link text) returns void language plpgsql security definer set search_path = public, pg_temp as $$
@@ -2110,6 +2149,7 @@ begin
         from public.ventas_cuotas v where v.cliente = v_cli and v.estado <> 'anulada'), '[]'::jsonb),
     'comprobantes', coalesce((select jsonb_agg(x order by x.creado desc) from (select monto, fecha, estado, motivo, creado
         from public.comprobantes where cliente = v_cli order by creado desc limit 10) x), '[]'::jsonb),
+    'textos', (select textos from public.ajustes where id = 1),
     'vapid_public', (select valor from privado.secretos where nombre = 'vapid_public'));
 end $$;
 
@@ -2238,6 +2278,9 @@ begin
         or (p_filtro = 'prueba' and privado.estado_plan(n.id) = 'prueba' and n.estado <> 'eliminado')
         or (p_filtro in ('free', 'bloqueado') and privado.estado_plan(n.id) = 'free' and n.estado = 'activo')
         or (p_filtro = 'suspendido' and n.estado = 'suspendido')
+        or (p_filtro = 'vence' and n.estado = 'activo' and ((privado.estado_plan(n.id) = 'pro' and n.premium_hasta < now() + interval '7 days')
+            or (privado.estado_plan(n.id) = 'prueba' and n.prueba_hasta < now() + interval '3 days')))
+        or (p_filtro = 'inactivos' and n.estado = 'activo' and coalesce(n.ultimo_uso, n.creado) < now() - interval '7 days')
         or (p_filtro = 'eliminado' and n.estado = 'eliminado'))
     order by n.creado desc limit 300) x), '[]'::jsonb);
 end $$;
@@ -2442,6 +2485,8 @@ begin
   if coalesce(p ->> 'version_liberada', '') <> '' and p ->> 'version_liberada' !~ '^\d{1,3}\.\d{1,3}\.\d{1,3}$' then perform privado.fallo('Versión inválida'); end if;
   if coalesce(p ->> 'version_min', '') <> '' and p ->> 'version_min' !~ '^\d{1,3}\.\d{1,3}\.\d{1,3}$' then perform privado.fallo('Versión mínima inválida'); end if;
   if coalesce(p ->> 'link_pago', '') <> '' and p ->> 'link_pago' !~ '^https://' then perform privado.fallo('El link de pago debe empezar con https://'); end if;
+  if p ? 'textos' and (jsonb_typeof(p -> 'textos') <> 'object' or length((p -> 'textos')::text) > 20000) then perform privado.fallo('Textos inválidos'); end if;
+  if p ? 'planes' and (jsonb_typeof(p -> 'planes') <> 'object' or length((p -> 'planes')::text) > 20000) then perform privado.fallo('Planes inválidos'); end if;
   update public.ajustes set
     precio_mensual = coalesce((p ->> 'precio_mensual')::int, precio_mensual),
     precio_activacion = coalesce((p ->> 'precio_activacion')::int, precio_activacion),
@@ -2453,12 +2498,76 @@ begin
     conexiones_incluidas = coalesce((p ->> 'conexiones_incluidas')::int, conexiones_incluidas),
     conexiones_paquete = coalesce((p ->> 'conexiones_paquete')::int, conexiones_paquete),
     precio_paquete = coalesce((p ->> 'precio_paquete')::int, precio_paquete),
+    textos = coalesce(p -> 'textos', textos),
+    planes = coalesce(p -> 'planes', planes),
+    links_pro = case when p ? 'links_pro' then privado.links_validos(p -> 'links_pro') else links_pro end,
+    dias_comprobantes = coalesce((p ->> 'dias_comprobantes')::int, dias_comprobantes),
+    dias_aviso = coalesce((p ->> 'dias_aviso')::int, dias_aviso),
     lim_normal = coalesce(ln, lim_normal),
     version_legal = coalesce((p ->> 'version_legal')::int, version_legal),
     version_min = coalesce(nullif(p ->> 'version_min', ''), version_min),
     version_liberada = coalesce(nullif(p ->> 'version_liberada', ''), version_liberada),
     actualizado = now()
    where id = 1;
+  if p ? 'links_pro' then update public.ajustes set link_pago = coalesce(privado.link_activo(links_pro), '') where id = 1; end if;
+  perform privado.auditar(null, 'ajustes', jsonb_build_object('claves', (select jsonb_agg(ck) from jsonb_object_keys(p) ck)));
+end $$;
+
+-- Registro de cambios (lo que hiciste tú y acciones importantes)
+create or replace function public.admin_auditoria() returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  perform privado.solo_admin();
+  return coalesce((select jsonb_agg(x order by x.at desc) from (select a.at, a.accion, a.detalle, n.nombre negocio
+    from public.auditoria a left join public.negocios n on n.id = a.negocio order by a.at desc limit 200) x), '[]'::jsonb);
+end $$;
+
+-- Uso del servidor tabla por tabla
+create or replace function public.admin_uso() returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  perform privado.solo_admin();
+  return jsonb_build_object('bd_mb', round(pg_database_size(current_database()) / 1048576.0, 1),
+    'tablas', (select jsonb_agg(x order by x.bytes desc) from (select c.relname tabla, pg_total_relation_size(c.oid) bytes, c.reltuples::bigint filas
+      from pg_class c join pg_namespace s on s.oid = c.relnamespace where s.nspname = 'public' and c.relkind = 'r') x),
+    'archivos', (select jsonb_agg(x) from (select bucket_id bucket, count(*) n, round(coalesce(sum((metadata ->> 'size')::bigint), 0) / 1048576.0, 1) mb
+      from storage.objects group by bucket_id) x));
+end $$;
+
+-- Botones de limpieza
+create or replace function public.admin_limpiar(p_que text) returns int language plpgsql security definer set search_path = public, pg_temp as $$
+declare n int := 0; d int := (select dias_comprobantes from public.ajustes where id = 1);
+begin
+  perform privado.solo_admin();
+  if p_que = 'avisos' then
+    delete from public.notificaciones where leido and creado < now() - interval '30 days'; get diagnostics n = row_count;
+  elsif p_que = 'cola' then
+    delete from public.cola_push where tomado_at is not null; get diagnostics n = row_count;
+  elsif p_que = 'sesiones' then
+    delete from public.sesiones_cliente where vence < now(); get diagnostics n = row_count;
+  elsif p_que = 'auditoria' then
+    delete from public.auditoria where at < now() - interval '180 days'; get diagnostics n = row_count;
+  elsif p_que = 'comprobantes' then
+    insert into privado.archivos_por_borrar (bucket, ruta) select 'comprobantes', foto_path from public.comprobantes
+      where foto_path is not null and estado <> 'pendiente' and revisado_at < now() - make_interval(days => d);
+    update public.comprobantes set foto_path = null where foto_path is not null and estado <> 'pendiente' and revisado_at < now() - make_interval(days => d);
+    get diagnostics n = row_count;
+    insert into privado.archivos_por_borrar (bucket, ruta) select 'comprobantes', foto_path from public.movimientos where foto_path is not null and creado_at < now() - make_interval(days => d);
+    update public.movimientos set foto_path = null where foto_path is not null and creado_at < now() - make_interval(days => d);
+    perform privado.llamar_funcion('{"accion": "limpiar"}'::jsonb);
+  else
+    perform privado.fallo('Limpieza desconocida');
+  end if;
+  perform privado.auditar(null, 'limpiar', jsonb_build_object('que', p_que, 'filas', n));
+  return n;
+end $$;
+
+-- La billetera borra las fotos de los comprobantes ya revisados (se guardan los datos del pago)
+create or replace function public.limpiar_comprobantes() returns int language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(true, true); n int;
+begin
+  insert into privado.archivos_por_borrar (bucket, ruta) select 'comprobantes', foto_path from public.comprobantes where negocio = v_neg and foto_path is not null and estado <> 'pendiente';
+  update public.comprobantes set foto_path = null where negocio = v_neg and foto_path is not null and estado <> 'pendiente';
+  get diagnostics n = row_count;
+  return n;
 end $$;
 
 create or replace function public.admin_set_secret(p_nombre text, p_valor text) returns void language plpgsql security definer set search_path = public, pg_temp as $$
@@ -2583,6 +2692,12 @@ begin
     delete from public.invitaciones where vence < now() - interval '7 days';
     delete from privado.fotos_pendientes where vence < now();
     delete from public.notificaciones where creado < now() - interval '90 days';
+    -- Fotos de comprobantes: se borran solas a los N días (Ajustes → Reglas)
+    insert into privado.archivos_por_borrar (bucket, ruta)
+      select 'comprobantes', foto_path from public.comprobantes where foto_path is not null and estado <> 'pendiente'
+        and revisado_at < now() - make_interval(days => (select dias_comprobantes from public.ajustes where id = 1));
+    update public.comprobantes set foto_path = null where foto_path is not null and estado <> 'pendiente'
+      and revisado_at < now() - make_interval(days => (select dias_comprobantes from public.ajustes where id = 1));
     delete from privado.tareas_hechas where fecha < hoy - 30;
   end if;
 
@@ -2609,7 +2724,7 @@ begin
         end if;
       elsif r.est = 'pro' and r.premium_hasta is not null then
         dias := (r.premium_hasta at time zone 'America/Santiago')::date - hoy;
-        if dias in (7, 3, 1, 0) then
+        if dias = any (array[(select dias_aviso from public.ajustes where id = 1), 3, 1, 0]) then
           perform privado.avisar_negocio(r.id, case when dias = 0 then 'Tu mensualidad de Pro vence hoy' else 'Tu mensualidad de Pro vence en ' || dias || ' días' end,
             'Paga desde Más → Mi plan para no perder las funciones Pro.', 'app/#plan', true);
         elsif dias < 0 then
@@ -2734,7 +2849,7 @@ create policy lectura on public.auditoria for select to authenticated using (neg
 
 grant usage on schema public to anon, authenticated, service_role;
 grant select (id, dueno, nombre, rubro, whatsapp, banco, venc_defecto, limite_general, pin_activo, saldo_a_favor, logo_url, color,
-  plantilla_propia, premium_hasta, en_prueba, plan_aplicado, estado, motivo_suspension, eliminar_desde, ultimo_uso, creado, prueba_hasta, activado, quiere_pro_at, meta_ventas, presupuesto_gastos, icono, cupon, link_pago) on public.negocios to authenticated;
+  plantilla_propia, premium_hasta, en_prueba, plan_aplicado, estado, motivo_suspension, eliminar_desde, ultimo_uso, creado, prueba_hasta, activado, quiere_pro_at, meta_ventas, presupuesto_gastos, icono, cupon, link_pago, links_pago) on public.negocios to authenticated;
 grant select on public.ajustes, public.feriados, public.perfiles, public.miembros, public.ventas_cuotas, public.cuotas,
   public.movimientos, public.recordatorios, public.productos, public.uso_mensual, public.notificaciones, public.solicitudes_pago,
   public.auditoria, public.caja, public.categorias, public.soporte to authenticated;
@@ -2776,7 +2891,8 @@ grant execute on function public.mi_estado(), public.aceptar_terminos(), public.
   public.estado_fiados(uuid), public.pagar_fiado(uuid, uuid, int, text, text, boolean), public.adjuntar_foto(uuid, text),
   public.mi_codigo_conexion(boolean), public.conectar(text), public.conexion_responder(uuid, boolean), public.conexion_cerrar(uuid),
   public.mis_conexiones(), public.conexion_ver(uuid), public.conexion_anotar(uuid, uuid, text, int, text), public.conexion_resolver(uuid, boolean, text),
-  public.conexion_anular(uuid), public.pedir_conexiones(int, text) to authenticated;
+  public.conexion_anular(uuid), public.pedir_conexiones(int, text),
+  public.admin_auditoria(), public.admin_uso(), public.admin_limpiar(text), public.limpiar_comprobantes() to authenticated;
 grant execute on function public.srv_secretos(), public.srv_cola_tomar(int), public.srv_quitar_endpoint(text), public.srv_foto_validar(uuid, text),
   public.srv_foto_lista(uuid, text), public.srv_archivos_por_borrar(int), public.srv_archivos_borrados(bigint[]),
   public.srv_es_admin(uuid), public.srv_crear_negocio(uuid, text, text, int) to service_role;
