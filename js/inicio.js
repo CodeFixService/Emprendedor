@@ -14,6 +14,12 @@
     if (!c) return;
     $('#precioPremium').textContent = LC.pesos(c.precio_mensual) + '/mes';
     $('#precioActivacion').textContent = c.precio_activacion > 0 ? 'Activación ' + LC.pesos(c.precio_activacion) + ' (una vez)' : 'Sin costo de activación';
+    // Textos y beneficios editables desde Administración → Ajustes
+    if (c.textos && c.textos.landing_titulo) document.querySelector('.lp-hero h1').textContent = c.textos.landing_titulo;
+    if (c.textos && c.textos.landing_bajada) document.querySelector('.lp-hero .bajada').textContent = c.textos.landing_bajada;
+    if (c.planes && c.planes.pro && Array.isArray(c.planes.pro.beneficios) && c.planes.pro.beneficios.length) {
+      const ul = vaciar($('#listaPro')); c.planes.pro.beneficios.forEach((t) => ul.append(el('li', null, String(t).replace(/^\S+\s/, (m) => /[A-Za-zÁÉÍÓÚáéíóúÑñ0-9]/.test(m) ? m : ''))));
+    }
     $('#diasPrueba').textContent = c.dias_prueba;
     $('#txtPrueba').textContent = c.dias_prueba > 0 ? c.dias_prueba + ' días de Pro gratis' : 'Gratis para siempre';
     const l = c.lim_normal || {};

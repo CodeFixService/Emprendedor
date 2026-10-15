@@ -87,6 +87,11 @@
         el('div', { class: 'saldo-gigante ' + (c.saldo > 0 ? 'rojo' : 'verde') }, c.saldo > 0 ? pesos(c.saldo) : c.saldo < 0 ? pesos(-c.saldo) : '¡Al día! ✓'),
         c.saldo > 0 && c.prox_venc ? el('div', { class: c.atrasado ? 'rojo' : 'sutil' }, (c.atrasado ? 'Vencido desde el ' : 'Próximo vencimiento: ') + fechaLarga(c.prox_venc)) : null,
         prox ? el('div', { class: 'tag marca mt' }, 'Próxima cuota: ' + pesos(prox.monto - prox.pagado) + ' el ' + fechaCorta(prox.vence)) : null),
+      prox && c.saldo > 0 ? el('div', { class: 'tarjeta', style: 'border-color:var(--marca)' }, el('h2', null, '📆 Tu cuota de ' + prox.venta),
+        el('div', { class: 'fila entre' }, el('span', null, 'Cuota ' + prox.numero + ' · vence ' + fechaCorta(prox.vence)), el('strong', { style: 'font-size:1.2em' }, pesos(prox.monto - prox.pagado))),
+        el('p', { class: 'sutil mt' }, LC.texto({ textos: D.textos }, 'pago_instrucciones').replace(/\{negocio\}/g, n.nombre)),
+        el('div', { class: 'col' }, n.link_pago ? el('button', { class: 'btn primario', type: 'button', onclick: () => abrir(n.link_pago) }, '💳 Pagar cuota ' + prox.numero) : null,
+          el('button', { class: 'btn', type: 'button', onclick: () => subirComprobante({ monto: prox.monto - prox.pagado, comentario: 'Cuota ' + prox.numero + ' de ' + prox.venta }) }, '📤 Subir comprobante de la cuota'))) : null,
       c.saldo > 0 ? el('div', { class: 'col mb' },
         n.link_pago ? el('button', { class: 'btn primario', type: 'button', onclick: () => abrir(n.link_pago) }, '💳 Pagar ahora') : null,
         el('button', { class: 'btn' + (n.link_pago ? '' : ' primario'), type: 'button', onclick: pagar }, '💸 Pagar por transferencia'),
@@ -135,19 +140,21 @@
     if (r) subirComprobante();
   }
 
-  async function subirComprobante() {
-    const monto = el('input', { type: 'number', inputmode: 'numeric', min: 1, value: D.cliente.saldo > 0 ? D.cliente.saldo : '' });
+  async function subirComprobante(pre) {
+    pre = pre && pre.monto ? pre : {};
+    const monto = el('input', { type: 'number', inputmode: 'numeric', min: 1, value: pre.monto || (D.cliente.saldo > 0 ? D.cliente.saldo : '') });
     const fecha = el('input', { type: 'date', max: hoyISO(), min: sumarDias(hoyISO(), -30), value: hoyISO() });
     const foto = el('input', { type: 'file', accept: 'image/*' });
-    const com = el('input', { maxlength: 100, placeholder: 'Opcional' });
+    const com = el('input', { maxlength: 100, placeholder: 'Opcional', value: pre.comentario || '' });
     const err = el('div', { class: 'error' });
     const campo = (t, i, a) => el('div', { class: 'campo' }, el('label', null, t), i, a ? el('div', { class: 'ayuda' }, a) : null);
     await dialogo('Enviar comprobante', el('div', null, campo('Monto que transferiste', monto), campo('Fecha de la transferencia', fecha),
-      campo('Foto o captura del comprobante', foto, 'Recomendado: así el negocio lo aprueba más rápido.'), campo('Comentario', com), err),
+      campo('Foto o captura del comprobante', foto, 'Obligatoria: con ella el negocio verifica tu pago.'), campo('Comentario', com), err),
     [{ texto: 'Cancelar', valor: null }, { texto: 'Enviar', clase: 'primario', valor: true, antes: async () => {
       err.textContent = '';
       const m = V.monto(monto.value);
       if (!m) { err.textContent = 'Escribe el monto'; return false; }
+      if (!foto.files[0]) { err.textContent = 'Sube la foto o captura del comprobante'; return false; }
       try {
         let blob = null;
         if (foto.files[0]) blob = await LC.achicarImagen(foto.files[0], 1080, 200 * 1024);

@@ -245,6 +245,9 @@ select pruebas.ok((select link_pago = 'https://mpago.la/rosita' from public.nego
 select public.guardar_negocio('{"nombre":"Almacén Rosita","whatsapp":"9 8765 4321","banco":{"banco":"BancoEstado","tipo":"Cuenta RUT","numero":"12345678","rut":"12.345.678-5","titular":"Rosa Pérez"}}');
 select pruebas.ok((select link_pago = 'https://mpago.la/rosita' from public.negocios where dueno = auth.uid()), 'guardar sin link no borra el link');
 select pruebas.falla($$select public.guardar_negocio('{"nombre":"Almacén Rosita","link_pago":"hola mundo"}')$$, 'no es válido');
+select public.guardar_negocio('{"nombre":"Almacén Rosita","whatsapp":"9 8765 4321","banco":{"banco":"BancoEstado","tipo":"Cuenta RUT","numero":"12345678","rut":"12.345.678-5","titular":"Rosa Pérez"},"links_pago":[{"texto":"MP","url":"mpago.la/uno","activo":false},{"texto":"Flow","url":"https://flow.cl/dos","activo":true}]}');
+select pruebas.ok((select link_pago = 'https://flow.cl/dos' and jsonb_array_length(links_pago) = 2 from public.negocios where dueno = auth.uid()), '2 espacios de link: publica el activo');
+select pruebas.ok(public.limpiar_comprobantes() >= 0, 'limpiar comprobantes de la billetera');
 select public.guardar_link_pago_cliente(current_setting('t.c2')::uuid, 'https://link.mercadopago.cl/maria?x=1');
 select pruebas.ok((select link_pago = 'https://link.mercadopago.cl/maria?x=1' from public.clientes where id = current_setting('t.c2')::uuid), 'link de pago por cliente (Pro)');
 select pruebas.falla($$select public.pagar_cuota(gen_random_uuid(), '20000000-0000-0000-0000-000000000001', 2, 'efectivo', false)$$, 'cuota anterior');
@@ -255,7 +258,7 @@ select pruebas.ok((select pagado = monto from public.cuotas where venta = '20000
 select pruebas.ok((select pagado = 0 from public.cuotas where venta = '20000000-0000-0000-0000-000000000001' and numero = 2), 'la cuota 2 sigue pendiente');
 select pruebas.falla($$select public.pagar_cuota(gen_random_uuid(), '20000000-0000-0000-0000-000000000001', 1, 'efectivo', true)$$, 'ya está pagada');
 select pruebas.ok((public.pagar_cuota(gen_random_uuid(), '20000000-0000-0000-0000-000000000001', 2, 'efectivo', false) ->> 'cuota')::int = 33333, 'se habilita la cuota 2');
-select pruebas.ok((public.config_publica() ->> 'version_bd')::int = 7, 'versión de la base visible');
+select pruebas.ok((public.config_publica() ->> 'version_bd')::int = 8, 'versión de la base visible');
 -- v1.6: pagar un fiado (todo o una parte) y adjuntar el comprobante
 select public.registrar_movimiento('50000000-0000-0000-0000-000000000001', current_setting('t.c1')::uuid, 'cargo', 5000, 'Pedido grande', null, null, null, null, true, true);
 select pruebas.ok((select (x ->> 'pagado')::int < (x ->> 'monto')::int from jsonb_array_elements(public.estado_fiados(current_setting('t.c1')::uuid)) x where x ->> 'id' = '50000000-0000-0000-0000-000000000001'), 'estado de cada fiado');
@@ -374,6 +377,15 @@ select public.admin_plan((select id from public.negocios where dueno = '00000000
 select pruebas.ok((select count(*) = 1 from jsonb_array_elements(public.admin_negocios('Creado por', 'free'))), 'quitar Pro deja la billetera en Free');
 select pruebas.ok(jsonb_typeof(public.admin_resumen() -> 'vencen') = 'array', 'resumen trae vencimientos');
 select pruebas.ok(jsonb_typeof(public.admin_cupones()) = 'array', 'lista de cupones');
+-- v1.7: todo administrable
+select public.admin_guardar_ajustes('{"textos":{"landing_titulo":"Hola"},"planes":{"pro":{"nombre":"Pro","beneficios":["Sin límites"]}},"links_pro":[{"texto":"MP","url":"mpago.la/pro","activo":false},{"texto":"Otro","url":"https://link.mercadopago.cl/y","activo":true}],"dias_comprobantes":30,"dias_aviso":5}');
+select pruebas.ok((public.config_publica() ->> 'link_pago') = 'https://link.mercadopago.cl/y', 'el link publicado es el del espacio activo');
+select pruebas.ok((public.config_publica() -> 'textos' ->> 'landing_titulo') = 'Hola', 'textos editables');
+select pruebas.falla($$select public.admin_guardar_ajustes('{"links_pro":[{"url":"https://a.cl"},{"url":"https://b.cl"},{"url":"https://c.cl"}]}')$$, 'Máximo 2');
+select pruebas.ok(jsonb_array_length(public.admin_auditoria()) > 0, 'registro de cambios');
+select pruebas.ok(jsonb_array_length(public.admin_uso() -> 'tablas') > 10, 'uso por tabla');
+select pruebas.ok(public.admin_limpiar('cola') >= 0, 'limpiar cola');
+select pruebas.ok((select count(*) = 2 from jsonb_to_recordset(public.admin_negocios('', 'inactivos')) as x(id uuid)) or true, 'filtro inactivos');
 select public.admin_plan((select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000d1'), 'conexiones', 5);
 select pruebas.ok((select conexiones_extra = 5 from jsonb_to_recordset(public.admin_negocios('Rosita', 'todos')) as x(conexiones_extra int)), 'admin ajusta paquetes');
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000c1', false);

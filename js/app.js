@@ -72,7 +72,12 @@
     banda('prueba', 'info', pl.estado === 'prueba' ? '🎁 Estás probando Pro gratis: ' + (diasP <= 1 ? 'termina hoy' : 'te quedan ' + diasP + ' días') + '.' : null, 'Ver planes', () => { location.hash = 'plan'; });
     banda('gracia', 'error', pl.en_gracia ? '⚠️ Tu mensualidad venció. Paga dentro de ' + pl.dias_gracia + ' días para no perder las funciones Pro.' : null, 'Pagar', () => { location.hash = 'plan'; });
     banda('fuera', 'aviso', st.uso && st.uso.fuera_de_plan ? '🔒 ' + st.uso.fuera_de_plan + ' clientes quedaron en "solo cobro" por el límite del plan Free.' : null, 'Ver', () => { location.hash = 'clientes/fuera'; });
-    LC.revisarVersion(st.config, (txt, fn, forzada) => banda('actualizar', forzada ? 'error' : 'info', txt, txt ? 'Actualizar' : null, fn));
+    LC.revisarVersion(st.config, (txt, fn, forzada) => {
+      banda('actualizar', forzada ? 'error' : 'info', txt, txt ? 'Actualizar' : null, fn);
+      // Aviso emergente una vez por versión y sesión
+      const k = 'lc-aviso-' + st.config.version_liberada;
+      try { if (txt && !sessionStorage.getItem(k)) { sessionStorage.setItem(k, '1'); dialogo('🔄 Hay una versión nueva', el('p', null, txt), [{ texto: 'Después', valor: null }, { texto: 'Actualizar ahora', clase: 'primario', valor: 1 }]).then((v) => { if (v) fn(); }); } } catch (e) { /* nada */ }
+    });
   }
 
   function banda(id, tipo, texto, boton, fn) {
@@ -208,14 +213,9 @@
     const c = S.st.config, act = precioAct();
     return act > 0 ? pesos(act) + ' de activación + ' + pesos(c.precio_mensual) + ' al mes' : pesos(c.precio_mensual) + ' al mes';
   }
-  const BENEFICIOS_PRO = [['♾️', 'Todo sin límites: clientes, fiados, ventas, gastos y cuotas'], ['📣', 'Cobrar a todos de una, con tonos y tu propio mensaje'],
-    ['🧾', 'Recibos con imagen para mandar por WhatsApp'], ['📈', 'Reportes avanzados: mejores clientes, mejores días y comparación con el mes anterior'],
-    ['🎯', 'Meta de ventas y presupuesto de gastos con alertas'], ['🗂️', 'Historial completo, Excel y estado de cuenta en PDF'],
-    ['🔔', 'Resumen semanal al celular y avisos automáticos de cuotas'], ['🎨', 'Tu color en el link de tus clientes'],
-    ['🤝', 'Billeteras conectadas: cuentas claras con familia y amigos']];
   function alPlan(msg) {
-    dialogo('Esto es Pro ⭐', el('div', null, el('p', null, msg),
-      el('div', { class: 'tarjeta plana' }, el('strong', null, 'Con Pro desbloqueas'), el('ul', { class: 'lista-pro' }, BENEFICIOS_PRO.map(([i, t]) => el('li', null, el('span', null, i), t))),
+    dialogo(LC.texto(S.st.config, 'pro_titulo'), el('div', null, el('p', null, msg),
+      el('div', { class: 'tarjeta plana' }, el('strong', null, 'Con ' + LC.plan(S.st.config, 'pro').nombre + ' desbloqueas'), el('ul', { class: 'lista-pro' }, LC.plan(S.st.config, 'pro').beneficios.map((t) => el('li', null, t))),
         el('p', { class: 'mt' }, el('strong', null, precioPro()), ' · sin contrato'))),
     [{ texto: 'Ahora no', valor: null }, { texto: 'Activar Pro', clase: 'primario', valor: 1 }]).then((v) => { if (v) location.hash = 'plan'; });
   }
@@ -1086,7 +1086,8 @@
       const foto = el('div');
       if (k.foto_path) {
         sb.storage.from('comprobantes').createSignedUrl(k.foto_path, 600).then(({ data: u }) => {
-          if (u && u.signedUrl) foto.append(el('img', { class: 'foto-comp mt', src: u.signedUrl, alt: 'Comprobante', loading: 'lazy', onclick: () => abrir(u.signedUrl) }));
+          if (u && u.signedUrl) foto.append(el('img', { class: 'foto-comp mt', src: u.signedUrl, alt: 'Comprobante', loading: 'lazy', onclick: () => abrir(u.signedUrl) }),
+            el('button', { class: 'btn chico mt', type: 'button', onclick: () => bajarFoto(u.signedUrl, 'comprobante-' + c.nombre + '-' + k.fecha) }, '⬇️ Descargar'));
         });
       }
       lista.append(el('div', { class: 'tarjeta' },
@@ -1102,7 +1103,14 @@
     }
     pintar(el('div', { class: 'fila entre mb' }, el('h2', { style: 'margin:0' }, 'Comprobantes'),
       el('a', { class: 'btn chico', href: todos ? '#comprobantes' : '#comprobantes/todos' }, todos ? 'Solo pendientes' : 'Ver todos')),
-    el('p', { class: 'sutil' }, 'Antes de aprobar, revisa que la plata haya llegado a tu cuenta.'), lista);
+    el('p', { class: 'sutil' }, 'Antes de aprobar, revisa que la plata haya llegado a tu cuenta. Las fotos se borran solas a los ' + (S.st.config.dias_comprobantes || 30) + ' días.'), lista,
+    esDueno() ? el('button', { class: 'btn texto ancho mt', type: 'button', onclick: async () => {
+      if (!await confirmar('Limpiar comprobantes', 'Se borran las fotos de los comprobantes ya revisados. Los pagos quedan registrados.', 'Limpiar', 'rojo')) return;
+      try { const n = await conCarga(() => rpc('limpiar_comprobantes')); toast(n + ' foto(s) borradas ✓'); vComprobantes(arg); } catch (e) { error(e); }
+    } }, '🧹 Limpiar fotos de comprobantes revisados') : null);
+  }
+  async function bajarFoto(url, nombre) {
+    try { const b = await (await fetch(url)).blob(); LC.descargar(norm(nombre).replace(/[^a-z0-9-]+/g, '-') + (b.type === 'image/png' ? '.png' : b.type === 'image/webp' ? '.webp' : '.jpg'), b); } catch (e) { abrir(url); }
   }
   async function revisar(k, aprobar) {
     try {
@@ -1300,13 +1308,14 @@
       tipo: el('select', null, el('option', { value: '' }, 'Tipo de cuenta'), ['Cuenta Corriente', 'Cuenta Vista / RUT', 'Cuenta de Ahorro'].map((x) => el('option', { selected: x === b.tipo }, x))),
       numero: el('input', { inputmode: 'numeric', value: b.numero || '', maxlength: 20 }), rut: el('input', { value: b.rut ? V.rutBonito(b.rut) : '', placeholder: '12.345.678-5' }),
       titular: el('input', { maxlength: 60, value: b.titular || '' }), email: el('input', { type: 'email', value: b.email || '', inputmode: 'email' }),
-      linkPago: el('input', { type: 'url', inputmode: 'url', maxlength: 300, value: n.link_pago || '', placeholder: 'https://mpago.la/…' }),
+
       venc: el('select', null, [['0', 'El mismo día'], ['7', '7 días'], ['15', '15 días'], ['30', '30 días'], ['fin', 'Fin de mes']].map(([v, t]) => el('option', { value: v, selected: v === n.venc_defecto }, t))),
       limite: el('input', { type: 'number', inputmode: 'numeric', min: 0, max: 5000000, value: n.limite_general || '' }),
       pin: el('input', { type: 'checkbox', id: 'pinAct', checked: n.pin_activo }), favor: el('input', { type: 'checkbox', id: 'favor', checked: n.saldo_a_favor }),
       plantilla: el('textarea', { maxlength: 500, placeholder: 'Hola {nombre}, tu saldo en {negocio} es {saldo}. Detalle: {link}' }),
     };
     f.plantilla.value = n.plantilla_propia || '';
+    const slots = espaciosLink(n.links_pago && n.links_pago.length ? n.links_pago : (n.link_pago ? [{ texto: 'Mercado Pago', url: n.link_pago, activo: true }] : []));
     const err = el('div', { class: 'error' });
     const campo = (t, i, a) => el('div', { class: 'campo' }, el('label', null, t), i, a ? el('div', { class: 'ayuda' }, a) : null);
     const premiumBloque = prem() ? el('div', { class: 'tarjeta' }, el('h2', null, '⭐ Tu mensaje de cobro'),
@@ -1318,7 +1327,7 @@
         el('div', null,
           el('div', { class: 'tarjeta' }, el('h2', null, 'Tu negocio'), campo('Nombre', f.nombre), campo('Rubro', f.rubro), campo('WhatsApp del negocio', f.whatsapp, 'Tus clientes te escriben aquí desde su link.')),
           el('div', { class: 'tarjeta' }, el('h2', null, 'Datos para que te transfieran'), el('p', { class: 'sutil' }, 'Tus clientes los ven en su link con un botón para copiar.'),
-            campo('Link de pago (Mercado Pago u otro)', f.linkPago, 'Va en tus mensajes de cobro y en el link de tus clientes con un botón "Pagar ahora".'),
+            el('label', null, 'Links de pago (Mercado Pago u otro)'), slots.caja, el('div', { class: 'ayuda mb' }, 'Tienes 2 espacios: el activo va en tus mensajes de cobro y en el botón "Pagar ahora" del link de tus clientes.'),
             campo('Banco', f.banco), campo('Tipo de cuenta', f.tipo), campo('Número de cuenta', f.numero), campo('RUT del titular', f.rut), campo('Nombre del titular', f.titular), campo('Correo para avisar la transferencia', f.email))),
         el('div', null,
           el('div', { class: 'tarjeta' }, el('h2', null, 'Reglas de fiado'), campo('Vencimiento por defecto', f.venc), campo('Límite de fiado general', f.limite, '0 o vacío = sin límite. Te avisa cuando un cliente lo pasa.'),
@@ -1333,7 +1342,7 @@
           const datos = { nombre: f.nombre.value, rubro: f.rubro.value, whatsapp: V.telefono(f.whatsapp.value),
             banco: { banco: f.banco.value || null, tipo: f.tipo.value || null, numero: f.numero.value.replace(/\D/g, '') || null, rut: V.rut(f.rut.value), titular: f.titular.value || null, email: f.email.value.trim() || null },
             venc_defecto: f.venc.value, limite_general: f.limite.value ? Math.round(Number(f.limite.value)) : 0, pin_activo: f.pin.checked, saldo_a_favor: f.favor.checked,
-            plantilla_propia: f.plantilla.value || null, link_pago: f.linkPago.value.trim() || null };
+            plantilla_propia: f.plantilla.value || null, links_pago: slots.valor() };
           if (datos.banco.email && !V.email(datos.banco.email)) throw new Error('Correo de transferencia inválido');
           if (prem() && datos.plantilla_propia && V.prohibida(datos.plantilla_propia)) throw new Error('El mensaje no puede contener "' + V.prohibida(datos.plantilla_propia) + '"');
           await conCarga(() => rpc('guardar_negocio', { p: datos }));
@@ -1343,6 +1352,20 @@
       el('div', { class: 'tarjeta mt' }, el('h2', null, 'Tus datos'), el('p', { class: 'sutil' }, 'Descarga todo lo que tienes en la libreta (es tu derecho, en cualquier plan).'),
         el('button', { class: 'btn ancho', type: 'button', onclick: () => exportar('csv') }, '📄 Exportar todo (CSV)')));
   }
+
+  // 2 espacios de link de pago (texto + link) con un interruptor: solo uno queda activo.
+  function espaciosLink(lista) {
+    const ls = [0, 1].map((i) => ({ texto: (lista[i] && lista[i].texto) || '', url: (lista[i] && lista[i].url) || '', activo: !!(lista[i] && lista[i].activo) }));
+    if (!ls.some((x) => x.activo)) ls[0].activo = true;
+    const caja = el('div');
+    const pintarS = () => vaciar(caja).append(...ls.map((x, i) => el('div', { class: 'slotpago' + (x.activo ? ' on' : '') },
+      el('label', { class: 'check' }, el('input', { type: 'radio', name: 'slotLink', checked: x.activo, onchange: () => { ls.forEach((y, j) => { y.activo = j === i; }); pintarS(); } }), el('strong', null, 'Espacio ' + (i + 1) + (x.activo ? ' · activo' : ''))),
+      el('input', { maxlength: 60, placeholder: 'Nombre (ej: Mercado Pago)', value: x.texto, oninput: (e) => { x.texto = e.target.value; } }),
+      el('input', { type: 'url', inputmode: 'url', maxlength: 300, placeholder: 'https://mpago.la/…', value: x.url, style: 'margin-top:6px', oninput: (e) => { x.url = e.target.value; } }))));
+    pintarS();
+    return { caja, valor: () => ls.map((x) => ({ texto: x.texto.trim(), url: x.url.trim(), activo: x.activo })) };
+  }
+  LC.espaciosLink = espaciosLink;
 
   // ================= PLAN =================
   async function vPlan() {

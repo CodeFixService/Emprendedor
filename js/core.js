@@ -1,8 +1,8 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.6.0';
-  const BD = 7; // versión de la base de datos que necesita esta versión de la app
+  const VERSION = '1.7.0';
+  const BD = 8; // versión de la base de datos que necesita esta versión de la app
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
   const sb = global.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, {
@@ -58,6 +58,23 @@
   const ICONOS = ['🏪', '🛒', '🥖', '🥑', '🍎', '🍓', '🧁', '🍰', '🍩', '☕', '🍔', '🌭', '🌮', '🍕', '🍣', '🥤', '🍦', '🧃', '🍺', '🍷',
     '👕', '👗', '👟', '👜', '💄', '💅', '💇', '✂️', '🧵', '🧶', '🎨', '📚', '✏️', '🎓', '🛠️', '🔧', '🚗', '🛵', '🚚', '🐶',
     '🌸', '🌱', '📱', '💻', '🎁', '🧸', '💊', '🏠', '⚽', '🎵', '📸', '💎', '⭐', '🔥', '💰', '🙂'];
+  // Textos y planes por defecto; el administrador los cambia en Ajustes (se guardan en la base de datos).
+  const TEXTOS_DEF = {
+    landing_titulo: 'Tu negocio en el bolsillo. Cobra sin vergüenza.',
+    landing_bajada: 'Ventas, gastos y fiado en 3 segundos. Tu cliente ve lo que debe con un link y te paga por transferencia.',
+    pro_titulo: 'Esto es Pro ⭐',
+    pago_instrucciones: 'Paga con el botón y después sube la foto del comprobante. {negocio} lo revisa y te avisa apenas lo apruebe.',
+  };
+  const PLANES_DEF = {
+    free: { nombre: 'Free', descripcion: 'Gratis para siempre, con límites.', beneficios: [] },
+    pro: { nombre: 'Pro', descripcion: 'Todo sin límites.', beneficios: ['♾️ Todo sin límites: clientes, fiados, ventas, gastos y cuotas', '📣 Cobrar a todos de una, con tonos y tu propio mensaje',
+      '🧾 Recibos con imagen para mandar por WhatsApp', '📈 Reportes avanzados: mejores clientes, mejores días y comparación con el mes anterior',
+      '🎯 Meta de ventas y presupuesto de gastos con alertas', '🗂️ Historial completo, Excel y estado de cuenta en PDF',
+      '🔔 Resumen semanal al celular y avisos automáticos de cuotas', '🎨 Tu color en el link de tus clientes', '🤝 Billeteras conectadas: cuentas claras con familia y amigos'] },
+  };
+  const texto = (cfg, k) => ((cfg && cfg.textos && cfg.textos[k]) || TEXTOS_DEF[k] || '');
+  const plan = (cfg, k) => { const p = (cfg && cfg.planes && cfg.planes[k]) || {}; const d = PLANES_DEF[k] || {};
+    return { nombre: p.nombre || d.nombre, descripcion: p.descripcion || d.descripcion, beneficios: Array.isArray(p.beneficios) && p.beneficios.length ? p.beneficios : d.beneficios }; };
   function aplicarColor(hex, guardar) {
     const r = document.documentElement.style;
     if (!/^#[0-9a-f]{6}$/i.test(hex || '')) hex = null;
@@ -352,7 +369,7 @@
   }
 
   global.LC = {
-    VERSION, BD, C, RAIZ, sb, $, el, vaciar, TEMAS, ICONOS, aplicarColor, pesos, fechaCorta, fechaLarga, hora, fechaHora, hoyISO, fechaISO, sumarDias, diasEntre, relativo, iniciales, colorDe, norm,
+    VERSION, BD, TEXTOS_DEF, PLANES_DEF, texto, plan, C, RAIZ, sb, $, el, vaciar, TEMAS, ICONOS, aplicarColor, pesos, fechaCorta, fechaLarga, hora, fechaHora, hoyISO, fechaISO, sumarDias, diasEntre, relativo, iniciales, colorDe, norm,
     V, ErrorApp, traducir, rpc, funcion, uuid, toast, cargando, conCarga, dialogo, confirmar, pedirTexto, error, copiar, wa, abrir,
     achicarImagen, blobADataURL, pushSoportado, suscribirPush, pushActual, esIOS, instalada, instalar, registrarSW, versionMenor, revisarVersion, actualizarAhora, repararApp,
     local, descargar, csv, excel, alPlan: null, alSesion: null, alBloqueo: null,
