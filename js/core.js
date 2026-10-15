@@ -1,7 +1,7 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.7.0';
+  const VERSION = '1.7.1';
   const BD = 8; // versión de la base de datos que necesita esta versión de la app
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
@@ -75,6 +75,14 @@
   const texto = (cfg, k) => ((cfg && cfg.textos && cfg.textos[k]) || TEXTOS_DEF[k] || '');
   const plan = (cfg, k) => { const p = (cfg && cfg.planes && cfg.planes[k]) || {}; const d = PLANES_DEF[k] || {};
     return { nombre: p.nombre || d.nombre, descripcion: p.descripcion || d.descripcion, beneficios: Array.isArray(p.beneficios) && p.beneficios.length ? p.beneficios : d.beneficios }; };
+  // Las barras de opciones que se deslizan de lado quedan mostrando la opción elegida (no vuelven al inicio).
+  function centrarActivos(raiz) {
+    requestAnimationFrame(() => (raiz || document).querySelectorAll('.subtabs, .chips').forEach((c) => {
+      const a = c.querySelector('.activo'); if (!a || c.scrollWidth <= c.clientWidth) return;
+      const ra = a.getBoundingClientRect(), rc = c.getBoundingClientRect();
+      c.scrollLeft = Math.max(0, c.scrollLeft + (ra.left - rc.left) - (rc.width - ra.width) / 2);
+    }));
+  }
   function aplicarColor(hex, guardar) {
     const r = document.documentElement.style;
     if (!/^#[0-9a-f]{6}$/i.test(hex || '')) hex = null;
@@ -369,7 +377,7 @@
   }
 
   global.LC = {
-    VERSION, BD, TEXTOS_DEF, PLANES_DEF, texto, plan, C, RAIZ, sb, $, el, vaciar, TEMAS, ICONOS, aplicarColor, pesos, fechaCorta, fechaLarga, hora, fechaHora, hoyISO, fechaISO, sumarDias, diasEntre, relativo, iniciales, colorDe, norm,
+    VERSION, BD, centrarActivos, TEXTOS_DEF, PLANES_DEF, texto, plan, C, RAIZ, sb, $, el, vaciar, TEMAS, ICONOS, aplicarColor, pesos, fechaCorta, fechaLarga, hora, fechaHora, hoyISO, fechaISO, sumarDias, diasEntre, relativo, iniciales, colorDe, norm,
     V, ErrorApp, traducir, rpc, funcion, uuid, toast, cargando, conCarga, dialogo, confirmar, pedirTexto, error, copiar, wa, abrir,
     achicarImagen, blobADataURL, pushSoportado, suscribirPush, pushActual, esIOS, instalada, instalar, registrarSW, versionMenor, revisarVersion, actualizarAhora, repararApp,
     local, descargar, csv, excel, alPlan: null, alSesion: null, alBloqueo: null,

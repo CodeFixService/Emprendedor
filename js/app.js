@@ -204,7 +204,7 @@
     if (!silencioso) window.scrollTo(0, 0);
     Promise.resolve(fn(a, b)).catch(error);
   }
-  function pintar(...nodos) { vaciar(vista).append(...nodos.flat().filter((x) => x != null && x !== false)); }
+  function pintar(...nodos) { vaciar(vista).append(...nodos.flat().filter((x) => x != null && x !== false)); LC.centrarActivos(vista); }
   const soloDueno = () => { if (!esDueno()) { pintar(el('div', { class: 'vacio' }, el('span', { class: 'ico' }, '🔒'), 'Solo el dueño de la libreta puede ver esto.')); return true; } return false; };
 
   // ================= Plan: aviso de límite =================

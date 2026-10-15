@@ -5,7 +5,7 @@
   const vista = $('#vista');
   $('#ver').textContent = LC.VERSION;
   LC.registrarSW();
-  const pintar = (...n) => { vaciar(vista).append(...n.flat().filter((x) => x != null && x !== false)); };
+  const pintar = (...n) => { vaciar(vista).append(...n.flat().filter((x) => x != null && x !== false)); LC.centrarActivos(vista); };
   const kpi = (t, v, cls) => el('div', { class: 'kpi' }, el('div', { class: 't' }, t), el('div', { class: 'v ' + (cls || '') }, v));
   const PLAN = { pro: 'Pro', prueba: 'Prueba Pro', free: 'Free' };
   const L = (x) => (Array.isArray(x) ? x : []); // listas que pueden faltar si la base de datos es antigua
