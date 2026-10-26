@@ -152,7 +152,7 @@
     const det = await rpc('admin_negocio_detalle', { p_negocio: n.id }).catch(() => null);
     const plantillas = [['Recordar pago', 'Hola ' + n.nombre + ', te recuerdo que tu mensualidad de Libreta de Cobros vence pronto. ¿Te paso los datos para pagar?'],
       ['Ofrecer Pro', 'Hola ' + n.nombre + ', ¿cómo te ha ido con tu billetera? Si activas Pro tienes todo sin límites, cobro a todos de una, recibos con imagen y reportes avanzados. ¿Te ayudo?'],
-      ['Ayuda para empezar', 'Hola ' + n.nombre + ', soy Josué de Libreta de Cobros. ¿Te ayudo a configurar tu billetera? Toma 5 minutos.']];
+      ['Ayuda para empezar', 'Hola ' + n.nombre + ', te escribe el equipo de Libreta de Cobros. ¿Te ayudo a configurar tu billetera? Toma 5 minutos.']];
     const r = await dialogo(n.nombre, el('div', null,
       det ? el('div', { class: 'grid3 mb' },
         el('div', { class: 'kpi' }, el('div', { class: 't' }, 'Clientes'), el('div', { class: 'v' }, det.clientes)),
