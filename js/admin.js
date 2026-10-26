@@ -63,7 +63,8 @@
       el('h3', null, 'Embudo de ventas'),
       el('div', { class: 'grid2 mb' }, etapa('Billeteras creadas', r.negocios), etapa('En prueba Pro', r.en_prueba), etapa('Quieren Pro ⭐', r.quieren_pro, r.quieren_pro ? 'naranjo' : ''),
         etapa('Pro pagando', r.premium, 'verde'), etapa('En Free', r.free != null ? r.free : '—'), etapa('Activas 7 días', r.activos_7d, 'verde'),
-        etapa('🤝 Conexiones activas', r.conexiones != null ? r.conexiones : '—')),
+        etapa('🤝 Conexiones activas', r.conexiones != null ? r.conexiones : '—'), etapa('🎁 Llegaron invitados (30 días)', r.referidos_30d != null ? r.referidos_30d : '—'),
+        etapa('📅 Planes anuales vigentes', r.anuales != null ? r.anuales : '—')),
       L(r.vencen).length ? el('div', { class: 'tarjeta', style: 'border-color:var(--aviso)' }, el('h2', null, '⏰ Vencen hoy o mañana (' + r.vencen.length + ')'),
         el('div', { class: 'lista' }, r.vencen.map((n) => el('div', { class: 'item', style: 'cursor:default' },
           el('div', { class: 'avatar', style: 'background:' + LC.colorDe(n.nombre) }, LC.iniciales(n.nombre)),
@@ -160,6 +161,7 @@
         n.plan === 'pro' ? ' · pagado hasta ' + fechaLarga(n.premium_hasta) : n.plan === 'prueba' ? ' · hasta ' + fechaLarga(n.prueba_hasta) : '',
         n.activado ? ' · ✅ activación pagada' : ' · sin activación'),
       el('p', { class: 'sutil' }, '🤝 ' + (n.conexiones || 0) + ' conexiones activas · ' + (n.conexiones_extra || 0) + ' paquete(s) extra'),
+      det && (det.invitados || det.invitado_por) ? el('p', { class: 'sutil' }, det.invitados ? '🎁 Invitó a ' + det.invitados + ' negocio(s), ' + det.premiados + ' con premio. ' : '', det.invitado_por ? 'Llegó invitado por ' + det.invitado_por + '.' : '') : null,
       n.estado === 'suspendido' ? el('p', { class: 'rojo' }, 'Suspendido: ' + (n.motivo_suspension || '')) : null,
       n.nota_admin ? el('p', { class: 'sutil' }, '📝 ' + n.nota_admin) : null,
       el('div', { class: 'col' },
@@ -218,11 +220,11 @@
         el('button', { class: 'btn chico mt', type: 'button', onclick: async () => { try { LC.descargar('pago-' + LC.norm(s.negocio_nombre).replace(/[^a-z0-9]+/g, '-') + '-' + String(s.creado).slice(0, 10) + '.jpg', await (await fetch(u.signedUrl)).blob()); } catch (e) { abrir(u.signedUrl); } } }, '⬇️ Descargar')); });
       lista.append(el('div', { class: 'tarjeta' },
         el('div', { class: 'fila entre' }, el('strong', null, s.negocio_nombre), el('span', { class: 'tag ' + (s.estado === 'aprobada' ? 'verde' : s.estado === 'rechazada' ? 'rojo' : 'naranjo') }, s.estado)),
-        el('div', null, (s.tipo === 'conexiones' ? '🤝 ' + s.paquetes + ' paquete' + (s.paquetes > 1 ? 's' : '') + ' de conexiones' : 'Pro 1 mes') + ' · ' + pesos(s.monto) + ' · ' + fechaHora(s.creado)), s.cupon ? el('div', { class: 'verde' }, '🏷️ Usó el cupón ' + s.cupon) : null,
+        el('div', null, (s.tipo === 'conexiones' ? '🤝 ' + s.paquetes + ' paquete' + (s.paquetes > 1 ? 's' : '') + ' de conexiones' : s.meses === 12 ? '📅 Pro anual (12 meses)' : 'Pro 1 mes') + ' · ' + pesos(s.monto) + ' · ' + fechaHora(s.creado)), s.cupon ? el('div', { class: 'verde' }, '🏷️ Usó el cupón ' + s.cupon) : null,
         s.nota ? el('p', { class: 'sutil' }, '“' + s.nota + '”') : null, s.motivo ? el('p', { class: 'rojo' }, s.motivo) : null, foto,
         s.estado === 'pendiente' ? el('div', { class: 'grid2 mt' },
           el('button', { class: 'btn peligro', type: 'button', onclick: async () => { const m = await pedirTexto('Rechazar pago', 'Motivo (lo verá el negocio)', { min: 3, max: 150, boton: 'Rechazar', clase: 'rojo' }); if (m) { try { await conCarga(() => rpc('admin_resolver_pago', { p_id: s.id, p_aprobar: false, p_motivo: m })); vPagos(); } catch (e) { error(e); } } } }, 'Rechazar'),
-          el('button', { class: 'btn verde', type: 'button', onclick: async () => { if (await confirmar('Aprobar pago', 'Revisa que el dinero (' + pesos(s.monto) + ') haya llegado. ¿Aprobar ' + (s.tipo === 'conexiones' ? s.paquetes + ' paquete(s) de conexiones' : '1 mes de Pro') + '?', 'Aprobar')) { try { await conCarga(() => rpc('admin_resolver_pago', { p_id: s.id, p_aprobar: true, p_motivo: null })); toast('Aprobado ✓'); vPagos(); } catch (e) { error(e); } } } }, 'Aprobar')) : null));
+          el('button', { class: 'btn verde', type: 'button', onclick: async () => { if (await confirmar('Aprobar pago', 'Revisa que el dinero (' + pesos(s.monto) + ') haya llegado. ¿Aprobar ' + (s.tipo === 'conexiones' ? s.paquetes + ' paquete(s) de conexiones' : s.meses === 12 ? '12 meses de Pro (plan anual)' : '1 mes de Pro') + '?', 'Aprobar')) { try { await conCarga(() => rpc('admin_resolver_pago', { p_id: s.id, p_aprobar: true, p_motivo: null })); toast('Aprobado ✓'); vPagos(); } catch (e) { error(e); } } } }, 'Aprobar')) : null));
     }
     const cuenta = (e) => todos.filter((x) => !e || x.estado === e).length;
     pintar(el('h2', null, 'Pagos'), el('div', { class: 'subtabs' }, [['pendiente', '🧾 Por revisar'], ['aprobada', '✅ Aprobados'], ['rechazada', '❌ Rechazados'], ['', 'Todos']].map(([k, tx]) =>
@@ -316,16 +318,16 @@
     const cuerpo = el('div');
     const t = a.transferencia || {}, ln = a.lim_normal || {};
     if (secAj === 'precios') {
-      const f = { act: inp(a.precio_activacion, { type: 'number', inputmode: 'numeric' }), mes: inp(a.precio_mensual, { type: 'number', inputmode: 'numeric' }),
+      const f = { act: inp(a.precio_activacion, { type: 'number', inputmode: 'numeric' }), mes: inp(a.precio_mensual, { type: 'number', inputmode: 'numeric' }), anual: inp(a.precio_anual, { type: 'number', inputmode: 'numeric' }),
         wsp: inp(a.contacto_whatsapp, { type: 'tel', placeholder: '+56 9 …' }), conInc: inp(a.conexiones_incluidas, { type: 'number' }), conPaq: inp(a.conexiones_paquete, { type: 'number' }),
         conPrecio: inp(a.precio_paquete, { type: 'number', inputmode: 'numeric' }), tb: inp(t.banco), tt: inp(t.tipo), tn: inp(t.numero, { inputmode: 'numeric' }), tr: inp(t.rut), ttit: inp(t.titular), te: inp(t.email, { type: 'email' }) };
       const ls = espacios(a.links_pro && a.links_pro.length ? a.links_pro : (a.link_pago ? [{ texto: 'Mercado Pago', url: a.link_pago, activo: true }] : []));
-      cuerpo.append(el('div', { class: 'tarjeta' }, el('h2', null, 'Precio Pro'), el('div', { class: 'grid2' }, campo('Activación (una vez)', f.act), campo('Mensualidad', f.mes)),
-          el('p', { class: 'sutil' }, 'El primer pago es activación + mensualidad; después solo la mensualidad.')),
+      cuerpo.append(el('div', { class: 'tarjeta' }, el('h2', null, 'Precio Pro'), el('div', { class: 'grid3' }, campo('Activación (una vez)', f.act), campo('Mensualidad', f.mes), campo('Plan anual', f.anual, '0 = sin plan anual')),
+          el('p', { class: 'sutil' }, 'El primer pago es activación + mensualidad (o + año); después solo la mensualidad o el año. El anual da 12 meses al aprobarlo.')),
         el('div', { class: 'tarjeta' }, el('h2', null, 'Tus links de pago (2 espacios)'), ls.caja, el('p', { class: 'sutil' }, 'El activo es el que ven las billeteras al pagar Pro, conexiones extra y cupones.')),
         el('div', { class: 'tarjeta' }, el('h2', null, '🤝 Conexiones extra'), el('div', { class: 'grid3' }, campo('Incluidas', f.conInc), campo('Por paquete', f.conPaq), campo('Precio/mes', f.conPrecio))),
         el('div', { class: 'tarjeta' }, el('h2', null, 'Tus datos de transferencia'), campo('Banco', f.tb), campo('Tipo de cuenta', f.tt), campo('Número', f.tn), campo('RUT', f.tr), campo('Titular', f.ttit), campo('Correo', f.te), campo('Tu WhatsApp de soporte', f.wsp)),
-        guardar(() => ({ precio_activacion: num(f.act), precio_mensual: num(f.mes), links_pro: ls.valor(), contacto_whatsapp: f.wsp.value.trim() ? V.telefono(f.wsp.value) : '',
+        guardar(() => ({ precio_activacion: num(f.act), precio_mensual: num(f.mes), precio_anual: num(f.anual), links_pro: ls.valor(), contacto_whatsapp: f.wsp.value.trim() ? V.telefono(f.wsp.value) : '',
           conexiones_incluidas: num(f.conInc), conexiones_paquete: num(f.conPaq), precio_paquete: num(f.conPrecio),
           transferencia: { banco: f.tb.value.trim(), tipo: f.tt.value.trim(), numero: f.tn.value.replace(/\D/g, ''), rut: f.tr.value ? V.rutBonito(V.rut(f.tr.value)) : '', titular: f.ttit.value.trim(), email: f.te.value.trim() } })));
     } else if (secAj === 'planes') {
@@ -342,14 +344,18 @@
         guardar(() => ({ planes: { free: pl(bf), pro: pl(bp) }, lim_normal: { clientes: num(l.lc), movimientos: num(l.lm), cuotas: num(l.lq), productos: num(l.lp), comprobantes: num(l.lk), historial_meses: num(l.lh), caja: num(l.lcaja), categorias: num(l.lcat) } })));
     } else if (secAj === 'reglas') {
       const f = { prueba: inp(a.dias_prueba, { type: 'number' }), gracia: inp(a.dias_gracia, { type: 'number' }), comp: inp(a.dias_comprobantes, { type: 'number' }), aviso: inp(a.dias_aviso, { type: 'number' }),
-        vlegal: inp(a.version_legal, { type: 'number' }), vmin: inp(a.version_min) };
+        vlegal: inp(a.version_legal, { type: 'number' }), vmin: inp(a.version_min),
+        refDias: inp(a.dias_referido, { type: 'number' }), refMin: inp(a.ref_min_registros, { type: 'number' }), refMax: inp(a.ref_max_premios, { type: 'number' }) };
       cuerpo.append(el('div', { class: 'tarjeta' }, el('h2', null, 'Reglas'),
           el('div', { class: 'grid2' }, campo('Días de prueba Pro', f.prueba, 'Al crear una billetera.'), campo('Días de gracia', f.gracia, 'Después de vencer la mensualidad.'),
             campo('Días que se guardan los comprobantes', f.comp, 'Después la foto se borra sola.'), campo('Aviso antes de vencer (días)', f.aviso, 'Además avisa 3 y 1 día antes y el mismo día.'))),
+        el('div', { class: 'tarjeta' }, el('h2', null, '🎁 Invita y gana'), el('p', { class: 'sutil' }, 'Cada billetera tiene su link para invitar. Cuando el invitado se usa de verdad, quien invitó gana días de Pro.'),
+          el('div', { class: 'grid3' }, campo('Días de Pro por invitado', f.refDias, '0 = apagado'), campo('Registros mínimos', f.refMin, 'Ventas, gastos o fiados del invitado'), campo('Máximo de premios', f.refMax, 'Por billetera'))),
         el('div', { class: 'tarjeta' }, el('h2', null, 'Avanzado'), campo('Versión de los textos legales', f.vlegal, 'Súbela si cambias los Términos: todos deberán aceptarlos de nuevo.'),
           campo('Versión mínima obligatoria', f.vmin, 'Quien tenga una versión menor ve un aviso rojo para actualizar.')),
         el('div', { class: 'tarjeta' }, el('h2', null, 'Feriados'), el('p', { class: 'sutil' }, 'En feriados no se puede cobrar.'), el('button', { class: 'btn', type: 'button', onclick: feriados }, 'Ver y editar feriados')),
-        guardar(() => ({ dias_prueba: num(f.prueba), dias_gracia: num(f.gracia), dias_comprobantes: num(f.comp), dias_aviso: num(f.aviso), version_legal: num(f.vlegal), version_min: f.vmin.value.trim() })));
+        guardar(() => ({ dias_prueba: num(f.prueba), dias_gracia: num(f.gracia), dias_comprobantes: num(f.comp), dias_aviso: num(f.aviso), version_legal: num(f.vlegal), version_min: f.vmin.value.trim(),
+          dias_referido: num(f.refDias), ref_min_registros: num(f.refMin), ref_max_premios: num(f.refMax) })));
     } else if (secAj === 'textos') {
       const nombres = { landing_titulo: 'Título de la portada', landing_bajada: 'Texto bajo el título', pro_titulo: 'Título del aviso de Pro', pago_instrucciones: 'Instrucciones de pago en el link del cliente ({negocio} = nombre)' };
       const campos = Object.keys(LC.TEXTOS_DEF).map((k) => { const x = el('textarea', { rows: 3, maxlength: 1000 }); x.value = LC.texto(cfg, k); return [k, x]; });

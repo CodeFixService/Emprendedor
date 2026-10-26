@@ -345,3 +345,25 @@ input.malo, textarea.malo, select.malo { border-color: var(--deuda) !important; 
 table.uso { width: 100%; border-collapse: collapse; font-size: .88em; }
 table.uso td { padding: 6px 0; border-bottom: 1px solid var(--borde); }
 table.uso td.r { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* v1.8 · Menú con íconos de línea, "Más" con tarjeta de perfil, Pasar a Pro (mensual o anual) e Invita y gana */
+.nav a .ico .ic { width: 24px; height: 24px; display: block; }
+.nav a.mas-grande .ico .ic { width: 26px; height: 26px; }
+@media (min-width: 900px) { .nav a .ico .ic { width: 20px; height: 20px; } .nav a.mas-grande .ico .ic { width: 18px; height: 18px; } }
+.barra-sup .btn-icono .ic { width: 20px; height: 20px; }
+.ic-caja { width: 36px; height: 36px; border-radius: 10px; background: var(--marca-suave); color: var(--marca); display: grid; place-items: center; flex: none; }
+.ic-caja.rojo { background: var(--deuda-suave); color: var(--deuda); }
+.sec { font-size: .74em; text-transform: uppercase; letter-spacing: .07em; color: var(--texto-2); font-weight: 750; margin: 18px 4px 8px; }
+.perfil-card .logo-mini.grande { width: 52px; height: 52px; border-radius: 16px; font-size: 1.3em; }
+.perfil-card .btn .ic { width: 18px; height: 18px; }
+.uso-mini { display: grid; gap: 4px; margin-top: 12px; font-size: .85em; }
+.plan-elegir { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 10px; }
+.plan-op { border: 2px solid var(--borde); border-radius: 14px; padding: 12px; background: var(--tarjeta); color: inherit; font: inherit; text-align: left; cursor: pointer; display: grid; gap: 4px; align-content: start; }
+.plan-op.activo { border-color: var(--marca); background: var(--marca-suave); }
+.plan-op .p { font-size: 1.2em; font-weight: 800; }
+.plan-op .tag { justify-self: start; }
+.total-pago { background: var(--fondo); border-radius: 12px; padding: 10px 12px; margin-bottom: 4px; }
+.total-pago .grande { font-size: 1.6em; font-weight: 800; }
+.paso-pago { display: flex; align-items: center; gap: 10px; margin: 16px 0 8px; }
+.paso-pago b { width: 28px; height: 28px; border-radius: 50%; background: var(--marca); color: #fff; display: grid; place-items: center; font-size: .9em; flex: none; }
+.codigo-ref { font-size: 2em; font-weight: 800; letter-spacing: 6px; margin: 4px 0; }

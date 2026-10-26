@@ -10,9 +10,21 @@
     ['emprendimiento', 'Emprendimiento / Instagram'], ['servicios', 'Servicios (gásfiter, taller, etc.)'], ['educacion', 'Clases / colegio'],
     ['club', 'Club / agrupación'], ['personal', 'Uso personal'], ['otro', 'Otro']];
 
+  // Invita y gana: el link "?ref=CÓDIGO" se recuerda 30 días y se usa al crear la billetera.
+  const refUrl = new URLSearchParams(location.search).get('ref');
+  if (refUrl && /^[A-Za-z0-9]{4,12}$/.test(refUrl)) local.set('lc-ref', { c: refUrl.toUpperCase(), t: Date.now() });
+  const codigoRef = () => { const r = local.get('lc-ref', null); return r && Date.now() - r.t < 30 * 86400000 ? r.c : null; };
+  if (codigoRef()) $('#bandaRef').classList.remove('oculto');
+
   rpc('config_publica').then((c) => {
     if (!c) return;
     $('#precioPremium').textContent = LC.pesos(c.precio_mensual) + '/mes';
+    if (c.precio_anual > 0) {
+      const ah = c.precio_mensual ? Math.round(100 - c.precio_anual * 100 / (c.precio_mensual * 12)) : 0;
+      $('#precioAnual').textContent = 'o ' + LC.pesos(c.precio_anual) + ' al año' + (ah > 0 ? ' (ahorras ' + ah + '%)' : '');
+    }
+    if (!(c.dias_referido > 0)) document.querySelectorAll('.solo-ref').forEach((n) => n.remove());
+    else document.querySelectorAll('.dias-ref').forEach((n) => { n.textContent = c.dias_referido; });
     $('#precioActivacion').textContent = c.precio_activacion > 0 ? 'Activación ' + LC.pesos(c.precio_activacion) + ' (una vez)' : 'Sin costo de activación';
     // Textos y beneficios editables desde Administración → Ajustes
     if (c.textos && c.textos.landing_titulo) document.querySelector('.lp-hero h1').textContent = c.textos.landing_titulo;
@@ -94,6 +106,7 @@
     const form = el('form', { class: 'tarjeta', novalidate: true },
       el('h1', null, invitacion ? 'Únete como ayudante' : 'Crea tu libreta'),
       el('p', { class: 'sutil' }, invitacion ? 'Te invitaron a ayudar en una libreta. Crea tu cuenta con tu correo.' : 'Gratis para siempre, con días de Pro de regalo. Sin tarjeta.'),
+      !invitacion && codigoRef() ? el('div', { class: 'banda info' }, '🎁 Vienes invitado por otro negocio (código ' + codigoRef() + ').') : null,
       campo(invitacion ? 'Tu nombre' : 'Nombre de tu negocio', nombre), invitacion ? null : campo('Rubro', rubro),
       campo('Tu correo', email), campo('Contraseña', clave, 'Mínimo 8 caracteres, con letras y números.'), fuerza,
       el('label', { class: 'check mt', for: 'acepta' }, acepta, el('span', null, 'Acepto los ', el('a', { href: 'legal/#terminos', target: '_blank' }, 'Términos'), ' y la ', el('a', { href: 'legal/#privacidad', target: '_blank' }, 'Política de privacidad'), '.')),
@@ -181,8 +194,8 @@
     }
     if (pend && pend.tipo === 'negocio' && pend.nombre) {
       try {
-        const r = await conCarga(() => rpc('crear_negocio', { p_nombre: pend.nombre, p_rubro: pend.rubro || 'otro', p_acepta: true }));
-        local.del('lc-pendiente'); local.set('lc-bienvenida', true);
+        const r = await conCarga(() => rpc('crear_negocio', { p_nombre: pend.nombre, p_rubro: pend.rubro || 'otro', p_acepta: true, p_ref: codigoRef() }));
+        local.del('lc-pendiente'); local.del('lc-ref'); local.set('lc-bienvenida', true);
         local.set('lc-msg', r.prueba ? '¡Listo! Tienes ' + r.dias + ' días de Pro gratis 🎉' : 'Tu billetera está lista (plan Free) 🎉');
         location.replace('app/'); return;
       } catch (e) { /* si falla, se muestra el formulario con el error */ error(e); }
@@ -206,8 +219,8 @@
       if (nombre.value.trim().length < 2) return errorEn(form, 'El nombre debe tener entre 2 y 50 letras');
       if (!acepta.checked) return errorEn(form, 'Debes aceptar los Términos y la Privacidad');
       try {
-        const r = await conCarga(() => rpc('crear_negocio', { p_nombre: nombre.value, p_rubro: rubro.value, p_acepta: true }));
-        local.del('lc-pendiente'); local.set('lc-bienvenida', true);
+        const r = await conCarga(() => rpc('crear_negocio', { p_nombre: nombre.value, p_rubro: rubro.value, p_acepta: true, p_ref: codigoRef() }));
+        local.del('lc-pendiente'); local.del('lc-ref'); local.set('lc-bienvenida', true);
         local.set('lc-msg', r.prueba ? '¡Listo! Tienes ' + r.dias + ' días de Pro gratis 🎉' : 'Tu billetera está lista (plan Free) 🎉');
         location.replace('app/');
       } catch (er) { errorEn(form, LC.traducir(er).message); }

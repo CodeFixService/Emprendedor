@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '8'),
+  ('version_bd', '9'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -433,6 +433,24 @@ do $$ begin
     update public.negocios set links_pago = jsonb_build_array(jsonb_build_object('texto', 'Mercado Pago', 'url', link_pago, 'activo', true),
       jsonb_build_object('texto', '', 'url', '', 'activo', false)) where link_pago is not null and links_pago = '[]'::jsonb;
     insert into privado.config values ('migracion_v8', '1');
+  end if;
+end $$;
+
+-- ---------- v9: plan anual e "Invita y gana" (referidos) ----------
+alter table public.negocios add column if not exists codigo_ref text;
+create unique index if not exists negocios_codigo_ref on public.negocios (codigo_ref);
+alter table public.negocios add column if not exists referido_por uuid references public.negocios (id) on delete set null;
+alter table public.negocios add column if not exists ref_revisado_at timestamptz;
+alter table public.negocios add column if not exists ref_dias int not null default 0 check (ref_dias between 0 and 90);
+create index if not exists negocios_referido_por on public.negocios (referido_por) where referido_por is not null;
+alter table public.ajustes add column if not exists dias_referido int not null default 15 check (dias_referido between 0 and 90);
+alter table public.ajustes add column if not exists ref_min_registros int not null default 10 check (ref_min_registros between 1 and 1000);
+alter table public.ajustes add column if not exists ref_max_premios int not null default 12 check (ref_max_premios between 0 and 1000);
+do $$ begin
+  if not exists (select 1 from privado.config where clave = 'migracion_v9') then
+    -- Términos nuevos (conexiones, links de pago, comprobantes, plan anual y referidos): todos los aceptan de nuevo.
+    update public.ajustes set version_legal = version_legal + 1 where id = 1;
+    insert into privado.config values ('migracion_v9', '1');
   end if;
 end $$;
 
@@ -1092,13 +1110,14 @@ end $$;
 create or replace function public.ping() returns text language sql stable as $$ select 'ok' $$;
 
 create or replace function public.config_publica() returns jsonb language sql stable security definer set search_path = public, pg_temp as $$
-  select jsonb_build_object('precio_mensual', a.precio_mensual, 'precio_activacion', a.precio_activacion, 'link_pago', a.link_pago,
+  select jsonb_build_object('precio_mensual', a.precio_mensual, 'precio_anual', a.precio_anual, 'precio_activacion', a.precio_activacion, 'link_pago', a.link_pago,
     'transferencia', a.transferencia, 'contacto_whatsapp', a.contacto_whatsapp, 'dias_prueba', a.dias_prueba,
     'lim_normal', a.lim_normal, 'lim_premium', a.lim_premium, 'version_legal', a.version_legal, 'version_min', a.version_min,
     'version_liberada', a.version_liberada,
     'version_bd', (select valor::int from privado.config where clave = 'version_bd'),
     'conexiones_incluidas', a.conexiones_incluidas, 'conexiones_paquete', a.conexiones_paquete, 'precio_paquete', a.precio_paquete,
     'textos', a.textos, 'planes', a.planes, 'links_pro', a.links_pro, 'dias_comprobantes', a.dias_comprobantes,
+    'dias_referido', a.dias_referido, 'ref_min_registros', a.ref_min_registros, 'ref_max_premios', a.ref_max_premios,
     'vapid_public', (select valor from privado.secretos where nombre = 'vapid_public'))
   from public.ajustes a where a.id = 1
 $$;
@@ -1139,6 +1158,7 @@ begin
       'cupon', case when privado.cupon_valido(n.cupon) then n.cupon end, 'descuento', privado.descuento(n.cupon),
       'precio_activacion', privado.precio_activacion(v_neg),
       'conexiones_extra', n.conexiones_extra, 'mensual', a.precio_mensual + n.conexiones_extra * a.precio_paquete,
+      'anual', case when a.precio_anual > 0 then a.precio_anual + n.conexiones_extra * a.precio_paquete * 12 end,
       'pago_pendiente', exists (select 1 from public.solicitudes_pago where negocio = v_neg and estado = 'pendiente')),
     'limites', case when prem then a.lim_premium else a.lim_normal end,
     'uso', jsonb_build_object('movimientos', u.movimientos, 'comprobantes', u.comprobantes,
@@ -1192,15 +1212,74 @@ begin
   return jsonb_build_object('ok', true, 'id', v_id, 'prueba', v_prueba, 'dias', case when v_prueba then v_dias else 0 end);
 end $$;
 
-create or replace function public.crear_negocio(p_nombre text, p_rubro text, p_acepta boolean) returns jsonb
+drop function if exists public.crear_negocio(text, text, boolean);
+create or replace function public.crear_negocio(p_nombre text, p_rubro text, p_acepta boolean, p_ref text default null) returns jsonb
 language plpgsql security definer set search_path = public, pg_temp as $$
-declare r jsonb;
+declare r jsonb; v_ref record;
 begin
   if auth.uid() is null then perform privado.fallo('Ingresa de nuevo.'); end if;
   if not coalesce(p_acepta, false) then perform privado.fallo('Debes aceptar los Términos y la Privacidad'); end if;
   r := privado.crear_negocio_para(auth.uid(), p_nombre, p_rubro);
   perform public.aceptar_terminos();
+  -- Invita y gana: se anota quién lo invitó. El premio llega cuando la billetera nueva se usa de verdad (tarea diaria).
+  if coalesce(btrim(p_ref), '') <> '' then
+    select id, dueno into v_ref from public.negocios where codigo_ref = upper(btrim(p_ref)) and estado = 'activo';
+    if v_ref.id is not null and v_ref.dueno <> auth.uid() then
+      update public.negocios set referido_por = v_ref.id where id = (r ->> 'id')::uuid;
+      perform privado.avisar_negocio(v_ref.id, '🎁 ' || privado.limpio(p_nombre, 50) || ' se unió con tu link',
+        'Cuando empiece a usar su billetera ganas ' || (select dias_referido from public.ajustes where id = 1) || ' días de Pro.', 'app/#invita', true);
+      r := r || jsonb_build_object('referido', true);
+    end if;
+  end if;
   return r;
+end $$;
+
+-- ---------- Invita y gana ----------
+create or replace function public.mi_referidos() returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(true, true); v_cod text; i int := 0;
+begin
+  select codigo_ref into v_cod from public.negocios where id = v_neg;
+  while v_cod is null loop
+    i := i + 1; if i > 20 then perform privado.fallo('No se pudo crear tu código. Prueba de nuevo.'); end if;
+    v_cod := translate(upper(privado.codigo(6)), 'IO', 'WX');  -- sin I ni O (se confunden con 1 y 0)
+    if not exists (select 1 from public.negocios where codigo_ref = v_cod) then
+      update public.negocios set codigo_ref = v_cod where id = v_neg;
+    else v_cod := null; end if;
+  end loop;
+  return jsonb_build_object('codigo', v_cod,
+    'invitados', (select count(*) from public.negocios where referido_por = v_neg),
+    'premiados', (select count(*) from public.negocios where referido_por = v_neg and ref_dias > 0),
+    'dias_ganados', (select coalesce(sum(ref_dias), 0) from public.negocios where referido_por = v_neg),
+    'lista', coalesce((select jsonb_agg(x order by x.creado desc) from (select nombre, creado, ref_dias > 0 premiado, ref_revisado_at is not null revisado
+      from public.negocios where referido_por = v_neg order by creado desc limit 50) x), '[]'::jsonb));
+end $$;
+
+-- Premia a quien invitó cuando la billetera nueva se usa de verdad (N registros y 3 días de antigüedad), con un tope de premios.
+create or replace function privado.premiar_referidos() returns int language plpgsql security definer set search_path = public, pg_temp as $$
+declare a record; r record; p record; n int := 0; v_dias int;
+begin
+  select * into a from public.ajustes where id = 1;
+  if a.dias_referido <= 0 then return 0; end if;
+  for r in select n2.id, n2.nombre, n2.referido_por from public.negocios n2
+    where n2.referido_por is not null and n2.ref_revisado_at is null and n2.estado = 'activo' and n2.creado < now() - interval '3 days'
+      and (select count(*) from public.movimientos where negocio = n2.id) + (select count(*) from public.caja where negocio = n2.id) >= a.ref_min_registros
+  loop
+    select * into p from public.negocios where id = r.referido_por;
+    v_dias := case when p.estado = 'activo' and (select count(*) from public.negocios where referido_por = p.id and ref_dias > 0) < a.ref_max_premios then a.dias_referido else 0 end;
+    update public.negocios set ref_revisado_at = now(), ref_dias = v_dias where id = r.id;
+    if v_dias > 0 then
+      if privado.pagado(p.id) then
+        update public.negocios set premium_hasta = greatest(premium_hasta, now()) + make_interval(days => v_dias) where id = p.id;
+      else
+        update public.negocios set prueba_hasta = greatest(coalesce(prueba_hasta, now()), now()) + make_interval(days => v_dias) where id = p.id;
+      end if;
+      perform privado.aplicar_plan(p.id);
+      perform privado.auditar(p.id, 'referido', jsonb_build_object('invitado', r.id, 'dias', v_dias));
+      perform privado.avisar_negocio(p.id, '🎉 Ganaste ' || v_dias || ' días de Pro', r.nombre || ' ya usa su billetera. ¡Gracias por recomendarnos!', 'app/#invita', true);
+      n := n + 1;
+    end if;
+  end loop;
+  return n;
 end $$;
 
 create or replace function public.guardar_negocio(p jsonb) returns void language plpgsql security definer set search_path = public, pg_temp as $$
@@ -1734,18 +1813,20 @@ end $$;
 create or replace function public.solicitar_pago(p_meses int, p_path text, p_nota text) returns void language plpgsql security definer set search_path = public, pg_temp as $$
 declare v_neg uuid := privado.exigir(true, true); a record; n record; v_monto int;
 begin
-  if p_meses is distinct from 1 then perform privado.fallo('Pro se paga mes a mes'); end if;
+  if p_meses is null or p_meses not in (1, 12) then perform privado.fallo('Elige el plan mensual o el anual'); end if;
   if exists (select 1 from public.solicitudes_pago where negocio = v_neg and estado = 'pendiente') then
     perform privado.fallo('Ya tienes un pago en revisión. Te avisaremos apenas se apruebe.');
   end if;
   if p_path is not null and p_path not like v_neg || '/%' then perform privado.fallo('Archivo inválido'); end if;
   select * into a from public.ajustes where id = 1;
+  if p_meses = 12 and a.precio_anual <= 0 then perform privado.fallo('El plan anual no está disponible'); end if;
   select nombre, activado, cupon, conexiones_extra into n from public.negocios where id = v_neg;
-  v_monto := a.precio_mensual + privado.precio_activacion(v_neg) + n.conexiones_extra * a.precio_paquete;
+  v_monto := case when p_meses = 12 then a.precio_anual + n.conexiones_extra * a.precio_paquete * 12
+    else a.precio_mensual + n.conexiones_extra * a.precio_paquete end + privado.precio_activacion(v_neg);
   insert into public.solicitudes_pago (negocio, meses, monto, comprobante_path, nota, cupon)
-  values (v_neg, 1, v_monto, p_path, privado.limpio(p_nota, 200), case when not n.activado and privado.cupon_valido(n.cupon) then n.cupon end);
+  values (v_neg, p_meses, v_monto, p_path, privado.limpio(p_nota, 200), case when not n.activado and privado.cupon_valido(n.cupon) then n.cupon end);
   perform privado.avisar_usuario(privado.admin_id(), 'Pago por revisar', n.nombre || ' dice que pagó ' || privado.pesos(v_monto)
-    || case when n.activado then ' (mensualidad).' else ' (activación + primer mes).' end, 'admin/#pagos', true);
+    || case when p_meses = 12 then ' (plan anual' else ' (mensualidad' end || case when n.activado then ').' else ' + activación).' end, 'admin/#pagos', true);
 end $$;
 
 -- ---------- Notificaciones y push ----------
@@ -2242,6 +2323,8 @@ begin
       + (select coalesce(sum(conexiones_extra), 0) from public.negocios n where estado <> 'eliminado' and privado.estado_plan(n.id) = 'pro') * (select precio_paquete from public.ajustes where id = 1),
     'conexiones', (select count(*) from public.conexiones where estado = 'activa'),
     'convertidos', (select count(*) from public.negocios where activado),
+    'referidos_30d', (select count(*) from public.negocios where referido_por is not null and creado > now() - interval '30 days'),
+    'anuales', (select count(*) from public.solicitudes_pago where estado = 'aprobada' and meses = 12 and revisado_at > now() - interval '365 days'),
     'registros_dia', coalesce((select jsonb_agg(x order by x.dia) from (select (creado at time zone 'America/Santiago')::date dia, count(*) n
         from public.negocios where creado > now() - interval '30 days' group by 1) x), '[]'::jsonb),
     'soporte_sin_leer', (select count(distinct negocio) from public.soporte where de = 'negocio' and not leido),
@@ -2313,7 +2396,10 @@ begin
         select creado_at from public.movimientos where negocio = p_negocio union all select creado_at from public.caja where negocio = p_negocio) x),
     'pagos', coalesce((select jsonb_agg(x order by x.creado desc) from (select monto, estado, creado, revisado_at from public.solicitudes_pago where negocio = p_negocio limit 24) x), '[]'::jsonb),
     'keys', coalesce((select jsonb_agg(x order by x.usada_at desc) from (select codigo, meses, usada_at from public.keys where usada_por = p_negocio) x), '[]'::jsonb),
-    'quiere_pro_at', (select quiere_pro_at from public.negocios where id = p_negocio));
+    'quiere_pro_at', (select quiere_pro_at from public.negocios where id = p_negocio),
+    'invitados', (select count(*) from public.negocios where referido_por = p_negocio),
+    'premiados', (select count(*) from public.negocios where referido_por = p_negocio and ref_dias > 0),
+    'invitado_por', (select r.nombre from public.negocios n join public.negocios r on r.id = n.referido_por where n.id = p_negocio));
 end $$;
 
 create or replace function public.admin_plan(p_negocio uuid, p_accion text, p_dias int) returns void language plpgsql security definer set search_path = public, pg_temp as $$
@@ -2381,7 +2467,7 @@ begin
     update public.negocios set premium_hasta = greatest(coalesce(premium_hasta, now()), now()) + make_interval(months => s.meses), en_prueba = false, activado = true where id = s.negocio;
     update public.solicitudes_pago set estado = 'aprobada', revisado_at = now() where id = p_id;
     perform privado.aplicar_plan(s.negocio);
-    perform privado.avisar_negocio(s.negocio, '¡Pago aprobado!', 'Tu Pro quedó activo por 1 mes. ¡Gracias!', 'app/#plan', true);
+    perform privado.avisar_negocio(s.negocio, '¡Pago aprobado!', 'Tu Pro quedó activo por ' || case when s.meses = 12 then '1 año' else '1 mes' end || '. ¡Gracias!', 'app/#plan', true);
   else
     if coalesce(privado.limpio(p_motivo, 150), '') = '' then perform privado.fallo('Escribe el motivo'); end if;
     update public.solicitudes_pago set estado = 'rechazada', motivo = privado.limpio(p_motivo, 150), revisado_at = now() where id = p_id;
@@ -2490,6 +2576,10 @@ begin
   update public.ajustes set
     precio_mensual = coalesce((p ->> 'precio_mensual')::int, precio_mensual),
     precio_activacion = coalesce((p ->> 'precio_activacion')::int, precio_activacion),
+    precio_anual = coalesce((p ->> 'precio_anual')::int, precio_anual),
+    dias_referido = coalesce((p ->> 'dias_referido')::int, dias_referido),
+    ref_min_registros = coalesce((p ->> 'ref_min_registros')::int, ref_min_registros),
+    ref_max_premios = coalesce((p ->> 'ref_max_premios')::int, ref_max_premios),
     link_pago = coalesce(p ->> 'link_pago', link_pago),
     transferencia = coalesce(p -> 'transferencia', transferencia),
     contacto_whatsapp = coalesce(privado.telefono(nullif(p ->> 'contacto_whatsapp', '')), case when p ? 'contacto_whatsapp' then '' else contacto_whatsapp end),
@@ -2680,6 +2770,7 @@ begin
       perform privado.recalcular(c.id);
     end loop;
     for r in select id from public.negocios where estado <> 'eliminado' loop perform privado.aplicar_plan(r.id); end loop;
+    perform privado.premiar_referidos();
     for r in select id, dueno from public.negocios where estado = 'eliminado' and eliminar_desde < now() loop
       insert into privado.archivos_por_borrar (bucket, ruta) select 'comprobantes', foto_path from public.comprobantes where negocio = r.id and foto_path is not null;
       insert into privado.archivos_por_borrar (bucket, ruta) select 'comprobantes', foto_path from public.movimientos where negocio = r.id and foto_path is not null;
@@ -2866,7 +2957,7 @@ grant execute on function privado.mi_negocio(), privado.mi_rol(), privado.mi_pre
 grant execute on function public.ping(), public.config_publica(), public.portal_info(text), public.portal_entrar(text, text), public.portal_ver(text),
   public.portal_confirmar(text, uuid, boolean, text), public.portal_comprobante(text, int, date, text, boolean),
   public.portal_push(text, text, text, text), public.portal_salir(text) to anon, authenticated;
-grant execute on function public.mi_estado(), public.aceptar_terminos(), public.crear_negocio(text, text, boolean), public.guardar_negocio(jsonb),
+grant execute on function public.mi_estado(), public.aceptar_terminos(), public.crear_negocio(text, text, boolean, text), public.guardar_negocio(jsonb), public.mi_referidos(),
   public.crear_cliente(text, text, text, text, text, int, text, int, boolean, boolean), public.editar_cliente(uuid, text, text, text, text, text, int),
   public.estado_cliente(uuid, text), public.borrar_cliente(uuid, text), public.link_cliente(uuid, boolean, text),
   public.registrar_movimiento(uuid, uuid, text, int, text, text, timestamptz, date, int, boolean, boolean), public.anular_movimiento(uuid, text),

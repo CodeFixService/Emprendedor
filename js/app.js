@@ -195,10 +195,10 @@
     const [v, a, b] = h.split('/');
     S.vista = v;
     document.querySelectorAll('#nav a').forEach((x) => x.classList.toggle('activo', x.dataset.v === v || (v === 'cliente' && x.dataset.v === 'clientes') ||
-      (['comprobantes', 'reportes', 'productos', 'ajustes', 'plan', 'cuenta', 'ayuda', 'pendientes', 'soporte', 'apariencia', 'cobranza', 'conexiones', 'conexion'].includes(v) && x.dataset.v === 'mas')));
+      (['comprobantes', 'reportes', 'productos', 'ajustes', 'plan', 'cuenta', 'ayuda', 'pendientes', 'soporte', 'apariencia', 'cobranza', 'conexiones', 'conexion', 'invita', 'avisos'].includes(v) && x.dataset.v === 'mas')));
     const vistas = { inicio: vInicio, caja: vCaja, clientes: vClientes, cliente: vCliente, anotar: vAnotar, mas: vMas, comprobantes: vComprobantes, reportes: vReportes,
       productos: vProductos, ayudantes: vMas, ajustes: vAjustes, plan: vPlan, avisos: vAvisos, cuenta: vCuenta, ayuda: vAyuda, pendientes: vPendientes, soporte: vSoporte,
-      apariencia: vApariencia, cobranza: vCobranza, conexiones: vConexiones, conexion: vConexion };
+      apariencia: vApariencia, cobranza: vCobranza, conexiones: vConexiones, conexion: vConexion, invita: vInvita };
     if (v !== 'soporte' && canalSoporte) { sb.removeChannel(canalSoporte); canalSoporte = null; }
     const fn = vistas[v] || vInicio;
     if (!silencioso) window.scrollTo(0, 0);
@@ -210,8 +210,8 @@
   // ================= Plan: aviso de límite =================
   function precioAct() { const pl = S.st.plan, c = S.st.config; return pl.activado ? 0 : pl.precio_activacion != null ? pl.precio_activacion : c.precio_activacion; }
   function precioPro() {
-    const c = S.st.config, act = precioAct();
-    return act > 0 ? pesos(act) + ' de activación + ' + pesos(c.precio_mensual) + ' al mes' : pesos(c.precio_mensual) + ' al mes';
+    const c = S.st.config, act = precioAct(), anual = c.precio_anual > 0 ? ' (o ' + pesos(c.precio_anual) + ' al año)' : '';
+    return (act > 0 ? pesos(act) + ' de activación + ' + pesos(c.precio_mensual) + ' al mes' : pesos(c.precio_mensual) + ' al mes') + anual;
   }
   function alPlan(msg) {
     dialogo(LC.texto(S.st.config, 'pro_titulo'), el('div', null, el('p', null, msg),
@@ -1047,29 +1047,48 @@
 
   // ================= MÁS =================
   function vMas() {
-    const p = S.st.pendientes || {};
-    const it = (h, ico, t, badge, solo) => solo === false ? null : el('a', { class: 'item', href: h }, el('span', { style: 'font-size:1.3em' }, ico), el('span', { class: 'crece' }, t), badge ? el('span', { class: 'tag rojo' }, badge) : null, el('span', { class: 'sutil' }, '›'));
+    const p = S.st.pendientes || {}, pl = S.st.plan, cfg = S.st.config, u = S.st.uso || {}, ln = cfg.lim_normal || {};
+    const it = (h, ico, t, badge, solo) => solo === false ? null : el('a', { class: 'item', href: h }, el('span', { class: 'ic-caja' }, LC.ico(ico, 20)), el('span', { class: 'crece' }, t),
+      badge ? el('span', { class: 'tag rojo' }, badge) : null, el('span', { class: 'sutil' }, '›'));
+    const sec = (t) => el('div', { class: 'sec' }, t);
+    const diasP = pl.prueba_hasta ? Math.max(0, Math.ceil((new Date(pl.prueba_hasta) - Date.now()) / 86400000)) : 0;
+    const sub = pl.estado === 'pro' ? (pl.en_gracia ? '⚠️ Tu Pro venció: paga para no perderlo' : 'Pro pagado hasta el ' + fechaLarga(pl.hasta))
+      : pl.estado === 'prueba' ? '🎁 Prueba Pro: ' + (diasP <= 1 ? 'termina hoy' : 'te quedan ' + diasP + ' días') : 'Plan Free · gratis para siempre';
+    const cta = !esDueno() ? null : pl.pago_pendiente ? el('div', { class: 'tag naranjo mt' }, '⏳ Pago en revisión: te avisamos apenas se apruebe')
+      : pl.estado !== 'pro' || pl.en_gracia ? el('button', { class: 'btn primario ancho mt', type: 'button', onclick: () => pasarPro() }, LC.ico('estrella', 18), pl.estado === 'pro' ? 'Pagar mi Pro' : 'Pasar a Pro')
+      : el('a', { class: 'btn texto ancho mt', href: '#plan' }, 'Ver mi plan ›');
+    const barra = (t, usado, max) => max ? el('div', null, el('div', { class: 'fila entre' }, el('span', { class: 'sutil' }, t), el('strong', null, usado + ' / ' + max)),
+      el('div', { class: 'barra ' + (usado >= max ? 'lleno' : usado >= max * 0.8 ? 'alerta' : '') }, el('i', { style: 'width:' + Math.min(100, Math.round(usado * 100 / max)) + '%' }))) : null;
     pintar(
-      el('div', { class: 'fila mb' }, el('a', { class: 'logo-mini grande' + (S.neg.icono ? ' emoji' : ''), href: '#apariencia', style: 'text-decoration:none' }, S.neg.icono || iniciales(S.neg.nombre)),
-        el('div', { class: 'crece' }, el('h2', { style: 'margin:0' }, S.neg.nombre), el('div', { class: 'sutil' }, S.email)),
-        el('a', { class: 'tag ' + (S.st.plan.estado === 'free' ? '' : 'premium'), href: '#plan', style: 'text-decoration:none' }, planTxt())),
+      el('div', { class: 'tarjeta perfil-card' },
+        el('div', { class: 'fila' }, el('a', { class: 'logo-mini grande' + (S.neg.icono ? ' emoji' : ''), href: '#apariencia', style: 'text-decoration:none', 'aria-label': 'Apariencia' }, S.neg.icono || iniciales(S.neg.nombre)),
+          el('div', { class: 'crece', style: 'min-width:0' }, el('h2', { class: 'cortar', style: 'margin:0' }, S.neg.nombre), el('div', { class: 'sutil cortar' }, S.email)),
+          el('a', { class: 'tag ' + (pl.estado === 'free' ? '' : 'premium'), href: '#plan', style: 'text-decoration:none' }, planTxt())),
+        el('div', { class: 'sutil mt' }, sub),
+        pl.estado === 'free' && esDueno() ? el('div', { class: 'uso-mini' }, barra('Clientes activos', u.clientes || 0, ln.clientes), barra('Fiados y abonos del mes', u.movimientos || 0, ln.movimientos)) : null,
+        cta),
+      sec('Tu negocio'),
       el('div', { class: 'lista' },
-        it('#soporte', '💬', 'Soporte (chat conmigo)', p.soporte),
-        it('#comprobantes', '🧾', 'Comprobantes', p.comprobantes),
-        esDueno() ? conPro(it('#cobranza', '📣', 'Cobrar a todos de una'), 'Cobrar a todos de una es Pro: ves quién te debe y le mandas el mensaje con un toque.') : null,
-        it('#reportes', '📊', 'Reportes', null, esDueno()),
-        esDueno() ? marcaPro(it('#conexiones', '🤝', 'Billeteras conectadas')) : null,
-        it('#productos', '🏷️', 'Productos frecuentes', null, esDueno()),
-        it('#plan', '⭐', 'Mi plan · ' + planTxt(), null, esDueno()),
-        it('#avisos', '🔔', 'Avisos', p.avisos),
-        cola().length ? it('#pendientes', '⏳', 'Por subir', cola().length) : null),
+        it('#soporte', 'chat', 'Soporte (chat conmigo)', p.soporte),
+        it('#comprobantes', 'recibo', 'Comprobantes', p.comprobantes),
+        esDueno() ? conPro(it('#cobranza', 'megafono', 'Cobrar a todos de una'), 'Cobrar a todos de una es Pro: ves quién te debe y le mandas el mensaje con un toque.') : null,
+        it('#reportes', 'grafico', 'Reportes', null, esDueno()),
+        esDueno() ? marcaPro(it('#conexiones', 'enlace', 'Billeteras conectadas')) : null,
+        it('#productos', 'etiqueta', 'Productos frecuentes', null, esDueno()),
+        it('#avisos', 'campana', 'Avisos', p.avisos),
+        cola().length ? it('#pendientes', 'reloj', 'Por subir', cola().length) : null),
+      esDueno() ? sec('Plan y crecimiento') : null,
+      esDueno() ? el('div', { class: 'lista' },
+        it('#plan', 'estrella', 'Mi plan · ' + planTxt()),
+        cfg.dias_referido > 0 ? it('#invita', 'regalo', 'Invita y gana ' + cfg.dias_referido + ' días de Pro') : null) : null,
+      sec('Configuración'),
       el('div', { class: 'lista' },
-        it('#ajustes', '⚙️', 'Ajustes del negocio', null, esDueno()),
-        it('#apariencia', '🎨', 'Apariencia: color e ícono', null, esDueno()),
-        it('#cuenta', '👤', 'Mi cuenta'),
-        it('#ayuda', '❓', 'Ayuda'),
-        S.st.es_admin ? it('../admin/', '🛡️', 'Administración') : null),
-      el('div', { class: 'lista' }, el('button', { class: 'item', type: 'button', onclick: salir }, el('span', { style: 'font-size:1.3em' }, '🚪'), el('span', { class: 'crece rojo' }, 'Cerrar sesión'))));
+        it('#ajustes', 'ajustes', 'Ajustes del negocio', null, esDueno()),
+        it('#apariencia', 'paleta', 'Apariencia: color e ícono', null, esDueno()),
+        it('#cuenta', 'usuario', 'Mi cuenta'),
+        it('#ayuda', 'ayuda', 'Ayuda'),
+        S.st.es_admin ? it('../admin/', 'escudo', 'Administración') : null),
+      el('div', { class: 'lista' }, el('button', { class: 'item', type: 'button', onclick: salir }, el('span', { class: 'ic-caja rojo' }, LC.ico('salir', 20)), el('span', { class: 'crece rojo' }, 'Cerrar sesión'))));
   }
 
   // ================= COMPROBANTES =================
@@ -1395,19 +1414,21 @@
       el('div', { class: 'tarjeta' }, el('h2', null, 'Free y Pro'),
         el('table', { class: 'comparar' }, el('tr', null, el('th', null, ''), el('th', null, 'Free'), el('th', null, 'Pro ⭐')),
           comp.map(([t, f, p2]) => el('tr', null, el('td', null, t), el('td', null, String(f)), el('td', null, String(p2)))))),
-      el('div', { class: 'tarjeta', id: 'activar' }, el('h2', null, pl.estado === 'pro' ? 'Pagar la mensualidad' : 'Activar Pro'),
-        el('p', null, act > 0 ? [act < actBase ? el('s', { class: 'sutil' }, pesos(actBase)) : null, ' ', el('strong', { style: 'font-size:1.3em' }, pesos(act)), ' de activación (una vez) + ', el('strong', null, pesos(cfg.precio_mensual)), ' al mes']
-          : [el('strong', { style: 'font-size:1.4em' }, pesos(pl.mensual || cfg.precio_mensual)), ' al mes']),
-        pl.conexiones_extra ? el('p', { class: 'sutil' }, 'Tu mensualidad incluye ' + pl.conexiones_extra + ' paquete' + (pl.conexiones_extra > 1 ? 's' : '') + ' de conexiones extra.') : null,
+      el('div', { class: 'tarjeta', id: 'activar' }, el('h2', null, pl.estado === 'pro' ? 'Renovar Pro' : 'Activar Pro'),
+        el('div', { class: 'plan-elegir' },
+          el('button', { class: 'plan-op', type: 'button', onclick: () => pasarPro(1) }, el('span', { class: 'sutil' }, 'Mensual'), el('span', { class: 'p' }, pesos(pl.mensual || cfg.precio_mensual)), el('span', { class: 'sutil' }, 'al mes, sin contrato')),
+          pl.anual ? el('button', { class: 'plan-op activo', type: 'button', onclick: () => pasarPro(12) }, el('span', { class: 'sutil' }, 'Anual'), el('span', { class: 'p' }, pesos(pl.anual)),
+            ahorroAnual() > 0 ? el('span', { class: 'tag verde' }, 'Ahorras ' + ahorroAnual() + '%') : el('span', { class: 'sutil' }, 'un solo pago al año')) : null),
+        act > 0 ? el('p', { class: 'sutil' }, '+ activación ', act < actBase ? el('s', null, pesos(actBase)) : null, ' ', el('strong', null, pesos(act)), ' (una sola vez, en el primer pago)') : null,
+        pl.conexiones_extra ? el('p', { class: 'sutil' }, 'Incluye ' + pl.conexiones_extra + ' paquete' + (pl.conexiones_extra > 1 ? 's' : '') + ' de conexiones extra.') : null,
         pl.cupon ? el('p', { class: 'verde' }, '🏷️ Cupón ' + pl.cupon + ': ' + pl.descuento + '% de descuento en la activación') : null,
+        pl.pago_pendiente ? el('div', { class: 'banda aviso' }, '⏳ Tu pago está en revisión. Te avisamos apenas se apruebe.') : null,
         el('div', { class: 'col' },
-          el('button', { class: 'btn primario', type: 'button', onclick: quieroPro }, pl.estado === 'pro' ? '💬 Avisar por soporte' : '💬 Quiero Pro (avisar por soporte)'),
-          cfg.link_pago ? el('button', { class: 'btn', type: 'button', onclick: () => abrir(cfg.link_pago) }, '💳 Pagar en línea') : null,
-          tr.numero ? el('details', null, el('summary', { class: 'btn ancho' }, '🏦 Pagar por transferencia'),
-            el('div', { class: 'tarjeta plana mt' }, [['Banco', tr.banco], ['Tipo', tr.tipo], ['Número', tr.numero], ['RUT', tr.rut], ['Nombre', tr.titular], ['Correo', tr.email]].filter((x) => x[1]).map(([k, v]) => el('div', { class: 'copiar-fila' }, el('div', { class: 'crece' }, el('div', { class: 'k' }, k), el('div', { class: 'v' }, v)), el('button', { class: 'btn chico', type: 'button', onclick: () => copiar(String(v)) }, 'Copiar'))))) : null,
-          el('button', { class: 'btn', type: 'button', disabled: pl.pago_pendiente, onclick: yaPague }, '✅ Ya pagué'),
+          el('button', { class: 'btn primario', type: 'button', disabled: pl.pago_pendiente, onclick: () => pasarPro() }, LC.ico('estrella', 18), pl.estado === 'pro' ? 'Pagar Pro' : 'Pasar a Pro'),
+          el('button', { class: 'btn', type: 'button', onclick: quieroPro }, '💬 Ayúdame por soporte'),
           !pl.activado ? el('button', { class: 'btn texto', type: 'button', onclick: usarCupon }, '🏷️ Tengo un cupón de descuento') : null,
-          el('button', { class: 'btn texto', type: 'button', onclick: usarKey }, '🔑 Tengo una key'))),
+          el('button', { class: 'btn texto', type: 'button', onclick: usarKey }, '🔑 Tengo una key'),
+          cfg.dias_referido > 0 ? el('a', { class: 'btn texto', href: '#invita' }, '🎁 O gana Pro gratis invitando a otros negocios') : null)),
       el('p', { class: 'sutil' }, 'Te avisamos antes de que venza cada mensualidad. Si no pagas, vuelves a Free: tu billetera sigue funcionando y no se borra nada.'));
   }
   async function usarCupon() {
@@ -1418,23 +1439,83 @@
   async function quieroPro() {
     try { await conCarga(() => rpc('pedir_pro')); toast('Listo ✓ Te responderemos por el chat de soporte.'); location.hash = 'soporte'; } catch (e) { error(e); }
   }
-  async function yaPague() {
-    const meses = el('p', null, el('strong', null, 'Pro · ' + precioPro()));
-    const foto = el('input', { type: 'file', accept: 'image/*' }); const nota = el('input', { maxlength: 200, placeholder: 'Ej: transferí desde la cuenta de mi esposa' });
-    const ok = await dialogo('Avisar pago', el('div', null, meses, el('div', { class: 'campo' }, el('label', null, 'Comprobante (opcional)'), foto), el('div', { class: 'campo' }, el('label', null, 'Nota'), nota)),
-      [{ texto: 'Cancelar', valor: null }, { texto: 'Enviar', clase: 'primario', valor: true }]);
+  const ahorroAnual = () => { const pl = S.st.plan, m = pl.mensual || S.st.config.precio_mensual; return pl.anual && m ? Math.round(100 - pl.anual * 100 / (m * 12)) : 0; };
+  // Pasar a Pro en 3 pasos (como en Centro de Mando): elige mensual o anual → paga → sube el comprobante. Lo aprueba el administrador.
+  async function pasarPro(mesesIni) {
+    if (!esDueno()) return alPlan('Pídele al dueño de la billetera que active Pro.');
+    await refrescarEstado().catch(() => {});
+    const pl = S.st.plan, cfg = S.st.config, tr = cfg.transferencia || {};
+    if (pl.pago_pendiente) { toast('Ya tienes un pago en revisión. Te avisamos apenas se apruebe.'); return; }
+    const act = precioAct(), mensual = pl.mensual || cfg.precio_mensual, anual = pl.anual || 0;
+    let meses = mesesIni === 12 && anual ? 12 : mesesIni === 1 || !anual ? 1 : 12;
+    const total = el('div', { class: 'total-pago' });
+    const op = (m, t, precio, nota) => el('button', { class: 'plan-op', type: 'button', 'data-m': m, onclick: () => { meses = m; marcar(); } },
+      el('span', { class: 'sutil' }, t), el('span', { class: 'p' }, precio), nota);
+    const ops = el('div', { class: 'plan-elegir' }, op(1, 'Mensual', pesos(mensual), el('span', { class: 'sutil' }, 'al mes')),
+      anual ? op(12, 'Anual', pesos(anual), ahorroAnual() > 0 ? el('span', { class: 'tag verde' }, 'Ahorras ' + ahorroAnual() + '%') : el('span', { class: 'sutil' }, 'al año')) : null);
+    function marcar() {
+      ops.querySelectorAll('.plan-op').forEach((b) => b.classList.toggle('activo', Number(b.dataset.m) === meses));
+      vaciar(total).append(el('div', { class: 'sutil' }, 'Pagas ahora'), el('div', { class: 'grande' }, pesos((meses === 12 ? anual : mensual) + act)),
+        el('div', { class: 'sutil' }, (meses === 12 ? 'Pro por 12 meses' : 'Pro por 1 mes') + (act > 0 ? ' + activación de ' + pesos(act) + ' (una sola vez)' : '')));
+    }
+    marcar();
+    const paso = (n, t) => el('div', { class: 'paso-pago' }, el('b', null, n), el('strong', null, t));
+    const datos = [['Banco', tr.banco], ['Tipo', tr.tipo], ['Número', tr.numero], ['RUT', tr.rut], ['Nombre', tr.titular], ['Correo', tr.email]].filter((x) => x[1]);
+    const foto = el('input', { type: 'file', accept: 'image/*' });
+    const nota = el('input', { maxlength: 200, placeholder: 'Ej: transferí desde la cuenta de mi pareja' });
+    const err = el('div', { class: 'error' });
+    const ok = await dialogo('⭐ Pasar a Pro', el('div', null,
+      paso(1, 'Elige tu plan'), ops, total,
+      paso(2, 'Paga'),
+      el('div', { class: 'col' },
+        cfg.link_pago ? el('button', { class: 'btn primario', type: 'button', onclick: () => abrir(cfg.link_pago) }, '💳 Pagar en línea') : null,
+        datos.length ? el('details', null, el('summary', { class: 'btn ancho' }, '🏦 Pagar por transferencia'),
+          el('div', { class: 'tarjeta plana mt' }, datos.map(([k, v]) => el('div', { class: 'copiar-fila' }, el('div', { class: 'crece' }, el('div', { class: 'k' }, k), el('div', { class: 'v' }, v)),
+            el('button', { class: 'btn chico', type: 'button', onclick: () => copiar(String(v)) }, 'Copiar'))))) : null,
+        !cfg.link_pago && !datos.length ? el('p', { class: 'sutil' }, 'Escríbenos por soporte y te pasamos los datos para pagar.') : null),
+      paso(3, 'Sube tu comprobante'),
+      el('div', { class: 'campo' }, el('label', null, 'Foto o captura del comprobante'), foto),
+      el('div', { class: 'campo' }, el('label', null, 'Nota (opcional)'), nota), err),
+      [{ texto: 'Cancelar', valor: null }, { texto: 'Enviar comprobante', clase: 'primario', valor: true, antes: () => {
+        if (!foto.files[0]) { err.textContent = 'Sube la foto del comprobante para que podamos revisarlo.'; return false; }
+        return true;
+      } }], { sinFoco: true });
     if (!ok) return;
     try {
-      let ruta = null;
-      if (foto.files[0]) {
-        const blob = await LC.achicarImagen(foto.files[0], 1080, 200 * 1024);
-        ruta = S.neg.id + '/' + uuid() + (blob.type === 'image/webp' ? '.webp' : '.jpg');
-        const { error: e } = await conCarga(() => sb.storage.from('pagos').upload(ruta, blob, { contentType: blob.type }));
-        if (e) throw e;
-      }
-      await conCarga(() => rpc('solicitar_pago', { p_meses: 1, p_path: ruta, p_nota: nota.value }));
-      toast('¡Gracias! Te avisaremos apenas se apruebe.'); vPlan();
+      const blob = await LC.achicarImagen(foto.files[0], 1080, 200 * 1024);
+      const ruta = S.neg.id + '/' + uuid() + (blob.type === 'image/webp' ? '.webp' : '.jpg');
+      const { error: e } = await conCarga(() => sb.storage.from('pagos').upload(ruta, blob, { contentType: blob.type }));
+      if (e) throw e;
+      await conCarga(() => rpc('solicitar_pago', { p_meses: meses, p_path: ruta, p_nota: nota.value }));
+      toast('¡Gracias! Te avisaremos apenas se apruebe.', { ms: 5000 }); await refrescarEstado().catch(() => {});
+      if (S.vista === 'plan') vPlan(); else router(true);
     } catch (e) { error(e); }
+  }
+
+  // ================= INVITA Y GANA =================
+  async function vInvita() {
+    if (soloDueno()) return;
+    const cfg = S.st.config;
+    if (!(cfg.dias_referido > 0)) { pintar(el('h2', null, 'Invita y gana'), el('div', { class: 'lista' }, el('div', { class: 'vacio' }, 'Por ahora no hay premios por invitar.'))); return; }
+    const r = await conCarga(() => rpc('mi_referidos'));
+    const link = RAIZ + '?ref=' + r.codigo + '#crear';
+    const msg = '¡Hola! Uso ' + LC.C.MARCA + ' para anotar ventas, gastos y fiado en el celular, y mis clientes me pagan con un link. Es gratis, pruébalo: ' + link;
+    const kpi = (t, v) => el('div', { class: 'kpi' }, el('div', { class: 't' }, t), el('div', { class: 'v' }, v));
+    pintar(el('h2', null, 'Invita y gana'),
+      el('div', { class: 'tarjeta hero' }, el('div', { class: 't' }, 'Por cada negocio que se una con tu link'), el('div', { class: 'grande' }, cfg.dias_referido + ' días de Pro'),
+        el('div', { class: 't' }, 'gratis para ti, apenas empiece a usar su billetera.')),
+      el('div', { class: 'tarjeta centro' }, el('div', { class: 'sutil' }, 'Tu código'), el('div', { class: 'codigo-ref' }, r.codigo), el('div', { class: 'sutil cortar' }, link),
+        el('div', { class: 'col mt' },
+          el('button', { class: 'btn wsp', type: 'button', onclick: () => abrir(wa('', msg)) }, '💬 Invitar por WhatsApp'),
+          el('button', { class: 'btn', type: 'button', onclick: () => copiar(link, 'Link copiado ✓') }, '📋 Copiar mi link'),
+          navigator.share ? el('button', { class: 'btn', type: 'button', onclick: () => navigator.share({ title: LC.C.MARCA, text: msg }).catch(() => {}) }, '📤 Compartir') : null)),
+      el('div', { class: 'grid3 mb' }, kpi('Invitados', r.invitados), kpi('Con premio', r.premiados), kpi('Días ganados', r.dias_ganados)),
+      r.lista.length ? el('div', { class: 'lista' }, r.lista.map((x) => el('div', { class: 'item', style: 'cursor:default' },
+        el('div', { class: 'avatar', style: 'background:' + colorDe(x.nombre) }, iniciales(x.nombre)),
+        el('div', { class: 'crece' }, el('div', { class: 'nom' }, x.nombre), el('div', { class: 'sub' }, 'Se unió ' + relativo(LC.fechaISO(x.creado)))),
+        el('span', { class: 'tag ' + (x.premiado ? 'verde' : x.revisado ? '' : 'naranjo') }, x.premiado ? '✓ Ganaste' : x.revisado ? 'Sin premio (tope)' : 'Falta que la use')))) : null,
+      el('p', { class: 'sutil' }, 'Cuenta cuando tu invitado anota ' + cfg.ref_min_registros + ' ventas, gastos o fiados y lleva 3 días con su billetera. Máximo ' + cfg.ref_max_premios +
+        ' premios. Si tienes Pro pagado, los días se suman a tu plan; si no, son días de Pro de regalo.'));
   }
   async function usarKey() {
     const k = await pedirTexto('Usar key', 'Tu key', { placeholder: 'LC-XXXX-XXXX-XXXX', max: 20 });

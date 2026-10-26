@@ -115,7 +115,7 @@ select public.registrar_movimiento(gen_random_uuid(), current_setting('t.f1')::u
 select pruebas.ok(jsonb_typeof(public.reporte_pro(null)) = 'object', 'en prueba ve reportes Pro');
 select pruebas.ok(jsonb_array_length(public.cobranza_lote()) >= 1, 'en prueba usa cobrar a todos');
 select pruebas.falla($$select public.invitar_ayudante()$$, 'personal');
-select pruebas.falla($$select public.solicitar_pago(12, null, null)$$, 'mes a mes');
+select pruebas.falla($$select public.solicitar_pago(6, null, null)$$, 'mensual o el anual');
 -- Perfil: ícono y color (gratis)
 select public.guardar_perfil('🧁', '#db2777');
 select pruebas.ok((select icono = '🧁' and color = '#db2777' from public.negocios where dueno = auth.uid()), 'guarda ícono y color');
@@ -258,7 +258,7 @@ select pruebas.ok((select pagado = monto from public.cuotas where venta = '20000
 select pruebas.ok((select pagado = 0 from public.cuotas where venta = '20000000-0000-0000-0000-000000000001' and numero = 2), 'la cuota 2 sigue pendiente');
 select pruebas.falla($$select public.pagar_cuota(gen_random_uuid(), '20000000-0000-0000-0000-000000000001', 1, 'efectivo', true)$$, 'ya está pagada');
 select pruebas.ok((public.pagar_cuota(gen_random_uuid(), '20000000-0000-0000-0000-000000000001', 2, 'efectivo', false) ->> 'cuota')::int = 33333, 'se habilita la cuota 2');
-select pruebas.ok((public.config_publica() ->> 'version_bd')::int = 8, 'versión de la base visible');
+select pruebas.ok((public.config_publica() ->> 'version_bd')::int = 9, 'versión de la base visible');
 -- v1.6: pagar un fiado (todo o una parte) y adjuntar el comprobante
 select public.registrar_movimiento('50000000-0000-0000-0000-000000000001', current_setting('t.c1')::uuid, 'cargo', 5000, 'Pedido grande', null, null, null, null, true, true);
 select pruebas.ok((select (x ->> 'pagado')::int < (x ->> 'monto')::int from jsonb_array_elements(public.estado_fiados(current_setting('t.c1')::uuid)) x where x ->> 'id' = '50000000-0000-0000-0000-000000000001'), 'estado de cada fiado');
@@ -397,6 +397,72 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d1
 set role authenticated;
 select pruebas.ok((public.reporte_pro(null) -> 'actual' ->> 'ventas')::int >= 0, 'reporte Pro');
 reset role;
+
+-- ===== v1.8: plan anual e "Invita y gana" =====
+reset role;
+insert into auth.users (id, email, email_confirmed_at) values
+  ('00000000-0000-0000-0000-0000000000b1', 'refiere@prueba.cl', now()),
+  ('00000000-0000-0000-0000-0000000000b2', 'invitado@prueba.cl', now()),
+  ('00000000-0000-0000-0000-0000000000b3', 'sinlink@prueba.cl', now());
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b1', false);
+select public.crear_negocio('Feria Don Pepe', 'feria', true);
+select set_config('t.ref', public.mi_referidos() ->> 'codigo', false);
+select pruebas.ok(current_setting('t.ref') ~ '^[A-HJ-NP-Z0-9]{6}$', 'código de invitación de 6 letras, sin I ni O');
+select pruebas.ok(public.mi_referidos() ->> 'codigo' = current_setting('t.ref'), 'el código no cambia');
+select pruebas.ok((public.mi_estado() -> 'plan' ->> 'anual')::int = (select precio_anual from public.ajustes), 'Mi plan trae el precio anual');
+select pruebas.falla($$select public.solicitar_pago(6, null, null)$$, 'mensual o el anual');
+select public.solicitar_pago(12, null, 'plan anual');
+select pruebas.ok((select meses = 12 and monto = (select precio_anual + precio_activacion from public.ajustes) from public.solicitudes_pago
+  where negocio = (select id from public.negocios where dueno = auth.uid())), 'pago anual = activación + año');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', false);
+select pruebas.ok((public.crear_negocio('Almacén Nuevo', 'almacen', true, lower(current_setting('t.ref'))) ->> 'referido')::boolean, 'se registra con el link de invitación');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b3', false);
+select pruebas.ok(not (public.crear_negocio('Sin Link', 'otro', true, 'NOEXISTE') ? 'referido'), 'código inválido no cuenta');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b1', false);
+select pruebas.ok((public.mi_referidos() ->> 'invitados')::int = 1, 'cuenta 1 invitado');
+select pruebas.ok((select count(*) = 1 from public.notificaciones where titulo like '%se unió con tu link'), 'avisa a quien invitó');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+select public.admin_resolver_pago((select id from public.solicitudes_pago where meses = 12 and estado = 'pendiente'), true, null);
+select pruebas.ok((public.admin_negocio_detalle((select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000b1')) ->> 'invitados')::int = 1, 'el admin ve los invitados');
+reset role;
+select pruebas.ok((select premium_hasta > now() + interval '360 days' and activado from public.negocios where dueno = '00000000-0000-0000-0000-0000000000b1'), 'anual aprobado = 12 meses de Pro');
+select set_config('t.hasta', (select premium_hasta::text from public.negocios where dueno = '00000000-0000-0000-0000-0000000000b1'), false);
+select pruebas.ok(privado.premiar_referidos() = 0, 'sin uso real no hay premio');
+update public.negocios set creado = now() - interval '4 days' where dueno = '00000000-0000-0000-0000-0000000000b2';
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', false);
+set role authenticated;
+do $$ begin for i in 1..10 loop perform public.registrar_caja(gen_random_uuid(), 'ingreso', 1000 + i, 'Ventas', null, 'efectivo', null, false); end loop; end $$;
+reset role;
+select pruebas.ok(privado.premiar_referidos() = 1, 'con uso real se premia');
+select pruebas.ok((select premium_hasta = current_setting('t.hasta')::timestamptz + interval '15 days' from public.negocios where dueno = '00000000-0000-0000-0000-0000000000b1'), 'suma 15 días a su Pro pagado');
+select pruebas.ok(privado.premiar_referidos() = 0, 'no se premia dos veces');
+update public.ajustes set ref_max_premios = 1;
+update public.negocios set referido_por = (select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000b1'), creado = now() - interval '4 days'
+  where dueno = '00000000-0000-0000-0000-0000000000b3';
+insert into public.caja (id, negocio, tipo, monto, categoria, medio, fecha, creado_por)
+  select gen_random_uuid(), n.id, 'ingreso', 500 + g, 'Ventas', 'efectivo', now(), n.dueno from public.negocios n, generate_series(1, 10) g where n.dueno = '00000000-0000-0000-0000-0000000000b3';
+select pruebas.ok(privado.premiar_referidos() = 0, 'respeta el tope de premios');
+select pruebas.ok((select ref_revisado_at is not null and ref_dias = 0 from public.negocios where dueno = '00000000-0000-0000-0000-0000000000b3'), 'sobre el tope queda revisado sin premio');
+update public.ajustes set ref_max_premios = 12;
+-- Un invitado en Free regala días de prueba Pro
+update public.negocios set premium_hasta = null, activado = false, prueba_hasta = now() - interval '1 day' where dueno = '00000000-0000-0000-0000-0000000000b1';
+update public.negocios set ref_revisado_at = null, ref_dias = 0 where dueno = '00000000-0000-0000-0000-0000000000b3';
+select pruebas.ok(privado.premiar_referidos() = 1, 'premio a una billetera en Free');
+select pruebas.ok(privado.estado_plan((select id from public.negocios where dueno = '00000000-0000-0000-0000-0000000000b1')) = 'prueba', 'en Free el premio son días de Pro de regalo');
+update public.ajustes set dias_referido = 0;
+select pruebas.ok(privado.premiar_referidos() = 0, 'con 0 días queda apagado');
+update public.ajustes set dias_referido = 15;
+set role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1', false);
+select public.admin_guardar_ajustes('{"precio_anual":39900,"dias_referido":20,"ref_min_registros":5,"ref_max_premios":6}');
+select pruebas.ok((public.config_publica() ->> 'precio_anual')::int = 39900 and (public.config_publica() ->> 'dias_referido')::int = 20, 'el admin cambia el plan anual y los referidos');
+select pruebas.falla($$select public.admin_guardar_ajustes('{"dias_referido":500}')$$, 'dias_referido');
+select public.admin_guardar_ajustes('{"precio_anual":0}');
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', false);
+select pruebas.falla($$select public.solicitar_pago(12, null, null)$$, 'no está disponible');
+reset role;
+update public.ajustes set precio_anual = 49900, dias_referido = 15, ref_min_registros = 10, ref_max_premios = 12;
 
 -- Tareas automáticas no fallan
 select privado.tarea_horaria();
