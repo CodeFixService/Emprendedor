@@ -374,3 +374,7 @@ table.uso td.r { text-align: right; font-variant-numeric: tabular-nums; }
 .paso-act.ok > b { background: var(--ok); border-color: var(--ok); color: #fff; }
 .paso-act p { margin: 4px 0 8px; }
 .paso-act .fila { margin-top: 6px; }
+/* v1.10.2 · Grillas que nunca se salen de la pantalla en celulares angostos */
+.grid2 > *, .grid3 > * { min-width: 0; }
+.grid3 > .btn, .grid2 > .btn { padding: 0 8px; white-space: normal; line-height: 1.2; }
+@media (max-width: 380px) { .grid3 > .btn { font-size: .85em; gap: 5px; } .app { padding-left: 12px; padding-right: 12px; } .barra-sup { margin-left: -12px; margin-right: -12px; padding-left: 12px; padding-right: 12px; } }
