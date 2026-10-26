@@ -79,3 +79,12 @@ Todo en https://supabase.com/dashboard → organización **Emprendedor** → pro
 - [ ] Hacer privado el repo y publicar en Cloudflare Pages (gratis), o comprar el dominio. Al cambiar la URL, actualiza las URLs de A2.
 - [ ] Revisar los textos legales con un abogado (ver `07-LEGAL.md`).
 - [ ] Cuando la base de datos pase el 70 % (el admin lo muestra), pasar a Supabase Pro (US$25 al mes) y encender "Confirm email".
+
+## D. Actualizar a una versión nueva (cada vez que se publique una)
+Todo se hace desde **Administración**: apenas hay una versión nueva en GitHub, el **Resumen** muestra "🚀 Hay una versión nueva lista".
+Tócalo (o ve a **Ajustes → Versiones**) y sigue los 4 pasos. Cada paso queda con ✓ verde cuando está listo:
+1. **Base de datos** → **📋 Copiar consulta** → **↗ Abrir SQL Editor** → pega → **Run**. Debe decir `Libreta instalada vX`. No borra datos. Toca **🔄 Ya la corrí**.
+2. **Función del servidor** (solo si cambió) → **📋 Copiar código** → **↗ Abrir Edge Functions** → `enviar` → Code: borra todo, pega → **Deploy** → **🩺 Probar de nuevo**.
+3. **Prueba en tu celular** → **⬇️ Actualizar mi celular**. Solo tu celular cambia; revisa que todo funcione.
+4. **🚀 Liberar para todos**. Se bloquea si los pasos 1 o 2 no están listos, para que la app de tus clientes nunca quede sin su base de datos.
+A cada billetera le aparece "✨ Hay una versión nueva" con el botón **Actualizar**. Si un celular queda raro: **Mi cuenta → Reparar la app** (no borra datos).

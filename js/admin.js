@@ -52,8 +52,15 @@
         n.whatsapp ? el('button', { class: 'btn-icono', type: 'button', 'aria-label': 'WhatsApp', onclick: () => abrir(wa(n.whatsapp, plantilla(n))) }, '💬') : null,
         el('a', { class: 'btn-icono', href: '#soporte/' + n.id, style: 'text-decoration:none', 'aria-label': 'Chat' }, '✉️'))))) : null;
     const cfgP = r.mrr;
+    const avisoVersion = el('div');
+    Promise.all([leerPublicada(), rpc('config_publica')]).then(([pub, c]) => {
+      const bd = Number(c.version_bd || 0);
+      if (LC.versionMenor(c.version_liberada, pub.version) || bd < pub.bd) avisoVersion.append(el('a', { class: 'banda info', href: '#ajustes/versiones', style: 'text-decoration:none' },
+        '🚀 Hay una versión nueva lista (v' + pub.version + '). Actualízala en 4 pasos: base de datos, función, probar y liberar.', el('span', { class: 'btn chico' }, 'Empezar')));
+    }).catch(() => {});
     pintarUso();
     pintar(el('h2', null, 'Resumen'),
+      avisoVersion,
       !r.cron_ok ? el('div', { class: 'banda error' }, '⚠️ Las tareas automáticas no están activas: en Supabase → Database → Extensions enciende pg_cron y pg_net, y vuelve a correr el SQL de actualización.') : null,
       !r.push_ok ? el('div', { class: 'banda aviso' }, '⚠️ Falta generar las claves push.', el('a', { class: 'btn chico', href: '#ajustes/push' }, 'Ir')) : null,
       r.pagos_pendientes ? el('a', { class: 'banda info', href: '#pagos', style: 'text-decoration:none' }, '💳 ' + r.pagos_pendientes + ' pago(s) por revisar', el('span', { class: 'btn chico' }, 'Revisar')) : null,
@@ -398,50 +405,59 @@
     pintarS();
     return { caja, valor: () => ls.map((x) => ({ texto: x.texto.trim(), url: x.url.trim(), activo: x.activo })) };
   }
-  function tarjetaVersiones(a, cfg) {
-    const estado = el('p', null, 'Revisando…'), btn = el('button', { class: 'btn primario', type: 'button', disabled: true }, 'Liberar actualización');
-    const tuyo = el('div'), aviso = el('div');
-    let pub = '';
-    const bd = Number((cfg && cfg.version_bd) || 0);
-    fetch('../version.json?t=' + Date.now(), { cache: 'no-store' }).then((r) => r.json()).then((j) => {
-      pub = String(j.version || '');
-      const necesita = Number(j.bd || 0);
-      vaciar(estado).append('Tu celular: ', el('strong', null, 'v' + LC.VERSION), ' · Publicada en GitHub: ', el('strong', null, 'v' + (pub || '?')),
-        ' · Liberada para todos: ', el('strong', null, 'v' + a.version_liberada), ' · Base de datos: ', el('strong', null, bd ? 'v' + bd : 'v4 o menos'));
-      btn.textContent = 'Liberar v' + pub + ' para todos';
-      btn.disabled = !pub || !LC.versionMenor(a.version_liberada, pub);
-      if (pub && !LC.versionMenor(a.version_liberada, pub)) btn.textContent = '✓ La última versión ya está liberada';
-      else if (necesita > bd) {
-        // No se puede liberar una versión que necesita una base de datos más nueva: primero se corre la consulta.
-        btn.disabled = true; btn.textContent = '🔒 Primero actualiza la base de datos';
-        vaciar(aviso).append(el('div', { class: 'banda error', style: 'display:block' },
-          el('p', { style: 'margin:0 0 8px' }, el('strong', null, 'Paso 1: actualiza la base de datos. '), 'La v' + pub + ' necesita la base v' + necesita + ' y tienes ' + (bd ? 'v' + bd : 'una más antigua') + '.'),
-          el('p', { style: 'margin:0 0 8px' }, 'Copia la consulta, pégala en Supabase → SQL Editor → Run. Debe responder "Libreta instalada v' + necesita + '".'),
-          el('div', { class: 'grid2' }, el('button', { class: 'btn', type: 'button', onclick: copiarConsulta }, '📋 Copiar consulta'),
-            el('button', { class: 'btn', type: 'button', onclick: () => vAjustes() }, '🔄 Ya la corrí'))));
-      }
-    }).catch(() => { estado.textContent = 'No se pudo leer la versión publicada.'; });
-    LC.revisarVersion({ version_liberada: a.version_liberada }, (txt, fn) => { vaciar(tuyo); if (txt) tuyo.append(el('button', { class: 'btn primario ancho mt', type: 'button', onclick: fn }, '⬇️ Actualizar mi celular a la v' + a.version_liberada)); });
-    tuyo.append(el('button', { class: 'btn texto ancho', type: 'button', onclick: async () => { if (await confirmar('Reparar la app', 'Vuelve a descargar la app en este celular. No borra datos.', 'Reparar')) LC.repararApp(); } }, '🛠️ Reparar la app en este celular'));
-    btn.onclick = async () => {
-      if (!await confirmar('Liberar actualización', '¿Liberar la v' + pub + '? A todos les aparecerá el botón "Actualizar" y la tendrán al tocarlo.', 'Liberar')) return;
-      try {
-        await conCarga(() => rpc('admin_guardar_ajustes', { p: { version_liberada: pub } }));
-        toast('✅ v' + pub + ' liberada para todos. Actualizando tu celular…');
-        if (LC.versionMenor(LC.VERSION, pub)) LC.actualizarAhora(); else vAjustes();
-      } catch (e) { error(e); }
-    };
-    return el('div', { class: 'tarjeta', id: 'actualizaciones' }, el('h2', null, 'Actualizaciones'),
-      el('p', { class: 'sutil' }, 'Cuando se publique una versión nueva en GitHub, pruébala en tu celular y después libérala. Nadie recibe cambios hasta que tú los apruebas.'),
-      estado, aviso, btn, tuyo);
+  // Asistente de actualización en 4 pasos: 1) base de datos, 2) función del servidor, 3) probar en tu celular, 4) liberar para todos.
+  // Nadie recibe cambios hasta el paso 4, y no se puede liberar si la base de datos o la función quedaron atrás.
+  async function leerPublicada() {
+    const j = await (await fetch('../version.json?t=' + Date.now(), { cache: 'no-store' })).json();
+    return { version: String(j.version || ''), bd: Number(j.bd || 0), funcion: String(j.funcion || '') };
   }
-  async function copiarConsulta() {
+  function tarjetaVersiones(a, cfg) {
+    const caja = el('div', null, el('p', { class: 'sutil' }, 'Revisando…'));
+    const paso = (n, ok, titulo, ...cuerpo) => el('div', { class: 'paso-act ' + (ok === true ? 'ok' : ok === false ? 'pend' : '') },
+      el('b', null, ok === true ? '✓' : n), el('div', { class: 'crece' }, el('strong', null, titulo), ...cuerpo));
+    (async () => {
+      let pub;
+      try { pub = await leerPublicada(); } catch (e) { vaciar(caja).append(el('p', { class: 'rojo' }, 'No se pudo leer la versión publicada en GitHub. Revisa tu internet.')); return; }
+      const bd = Number((cfg && cfg.version_bd) || 0);
+      let fn = null; try { const r = await LC.funcion({ accion: 'ping' }); fn = r && r.ok ? String(r.version) : null; } catch (e) { fn = null; }
+      const okBd = bd >= pub.bd, okFn = !pub.funcion || (fn && !LC.versionMenor(fn, pub.funcion)), okCel = !LC.versionMenor(LC.VERSION, pub.version);
+      const liberada = !LC.versionMenor(a.version_liberada, pub.version);
+      const bLib = el('button', { class: 'btn primario ancho', type: 'button', disabled: liberada || !okBd || !okFn }, liberada ? '✓ La v' + pub.version + ' ya está liberada para todos' : '🚀 Liberar v' + pub.version + ' para todos');
+      bLib.onclick = async () => {
+        if (!await confirmar('Liberar actualización', '¿Liberar la v' + pub.version + '? A todos les aparecerá "✨ Hay una versión nueva" con el botón Actualizar.', 'Liberar')) return;
+        try { await conCarga(() => rpc('admin_guardar_ajustes', { p: { version_liberada: pub.version } })); toast('✅ v' + pub.version + ' liberada para todos'); if (!okCel) LC.actualizarAhora(); else vAjustes('versiones'); } catch (e) { error(e); }
+      };
+      vaciar(caja).append(...[
+        el('div', { class: 'grid2 mb' }, kpi('Publicada en GitHub', 'v' + pub.version), kpi('Liberada para todos', 'v' + a.version_liberada, liberada ? 'verde' : 'naranjo'),
+          kpi('Tu celular', 'v' + LC.VERSION, okCel ? 'verde' : 'naranjo'), kpi('Base de datos', bd ? 'v' + bd : '—', okBd ? 'verde' : 'rojo')),
+        liberada && okBd && okFn ? el('div', { class: 'banda info' }, '✅ Todo al día. Cuando publique una versión nueva, aquí verás los pasos.') : null,
+        paso(1, okBd, 'Base de datos' + (okBd ? ' al día (v' + bd + ')' : ': falta actualizar a v' + pub.bd),
+          okBd ? null : el('p', { class: 'sutil' }, 'Copia la consulta y pégala en Supabase → SQL Editor → New query → Run. Debe responder "Libreta instalada v' + pub.bd + '". No borra datos.'),
+          el('div', { class: 'fila envolver' }, el('button', { class: 'btn chico' + (okBd ? '' : ' primario'), type: 'button', onclick: copiarConsulta }, '📋 Copiar consulta'),
+            el('a', { class: 'btn chico', href: 'https://supabase.com/dashboard/project/' + new URL(LC.C.SUPABASE_URL).hostname.split('.')[0] + '/sql/new', target: '_blank', rel: 'noopener' }, '↗ Abrir SQL Editor'),
+            okBd ? null : el('button', { class: 'btn chico', type: 'button', onclick: () => location.reload() }, '🔄 Ya la corrí'))),
+        paso(2, pub.funcion ? !!okFn : null, 'Función del servidor "enviar"' + (okFn ? ' al día' + (fn ? ' (v' + fn + ')' : '') : fn ? ': tienes v' + fn + ', falta v' + pub.funcion : ': no responde'),
+          okFn ? null : el('p', { class: 'sutil' }, 'Copia el código y en Supabase → Edge Functions → enviar → Code: borra todo, pega y toca Deploy. Si no existe, créala con el nombre "enviar" y apaga "Verify JWT".'),
+          el('div', { class: 'fila envolver' }, el('button', { class: 'btn chico' + (okFn ? '' : ' primario'), type: 'button', onclick: copiarFuncion }, '📋 Copiar código'),
+            el('a', { class: 'btn chico', href: 'https://supabase.com/dashboard/project/' + new URL(LC.C.SUPABASE_URL).hostname.split('.')[0] + '/functions', target: '_blank', rel: 'noopener' }, '↗ Abrir Edge Functions'),
+            el('button', { class: 'btn chico', type: 'button', onclick: () => vAjustes('versiones') }, '🩺 Probar de nuevo'))),
+        paso(3, okCel, okCel ? 'Tu celular ya tiene la v' + LC.VERSION : 'Pruébala en tu celular',
+          okCel ? el('p', { class: 'sutil' }, 'Revisa que todo funcione antes de liberarla.') : el('p', { class: 'sutil' }, 'Solo tu celular se actualiza. Revisa que todo funcione antes de liberarla.'),
+          okCel ? null : el('button', { class: 'btn chico primario', type: 'button', onclick: LC.actualizarAhora }, '⬇️ Actualizar mi celular a la v' + pub.version)),
+        paso(4, liberada, 'Liberar para todos', el('p', { class: 'sutil' }, !okBd || !okFn ? '🔒 Primero termina los pasos 1 y 2: si liberas antes, la app de tus clientes fallaría.' : 'A cada billetera le aparece el botón Actualizar. Nadie recibe cambios hasta que tú lo apruebas.'), bLib),
+        el('button', { class: 'btn texto ancho', type: 'button', onclick: async () => { if (await confirmar('Reparar la app', 'Vuelve a descargar la app en este celular. No borra datos.', 'Reparar')) LC.repararApp(); } }, '🛠️ Reparar la app en este celular')].filter(Boolean));
+    })();
+    return el('div', { class: 'tarjeta', id: 'actualizaciones' }, el('h2', null, '🔄 Actualizar la app'), caja);
+  }
+  async function copiarArchivo(ruta, prueba, aviso) {
     try {
-      const t = await (await fetch('../supabase/instalar-corto.sql?t=' + Date.now(), { cache: 'no-store' })).text();
-      if (!/http_get/.test(t)) throw new Error('No se pudo leer la consulta');
-      copiar(t.split('\n').filter((x) => !x.startsWith('--')).join('\n').trim(), 'Consulta copiada ✓ Pégala en Supabase → SQL Editor');
+      const t = await (await fetch(ruta + '?t=' + Date.now(), { cache: 'no-store' })).text();
+      if (!prueba.test(t)) throw new Error('No se pudo leer ' + ruta.split('/').pop());
+      copiar(t.split('\n').filter((x) => !x.startsWith('--') && !x.startsWith('//')).join('\n').trim(), aviso);
     } catch (e) { toast('No se pudo copiar: ' + e.message, { error: true }); }
   }
+  const copiarConsulta = () => copiarArchivo('../supabase/instalar-corto.sql', /http_get/, 'Consulta copiada ✓ Pégala en Supabase → SQL Editor → Run');
+  const copiarFuncion = () => copiarArchivo('../supabase/functions/enviar/corto.ts', /^import /m, 'Código copiado ✓ Pégalo en Edge Functions → enviar → Deploy');
   const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   async function generarVapid() {
     const cfg = await rpc('config_publica');
