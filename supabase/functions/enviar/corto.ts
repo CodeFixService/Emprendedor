@@ -1,2 +1,2 @@
 // Libreta de Cobros · función "enviar" en una línea (carga index.ts de un commit fijo de GitHub).
-import 'https://raw.githubusercontent.com/CodeFixService/Emprendedor/eda6dd2e73f59e61874347d0d14e018604feaeb7/supabase/functions/enviar/index.ts';
+import 'https://raw.githubusercontent.com/CodeFixService/Emprendedor/a5e82d17bbd36d80a44e1187e4c6874fff4f712b/supabase/functions/enviar/index.ts';
