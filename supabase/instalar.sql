@@ -3041,4 +3041,7 @@ do $$ begin
 exception when others then raise notice 'cron: %', sqlerrm;
 end $$;
 
+-- Al correr este SQL la versión de la app queda liberada al tiro: todos ven "Actualizar" (al publicar una versión nueva, sube este número).
+update public.ajustes set version_liberada = '1.9.0' where id = 1 and case when version_liberada ~ '^\d+(\.\d+)*$'
+  then string_to_array(version_liberada, '.')::int[] < string_to_array('1.9.0', '.')::int[] else true end;
 select 'Libreta instalada v' || (select valor from privado.config where clave = 'version_bd') as resultado;
