@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '9'),
+  ('version_bd', '10'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -435,6 +435,10 @@ do $$ begin
     insert into privado.config values ('migracion_v8', '1');
   end if;
 end $$;
+
+-- ---------- v10: link de pago propio para el plan anual (el mensual sigue en los 2 espacios) ----------
+alter table public.ajustes add column if not exists link_pago_anual text not null default ''
+  check (link_pago_anual = '' or (char_length(link_pago_anual) <= 300 and link_pago_anual ~ '^https://'));
 
 -- ---------- v9: plan anual e "Invita y gana" (referidos) ----------
 alter table public.negocios add column if not exists codigo_ref text;
@@ -1110,7 +1114,7 @@ end $$;
 create or replace function public.ping() returns text language sql stable as $$ select 'ok' $$;
 
 create or replace function public.config_publica() returns jsonb language sql stable security definer set search_path = public, pg_temp as $$
-  select jsonb_build_object('precio_mensual', a.precio_mensual, 'precio_anual', a.precio_anual, 'precio_activacion', a.precio_activacion, 'link_pago', a.link_pago,
+  select jsonb_build_object('precio_mensual', a.precio_mensual, 'precio_anual', a.precio_anual, 'precio_activacion', a.precio_activacion, 'link_pago', a.link_pago, 'link_pago_anual', a.link_pago_anual,
     'transferencia', a.transferencia, 'contacto_whatsapp', a.contacto_whatsapp, 'dias_prueba', a.dias_prueba,
     'lim_normal', a.lim_normal, 'lim_premium', a.lim_premium, 'version_legal', a.version_legal, 'version_min', a.version_min,
     'version_liberada', a.version_liberada,
@@ -2571,12 +2575,16 @@ begin
   if coalesce(p ->> 'version_liberada', '') <> '' and p ->> 'version_liberada' !~ '^\d{1,3}\.\d{1,3}\.\d{1,3}$' then perform privado.fallo('Versión inválida'); end if;
   if coalesce(p ->> 'version_min', '') <> '' and p ->> 'version_min' !~ '^\d{1,3}\.\d{1,3}\.\d{1,3}$' then perform privado.fallo('Versión mínima inválida'); end if;
   if coalesce(p ->> 'link_pago', '') <> '' and p ->> 'link_pago' !~ '^https://' then perform privado.fallo('El link de pago debe empezar con https://'); end if;
+  if coalesce(p ->> 'link_pago_anual', '') <> '' and (p ->> 'link_pago_anual' !~ '^https://[^ ]+$' or char_length(p ->> 'link_pago_anual') > 300) then
+    perform privado.fallo('El link de pago anual debe empezar con https://');
+  end if;
   if p ? 'textos' and (jsonb_typeof(p -> 'textos') <> 'object' or length((p -> 'textos')::text) > 20000) then perform privado.fallo('Textos inválidos'); end if;
   if p ? 'planes' and (jsonb_typeof(p -> 'planes') <> 'object' or length((p -> 'planes')::text) > 20000) then perform privado.fallo('Planes inválidos'); end if;
   update public.ajustes set
     precio_mensual = coalesce((p ->> 'precio_mensual')::int, precio_mensual),
     precio_activacion = coalesce((p ->> 'precio_activacion')::int, precio_activacion),
     precio_anual = coalesce((p ->> 'precio_anual')::int, precio_anual),
+    link_pago_anual = coalesce(btrim(p ->> 'link_pago_anual'), link_pago_anual),
     dias_referido = coalesce((p ->> 'dias_referido')::int, dias_referido),
     ref_min_registros = coalesce((p ->> 'ref_min_registros')::int, ref_min_registros),
     ref_max_premios = coalesce((p ->> 'ref_max_premios')::int, ref_max_premios),
@@ -3042,6 +3050,6 @@ exception when others then raise notice 'cron: %', sqlerrm;
 end $$;
 
 -- Al correr este SQL la versión de la app queda liberada al tiro: todos ven "Actualizar" (al publicar una versión nueva, sube este número).
-update public.ajustes set version_liberada = '1.9.0' where id = 1 and case when version_liberada ~ '^\d+(\.\d+)*$'
-  then string_to_array(version_liberada, '.')::int[] < string_to_array('1.9.0', '.')::int[] else true end;
+update public.ajustes set version_liberada = '1.10.0' where id = 1 and case when version_liberada ~ '^\d+(\.\d+)*$'
+  then string_to_array(version_liberada, '.')::int[] < string_to_array('1.10.0', '.')::int[] else true end;
 select 'Libreta instalada v' || (select valor from privado.config where clave = 'version_bd') as resultado;

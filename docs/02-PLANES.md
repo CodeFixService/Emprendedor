@@ -72,6 +72,7 @@ Cada billetera es **personal** (una sola persona, sin ayudantes). Todo se valida
 ## Plan anual, Pasar a Pro e Invita y gana (v1.8)
 - **Pasar a Pro** (Más → tarjeta de arriba, o Mi plan): 1) eliges **mensual o anual**, 2) pagas con el link o por transferencia, 3) subes la foto del comprobante. Te llega a **Administración → Pagos**; al aprobar, el anual suma **12 meses**.
 - **Precio anual**: parte en **$49.900** (Administración → Ajustes → Precios y links; 0 lo apaga). El primer pago suma la activación.
+- **Dos links de pago (v1.10)**: el **mensual** (2 espacios, uno activo) y el **anual** (su propio campo). En "Pasar a Pro", el botón "Pagar en línea" abre el link del plan elegido; si el anual está vacío, usa el mensual.
 - **Invita y gana** (Más → Invita y gana): cada billetera tiene su código y link (`…/?ref=CÓDIGO#crear`). Cuando el invitado anota **10** ventas, gastos o fiados y lleva **3 días**, quien invitó gana **15 días de Pro** (si ya paga, se suman a su plan; si no, son días de Pro de regalo). Máximo **12 premios** por billetera. Todo se cambia en Administración → Ajustes → Reglas (0 días = apagado).
 - La revisión de premios corre en la tarea diaria. El admin ve en la ficha de cada billetera a cuántos invitó y quién la invitó, y en Resumen cuántos llegaron invitados y cuántos planes anuales hay.
 - Los **Términos** subieron a la versión 2 (conexiones, links de pago, comprobantes, plan anual e invitaciones): todos los aceptan de nuevo al entrar.

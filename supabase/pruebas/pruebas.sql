@@ -258,7 +258,7 @@ select pruebas.ok((select pagado = monto from public.cuotas where venta = '20000
 select pruebas.ok((select pagado = 0 from public.cuotas where venta = '20000000-0000-0000-0000-000000000001' and numero = 2), 'la cuota 2 sigue pendiente');
 select pruebas.falla($$select public.pagar_cuota(gen_random_uuid(), '20000000-0000-0000-0000-000000000001', 1, 'efectivo', true)$$, 'ya está pagada');
 select pruebas.ok((public.pagar_cuota(gen_random_uuid(), '20000000-0000-0000-0000-000000000001', 2, 'efectivo', false) ->> 'cuota')::int = 33333, 'se habilita la cuota 2');
-select pruebas.ok((public.config_publica() ->> 'version_bd')::int = 9, 'versión de la base visible');
+select pruebas.ok((public.config_publica() ->> 'version_bd')::int = 10, 'versión de la base visible');
 -- v1.6: pagar un fiado (todo o una parte) y adjuntar el comprobante
 select public.registrar_movimiento('50000000-0000-0000-0000-000000000001', current_setting('t.c1')::uuid, 'cargo', 5000, 'Pedido grande', null, null, null, null, true, true);
 select pruebas.ok((select (x ->> 'pagado')::int < (x ->> 'monto')::int from jsonb_array_elements(public.estado_fiados(current_setting('t.c1')::uuid)) x where x ->> 'id' = '50000000-0000-0000-0000-000000000001'), 'estado de cada fiado');
@@ -458,6 +458,12 @@ select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000a1
 select public.admin_guardar_ajustes('{"precio_anual":39900,"dias_referido":20,"ref_min_registros":5,"ref_max_premios":6}');
 select pruebas.ok((public.config_publica() ->> 'precio_anual')::int = 39900 and (public.config_publica() ->> 'dias_referido')::int = 20, 'el admin cambia el plan anual y los referidos');
 select pruebas.falla($$select public.admin_guardar_ajustes('{"dias_referido":500}')$$, 'dias_referido');
+-- v1.10: link de pago propio para el plan anual
+select public.admin_guardar_ajustes('{"link_pago_anual":"https://link.mercadopago.cl/anual"}');
+select pruebas.ok(public.config_publica() ->> 'link_pago_anual' = 'https://link.mercadopago.cl/anual', 'guarda el link anual');
+select pruebas.falla($$select public.admin_guardar_ajustes('{"link_pago_anual":"mpago.la/x"}')$$, 'https://');
+select public.admin_guardar_ajustes('{"link_pago_anual":""}');
+select pruebas.ok(public.config_publica() ->> 'link_pago_anual' = '', 'se puede borrar el link anual');
 select public.admin_guardar_ajustes('{"precio_anual":0}');
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000b2', false);
 select pruebas.falla($$select public.solicitar_pago(12, null, null)$$, 'no está disponible');

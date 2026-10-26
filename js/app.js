@@ -1460,6 +1460,8 @@
     }
     marcar();
     const paso = (n, t) => el('div', { class: 'paso-pago' }, el('b', null, n), el('strong', null, t));
+    // Cada plan tiene su link: el anual usa el suyo (si no hay, el mensual) y viceversa.
+    const linkPago = () => (meses === 12 ? cfg.link_pago_anual || cfg.link_pago : cfg.link_pago || cfg.link_pago_anual);
     const datos = [['Banco', tr.banco], ['Tipo', tr.tipo], ['Número', tr.numero], ['RUT', tr.rut], ['Nombre', tr.titular], ['Correo', tr.email]].filter((x) => x[1]);
     const foto = el('input', { type: 'file', accept: 'image/*' });
     const nota = el('input', { maxlength: 200, placeholder: 'Ej: transferí desde la cuenta de mi pareja' });
@@ -1468,11 +1470,11 @@
       paso(1, 'Elige tu plan'), ops, total,
       paso(2, 'Paga'),
       el('div', { class: 'col' },
-        cfg.link_pago ? el('button', { class: 'btn primario', type: 'button', onclick: () => abrir(cfg.link_pago) }, '💳 Pagar en línea') : null,
+        cfg.link_pago || cfg.link_pago_anual ? el('button', { class: 'btn primario', type: 'button', onclick: () => abrir(linkPago()) }, '💳 Pagar en línea') : null,
         datos.length ? el('details', null, el('summary', { class: 'btn ancho' }, '🏦 Pagar por transferencia'),
           el('div', { class: 'tarjeta plana mt' }, datos.map(([k, v]) => el('div', { class: 'copiar-fila' }, el('div', { class: 'crece' }, el('div', { class: 'k' }, k), el('div', { class: 'v' }, v)),
             el('button', { class: 'btn chico', type: 'button', onclick: () => copiar(String(v)) }, 'Copiar'))))) : null,
-        !cfg.link_pago && !datos.length ? el('p', { class: 'sutil' }, 'Escríbenos por soporte y te pasamos los datos para pagar.') : null),
+        !cfg.link_pago && !cfg.link_pago_anual && !datos.length ? el('p', { class: 'sutil' }, 'Escríbenos por soporte y te pasamos los datos para pagar.') : null),
       paso(3, 'Sube tu comprobante'),
       el('div', { class: 'campo' }, el('label', null, 'Foto o captura del comprobante'), foto),
       el('div', { class: 'campo' }, el('label', null, 'Nota (opcional)'), nota), err),

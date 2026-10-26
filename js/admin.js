@@ -327,14 +327,16 @@
     if (secAj === 'precios') {
       const f = { act: inp(a.precio_activacion, { type: 'number', inputmode: 'numeric' }), mes: inp(a.precio_mensual, { type: 'number', inputmode: 'numeric' }), anual: inp(a.precio_anual, { type: 'number', inputmode: 'numeric' }),
         wsp: inp(a.contacto_whatsapp, { type: 'tel', placeholder: '+56 9 …' }), conInc: inp(a.conexiones_incluidas, { type: 'number' }), conPaq: inp(a.conexiones_paquete, { type: 'number' }),
+        linkAnual: inp(a.link_pago_anual, { type: 'url', placeholder: 'https://link.mercadopago.cl/…' }),
         conPrecio: inp(a.precio_paquete, { type: 'number', inputmode: 'numeric' }), tb: inp(t.banco), tt: inp(t.tipo), tn: inp(t.numero, { inputmode: 'numeric' }), tr: inp(t.rut), ttit: inp(t.titular), te: inp(t.email, { type: 'email' }) };
       const ls = espacios(a.links_pro && a.links_pro.length ? a.links_pro : (a.link_pago ? [{ texto: 'Mercado Pago', url: a.link_pago, activo: true }] : []));
       cuerpo.append(el('div', { class: 'tarjeta' }, el('h2', null, 'Precio Pro'), el('div', { class: 'grid3' }, campo('Activación (una vez)', f.act), campo('Mensualidad', f.mes), campo('Plan anual', f.anual, '0 = sin plan anual')),
           el('p', { class: 'sutil' }, 'El primer pago es activación + mensualidad (o + año); después solo la mensualidad o el año. El anual da 12 meses al aprobarlo.')),
-        el('div', { class: 'tarjeta' }, el('h2', null, 'Tus links de pago (2 espacios)'), ls.caja, el('p', { class: 'sutil' }, 'El activo es el que ven las billeteras al pagar Pro, conexiones extra y cupones.')),
+        el('div', { class: 'tarjeta' }, el('h2', null, 'Link de pago mensual (2 espacios)'), ls.caja, el('p', { class: 'sutil' }, 'El activo es el que ven las billeteras al pagar la mensualidad, conexiones extra y cupones.')),
+        el('div', { class: 'tarjeta' }, el('h2', null, 'Link de pago anual'), campo('Link para pagar el año completo', f.linkAnual, 'Debe empezar con https://. Si lo dejas vacío, el plan anual usa el link mensual.')),
         el('div', { class: 'tarjeta' }, el('h2', null, '🤝 Conexiones extra'), el('div', { class: 'grid3' }, campo('Incluidas', f.conInc), campo('Por paquete', f.conPaq), campo('Precio/mes', f.conPrecio))),
         el('div', { class: 'tarjeta' }, el('h2', null, 'Tus datos de transferencia'), campo('Banco', f.tb), campo('Tipo de cuenta', f.tt), campo('Número', f.tn), campo('RUT', f.tr), campo('Titular', f.ttit), campo('Correo', f.te), campo('Tu WhatsApp de soporte', f.wsp)),
-        guardar(() => ({ precio_activacion: num(f.act), precio_mensual: num(f.mes), precio_anual: num(f.anual), links_pro: ls.valor(), contacto_whatsapp: f.wsp.value.trim() ? V.telefono(f.wsp.value) : '',
+        guardar(() => ({ precio_activacion: num(f.act), precio_mensual: num(f.mes), precio_anual: num(f.anual), link_pago_anual: f.linkAnual.value.trim(), links_pro: ls.valor(), contacto_whatsapp: f.wsp.value.trim() ? V.telefono(f.wsp.value) : '',
           conexiones_incluidas: num(f.conInc), conexiones_paquete: num(f.conPaq), precio_paquete: num(f.conPrecio),
           transferencia: { banco: f.tb.value.trim(), tipo: f.tt.value.trim(), numero: f.tn.value.replace(/\D/g, ''), rut: f.tr.value ? V.rutBonito(V.rut(f.tr.value)) : '', titular: f.ttit.value.trim(), email: f.te.value.trim() } })));
     } else if (secAj === 'planes') {
