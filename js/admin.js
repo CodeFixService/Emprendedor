@@ -433,12 +433,11 @@
         el('div', { class: 'grid2 mb' }, kpi('Publicada en GitHub', 'v' + pub.version), kpi('Liberada para todos', 'v' + a.version_liberada, liberada ? 'verde' : 'naranjo'),
           kpi('Tu celular', 'v' + LC.VERSION, okCel ? 'verde' : 'naranjo'), kpi('Base de datos', bd ? 'v' + bd : '—', okBd ? 'verde' : 'rojo')),
         liberada && okBd && okFn ? el('div', { class: 'banda info' }, '✅ Todo al día. Cuando publique una versión nueva, aquí verás los pasos.') : null,
-        paso(1, okBd, 'Base de datos' + (okBd ? ' al día (v' + bd + ')' : ': falta actualizar a v' + pub.bd),
-          okBd ? null : el('p', { class: 'sutil' }, 'Copia la consulta y pégala en Supabase → SQL Editor → New query → Run. Debe responder "Libreta instalada v' + pub.bd + '". No borra datos.'),
-          el('div', { class: 'fila envolver' }, el('button', { class: 'btn chico' + (okBd ? '' : ' primario'), type: 'button', onclick: copiarConsulta }, '📋 Copiar consulta'),
-            el('a', { class: 'btn chico', href: 'https://supabase.com/dashboard/project/' + new URL(LC.C.SUPABASE_URL).hostname.split('.')[0] + '/sql/new', target: '_blank', rel: 'noopener' }, '↗ Abrir SQL Editor'),
-            okBd ? null : el('button', { class: 'btn chico', type: 'button', onclick: () => location.reload() }, '🔄 Ya la corrí'))),
-        paso(2, pub.funcion ? !!okFn : null, 'Función del servidor "enviar"' + (okFn ? ' al día' + (fn ? ' (v' + fn + ')' : '') : fn ? ': tienes v' + fn + ', falta v' + pub.funcion : ': no responde'),
+        // La base se actualiza sola cada 10 minutos (desde GitHub): aquí solo se ve su estado.
+        paso(1, okBd, 'Base de datos' + (okBd ? ' al día (v' + bd + ')' : ': actualizándose sola a la v' + pub.bd),
+          okBd ? null : el('p', { class: 'sutil' }, 'Se actualiza sola en máximo 10 minutos, sin borrar datos.'),
+          okBd ? null : el('button', { class: 'btn chico', type: 'button', onclick: () => vAjustes('versiones') }, '🔄 Revisar de nuevo')),
+        okFn ? null : paso(2, pub.funcion ? !!okFn : null, 'Función del servidor "enviar"' + (okFn ? ' al día' + (fn ? ' (v' + fn + ')' : '') : fn ? ': tienes v' + fn + ', falta v' + pub.funcion : ': no responde'),
           okFn ? null : el('p', { class: 'sutil' }, 'Copia el código y en Supabase → Edge Functions → enviar → Code: borra todo, pega y toca Deploy. Si no existe, créala con el nombre "enviar" y apaga "Verify JWT".'),
           el('div', { class: 'fila envolver' }, el('button', { class: 'btn chico' + (okFn ? '' : ' primario'), type: 'button', onclick: copiarFuncion }, '📋 Copiar código'),
             el('a', { class: 'btn chico', href: 'https://supabase.com/dashboard/project/' + new URL(LC.C.SUPABASE_URL).hostname.split('.')[0] + '/functions', target: '_blank', rel: 'noopener' }, '↗ Abrir Edge Functions'),
@@ -446,7 +445,7 @@
         paso(3, okCel, okCel ? 'Tu celular ya tiene la v' + LC.VERSION : 'Pruébala en tu celular',
           okCel ? el('p', { class: 'sutil' }, 'Revisa que todo funcione antes de liberarla.') : el('p', { class: 'sutil' }, 'Solo tu celular se actualiza. Revisa que todo funcione antes de liberarla.'),
           okCel ? null : el('button', { class: 'btn chico primario', type: 'button', onclick: LC.actualizarAhora }, '⬇️ Actualizar mi celular a la v' + pub.version)),
-        paso(4, liberada, 'Liberar para todos', el('p', { class: 'sutil' }, !okBd || !okFn ? '🔒 Primero termina los pasos 1 y 2: si liberas antes, la app de tus clientes fallaría.' : 'A cada billetera le aparece el botón Actualizar. Nadie recibe cambios hasta que tú lo apruebas.'), bLib),
+        paso(4, liberada, 'Liberar para todos', el('p', { class: 'sutil' }, !okBd || !okFn ? '🔒 Espera que la base termine de actualizarse: si liberas antes, la app de tus clientes fallaría.' : 'A cada billetera le aparece el botón Actualizar. Nadie recibe cambios hasta que tú lo apruebas.'), bLib),
         el('button', { class: 'btn texto ancho', type: 'button', onclick: async () => { if (await confirmar('Reparar la app', 'Vuelve a descargar la app en este celular. No borra datos.', 'Reparar')) LC.repararApp(); } }, '🛠️ Reparar la app en este celular')].filter(Boolean));
     })();
     return el('div', { class: 'tarjeta', id: 'actualizaciones' }, el('h2', null, '🔄 Actualizar la app'), caja);
@@ -458,7 +457,6 @@
       copiar(t.split('\n').filter((x) => !x.startsWith('--') && !x.startsWith('//')).join('\n').trim(), aviso);
     } catch (e) { toast('No se pudo copiar: ' + e.message, { error: true }); }
   }
-  const copiarConsulta = () => copiarArchivo('../supabase/instalar-corto.sql', /http_get/, 'Consulta copiada ✓ Pégala en Supabase → SQL Editor → Run');
   const copiarFuncion = () => copiarArchivo('../supabase/functions/enviar/corto.ts', /^import /m, 'Código copiado ✓ Pégalo en Edge Functions → enviar → Deploy');
   const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   async function generarVapid() {

@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '10'),
+  ('version_bd', '11'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -3055,7 +3055,7 @@ update public.ajustes set version_liberada = '1.10.0' where id = 1 and case when
 -- =====================================================================
 -- Actualización automática (núcleo CodeFix): cada 10 minutos la base revisa GitHub (rama main).
 --   · Si hay una base nueva (version.json), descarga y ejecuta este mismo instalar.sql (no borra datos).
---   · Si solo cambió la app, la libera para que los celulares se actualicen solos.
+--   · La app la liberas tú cuando la pruebes (panel de la app o Centro de Mando → Liberar).
 --   Si algo falla no cambia nada y lo reintenta en la siguiente vuelta. Hay que correr este archivo UNA vez.
 -- =====================================================================
 create or replace function public.auto_actualizar() returns text
@@ -3073,14 +3073,7 @@ begin
     execute codigo;
     return 'base actualizada a ' || ((select valor from privado.config where clave = 'version_bd'))::text;
   end if;
-  -- Solo cambió la app (la base ya está al día): se libera para que los celulares se actualicen solos.
-  if v_app ~ re and v_bd = ((select valor from privado.config where clave = 'version_bd'))::text then
-    lib := (select version_liberada from public.ajustes where id = 1);
-    if lib is null or lib !~ re or string_to_array(v_app, '.')::int[] > string_to_array(lib, '.')::int[] then
-      update public.ajustes set version_liberada = v_app where id = 1;
-      return 'app liberada ' || v_app;
-    end if;
-  end if;
+  -- La app NO se libera sola: la liberas tú desde el panel o el Centro de Mando después de probarla.
   return 'al día';
 exception when others then
   return 'sin cambios: ' || sqlerrm;
