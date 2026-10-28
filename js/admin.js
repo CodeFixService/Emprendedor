@@ -111,7 +111,10 @@
         el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('avisos', 'Borra los avisos leídos de más de 30 días.') }, '🔔 Avisos leídos'),
         el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('cola', 'Borra la cola de push ya enviada.') }, '📤 Cola de push'),
         el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('sesiones', 'Borra sesiones vencidas de los links de clientes.') }, '🔗 Sesiones vencidas'),
-        el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('auditoria', 'Borra el registro de cambios de más de 180 días.') }, '📜 Registro antiguo')));
+        el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('auditoria', 'Borra el registro de cambios de más de 180 días.') }, '📜 Registro antiguo'),
+        el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('soporte', 'Borra los mensajes de soporte de más de 30 días (también se borran solos).') }, '💬 Soporte antiguo')),
+      el('button', { class: 'btn ancho mt', type: 'button', onclick: async () => { try { CFX_RESPALDO.excel('billetera-admin', await conCarga(() => rpc('cfx_respaldo'))); toast('Respaldo descargado ✓'); } catch (e) { error(e); } } }, '📗 Descargar respaldo (Excel)'),
+      el('p', { class: 'sutil' }, 'Billeteras, pagos de Pro, keys, cupones y registro de cambios. Descárgalo antes de limpiar.'));
   }
   async function probar() {
     try { const r = await conCarga(() => LC.funcion({ accion: 'ping' })); toast(r.ok ? '✅ Función "enviar" v' + r.version + (r.servicio ? '' : ' · falta clave de servicio') : '❌ ' + (r.error || 'Sin respuesta')); }
@@ -509,7 +512,12 @@
       try { await rpc('admin_soporte_enviar', { p_negocio: neg, p_texto: t }); txt.value = ''; await cargar(); } catch (e) { error(e); }
     };
     txt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } });
-    pintar(el('div', { class: 'fila mb' }, el('a', { class: 'btn-icono', href: '#soporte', style: 'text-decoration:none', 'aria-label': 'Volver' }, '←'), titulo),
+    const borrar = async () => {
+      if (!await confirmar('Borrar chat', 'Se borra la conversación completa con esta billetera (para ambos). Los mensajes se borran solos a los 30 días.', 'Borrar', 'rojo')) return;
+      try { await rpc('admin_soporte_borrar', { p_negocio: neg }); toast('Chat borrado ✓'); location.hash = '#soporte'; } catch (e) { error(e); }
+    };
+    pintar(el('div', { class: 'fila mb' }, el('a', { class: 'btn-icono', href: '#soporte', style: 'text-decoration:none', 'aria-label': 'Volver' }, '←'), titulo,
+      el('button', { class: 'btn-icono', type: 'button', 'aria-label': 'Borrar chat', style: 'margin-left:auto', onclick: borrar }, '🗑️')),
       cont, el('div', { class: 'escribir' }, txt, el('button', { class: 'btn primario', type: 'button', onclick: enviar }, 'Enviar')));
     await cargar();
     if (canal) sb.removeChannel(canal);

@@ -1239,7 +1239,8 @@
       const colsK = [{ t: 'Fecha', v: (k) => fechaHora(k.fecha) }, { t: 'Tipo', v: (k) => k.tipo === 'ingreso' ? 'Ingreso' : 'Gasto' }, { t: 'Monto', v: (k) => k.tipo === 'ingreso' ? k.monto : -k.monto },
         { t: 'Categoría', v: (k) => k.categoria }, { t: 'Detalle', v: (k) => k.descripcion || '' }, { t: 'Medio', v: (k) => k.medio }, { t: 'Anulado', v: (k) => k.anulado ? 'Sí: ' + (k.motivo_anulacion || '') : '' }];
       const base = 'libreta-' + norm(S.neg.nombre).replace(/[^a-z0-9]+/g, '-') + '-' + hoyISO();
-      if (tipo === 'excel') LC.descargar(base + '.xls', LC.excel([{ nombre: 'Clientes', filas: d.clientes, columnas: colsC }, { nombre: 'Movimientos', filas: d.movimientos, columnas: colsM }, { nombre: 'Cuotas', filas: d.cuotas, columnas: colsQ }, { nombre: 'Caja', filas: d.caja || [], columnas: colsK }]));
+      const hoja = (filas, cols) => (filas || []).map((f) => Object.fromEntries(cols.map((k) => [k.t, k.v(f)])));
+      if (tipo === 'excel') CFX_RESPALDO.excel('libreta-' + S.neg.nombre, { Clientes: hoja(d.clientes, colsC), Movimientos: hoja(d.movimientos, colsM), Cuotas: hoja(d.cuotas, colsQ), Caja: hoja(d.caja, colsK) });
       else { LC.descargar(base + '-movimientos.csv', LC.csv(d.movimientos, colsM)); setTimeout(() => LC.descargar(base + '-clientes.csv', LC.csv(d.clientes, colsC)), 600); setTimeout(() => LC.descargar(base + '-caja.csv', LC.csv(d.caja || [], colsK)), 1200); }
       toast('Descarga lista ✓');
     } catch (e) { error(e); }
@@ -1531,9 +1532,16 @@
   async function vAvisos() {
     const { data } = await sb.from('notificaciones').select('*').order('creado', { ascending: false }).limit(60);
     rpc('marcar_leidas').then(() => refrescarEstado()).catch(() => {});
-    pintar(el('h2', null, 'Avisos'), el('div', { class: 'lista' }, (data || []).length ? data.map((n) => el('a', { class: 'item', href: (n.url || '').replace(/^app\//, '') || '#inicio' },
+    const quitar = async (ev, id) => {
+      ev.preventDefault(); ev.stopPropagation();
+      if (id == null && !await confirmar('Borrar avisos', '¿Borrar todos tus avisos?', 'Borrar', 'rojo')) return;
+      try { await rpc('borrar_avisos', { p_id: id }); vAvisos(); } catch (e) { error(e); }
+    };
+    pintar(el('div', { class: 'fila mb' }, el('h2', { style: 'margin:0', class: 'crece' }, 'Avisos'), (data || []).length ? el('button', { class: 'btn chico', type: 'button', onclick: (e) => quitar(e, null) }, 'Borrar todos') : null),
+      el('div', { class: 'lista' }, (data || []).length ? data.map((n) => el('a', { class: 'item', href: (n.url || '').replace(/^app\//, '') || '#inicio' },
       el('span', null, n.leido ? '•' : '🔵'), el('div', { class: 'crece' }, el('div', { class: 'nom', style: 'white-space:normal' }, n.titulo), n.cuerpo ? el('div', { class: 'sub', style: 'white-space:normal' }, n.cuerpo) : null),
-      el('span', { class: 'sutil' }, fechaCorta(n.creado)))) : el('div', { class: 'vacio' }, el('span', { class: 'ico' }, '🔔'), 'Sin avisos.')));
+      el('span', { class: 'sutil' }, fechaCorta(n.creado)), el('button', { class: 'btn-icono', type: 'button', 'aria-label': 'Borrar aviso', onclick: (e) => quitar(e, n.id) }, '✕'))) : el('div', { class: 'vacio' }, el('span', { class: 'ico' }, '🔔'), 'Sin avisos.')),
+      (data || []).length ? el('p', { class: 'sutil' }, 'Los avisos se borran solos a los 30 días.') : null);
   }
 
   // ================= PENDIENTES (cola) =================
@@ -2062,7 +2070,12 @@
       try { await rpc('soporte_enviar', { p_texto: t }); txt.value = ''; await cargar(); } catch (e) { error(e); }
     };
     txt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } });
-    pintar(el('h2', null, '💬 Soporte'), el('p', { class: 'sutil' }, 'Chat privado con el equipo de Libreta de Cobros. Solo tú y soporte ven estos mensajes.'), cont,
+    const borrar = async () => {
+      if (!await confirmar('Borrar chat', 'Se borra toda la conversación con soporte. Los mensajes también se borran solos a los 30 días.', 'Borrar', 'rojo')) return;
+      try { await rpc('soporte_borrar'); toast('Chat borrado ✓'); await cargar(); } catch (e) { error(e); }
+    };
+    pintar(el('div', { class: 'fila mb' }, el('h2', { style: 'margin:0', class: 'crece' }, '💬 Soporte'), el('button', { class: 'btn-icono', type: 'button', 'aria-label': 'Borrar chat', onclick: borrar }, '🗑️')),
+      el('p', { class: 'sutil' }, 'Chat privado con el equipo de Libreta de Cobros. Solo tú y soporte ven estos mensajes. Se guardan 30 días.'), cont,
       el('div', { class: 'escribir' }, txt, el('button', { class: 'btn primario', type: 'button', onclick: enviar, 'aria-label': 'Enviar' }, 'Enviar')));
     await cargar();
     if (!canalSoporte) canalSoporte = sb.channel('sop-' + S.neg.id).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'soporte', filter: 'negocio=eq.' + S.neg.id },

@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '11'),
+  ('version_bd', '12'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -2643,6 +2643,8 @@ begin
     delete from public.sesiones_cliente where vence < now(); get diagnostics n = row_count;
   elsif p_que = 'auditoria' then
     delete from public.auditoria where at < now() - interval '180 days'; get diagnostics n = row_count;
+  elsif p_que = 'soporte' then
+    delete from public.soporte where creado < now() - interval '30 days'; get diagnostics n = row_count;
   elsif p_que = 'comprobantes' then
     insert into privado.archivos_por_borrar (bucket, ruta) select 'comprobantes', foto_path from public.comprobantes
       where foto_path is not null and estado <> 'pendiente' and revisado_at < now() - make_interval(days => d);
@@ -2790,7 +2792,21 @@ begin
     delete from privado.limites where ventana < floor(extract(epoch from now()) / 86400) - 2 and ventana < floor(extract(epoch from now()) / 3600) - 48;
     delete from public.invitaciones where vence < now() - interval '7 days';
     delete from privado.fotos_pendientes where vence < now();
-    delete from public.notificaciones where creado < now() - interval '90 days';
+    -- v12: avisos y chat de soporte se guardan 30 días. Antes se avisa (máx. 1 vez por semana; cuenta lo que se borra en los próximos 9 días).
+    for r in select n.id, n.dueno,
+               (select count(*) from public.notificaciones x where (x.negocio = n.id or x.usuario = n.dueno) and x.creado < now() - interval '21 days') as av,
+               (select count(*) from public.soporte x where x.negocio = n.id and x.creado < now() - interval '21 days') as ch
+             from public.negocios n where n.estado <> 'eliminado' and (n.aviso_limpieza_at is null or n.aviso_limpieza_at < now() - interval '7 days')
+               and (exists (select 1 from public.notificaciones x where (x.negocio = n.id or x.usuario = n.dueno) and x.creado < now() - interval '28 days')
+                 or exists (select 1 from public.soporte x where x.negocio = n.id and x.creado < now() - interval '28 days'))
+    loop
+      perform privado.avisar_negocio(r.id, 'Limpieza automática',
+        concat_ws(' y ', case when r.av = 1 then '1 aviso' when r.av > 1 then r.av || ' avisos' end, case when r.ch = 1 then '1 mensaje de soporte' when r.ch > 1 then r.ch || ' mensajes de soporte' end)
+          || ' con más de 30 días se borran solos en los próximos días. Tus clientes, ventas y movimientos no se tocan.', 'app/#avisos', false);
+      update public.negocios set aviso_limpieza_at = now() where id = r.id;
+    end loop;
+    delete from public.notificaciones where creado < now() - interval '30 days';
+    delete from public.soporte where creado < now() - interval '30 days';
     -- Fotos de comprobantes: se borran solas a los N días (Ajustes → Reglas)
     insert into privado.archivos_por_borrar (bucket, ruta)
       select 'comprobantes', foto_path from public.comprobantes where foto_path is not null and estado <> 'pendiente'
@@ -3048,6 +3064,125 @@ do $$ begin
   perform cron.schedule('lc-hora', '7 * * * *', 'select privado.tarea_horaria()');
 exception when others then raise notice 'cron: %', sqlerrm;
 end $$;
+
+-- =====================================================================
+--  v12 · Limpieza y respaldo: borrar avisos y chat de soporte, respaldo del administrador
+-- =====================================================================
+alter table public.negocios add column if not exists aviso_limpieza_at timestamptz;
+
+-- Borrar avisos: uno (p_id) o todos (p_id null) de los que ves.
+create or replace function public.borrar_avisos(p_id bigint default null) returns int language plpgsql security definer set search_path = public, pg_temp as $$
+declare n int;
+begin
+  if auth.uid() is null then perform privado.fallo('Ingresa de nuevo.'); end if;
+  delete from public.notificaciones where (usuario = auth.uid() or negocio = privado.mi_negocio()) and (p_id is null or id = p_id);
+  get diagnostics n = row_count;
+  return n;
+end $$;
+
+-- Borrar el chat de soporte (el dueño, o el administrador para una billetera).
+create or replace function public.soporte_borrar() returns int language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_neg uuid := privado.exigir(true, true); n int;
+begin
+  delete from public.soporte where negocio = v_neg;
+  get diagnostics n = row_count;
+  return n;
+end $$;
+create or replace function public.admin_soporte_borrar(p_negocio uuid) returns int language plpgsql security definer set search_path = public, pg_temp as $$
+declare n int;
+begin
+  perform privado.solo_admin();
+  delete from public.soporte where negocio = p_negocio;
+  get diagnostics n = row_count;
+  perform privado.auditar(p_negocio, 'soporte_borrado', jsonb_build_object('filas', n));
+  return n;
+end $$;
+
+-- Respaldo del administrador: billeteras, pagos de Pro, keys (sin el código), cupones y registro. No incluye clientes ni movimientos de nadie.
+create or replace function public.cfx_respaldo() returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  perform privado.solo_admin();
+  return jsonb_build_object(
+    'Billeteras', coalesce((select jsonb_agg(x order by x.creada) from (select n.nombre, u.email as correo, n.rubro, n.whatsapp, privado.estado_plan(n.id) as plan,
+        n.premium_hasta as pro_hasta, n.prueba_hasta, n.estado, n.ultimo_uso, n.creado as creada,
+        (select count(*) from public.clientes c where c.negocio = n.id and c.estado <> 'borrado') as clientes
+      from public.negocios n left join auth.users u on u.id = n.dueno where n.estado <> 'eliminado') x), '[]'::jsonb),
+    'Pagos de Pro', coalesce((select jsonb_agg(x order by x.fecha) from (select s.creado as fecha, n.nombre as billetera, s.monto, s.estado, s.cupon,
+        s.revisado_at as revisado, (s.comprobante_path is not null) as con_comprobante
+      from public.solicitudes_pago s left join public.negocios n on n.id = s.negocio) x), '[]'::jsonb),
+    'Keys', coalesce((select jsonb_agg(to_jsonb(k) - 'codigo' - 'hash' - 'codigo_hash') from public.keys k), '[]'::jsonb),
+    'Cupones', coalesce((select jsonb_agg(to_jsonb(c)) from public.cupones c), '[]'::jsonb),
+    'Registro', coalesce((select jsonb_agg(x order by x.fecha) from (select a.at as fecha, a.accion, a.detalle, n.nombre as billetera
+      from public.auditoria a left join public.negocios n on n.id = a.negocio) x), '[]'::jsonb));
+end $$;
+
+-- Limpieza (común a las 6 apps): qué se puede borrar y cuántas filas son. cfx_limpiar usa admin_limpiar.
+create or replace function public.cfx_limpieza() returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare d int := (select dias_comprobantes from public.ajustes where id = 1);
+begin
+  perform privado.solo_admin();
+  return jsonb_build_array(
+    jsonb_build_object('clave', 'comprobantes', 'titulo', 'Fotos de comprobantes revisados', 'detalle', 'Más de ' || d || ' días (se borran solas cada día).',
+      'filas', (select count(*) from public.comprobantes where foto_path is not null and estado <> 'pendiente' and revisado_at < now() - make_interval(days => d))
+             + (select count(*) from public.movimientos where foto_path is not null and creado_at < now() - make_interval(days => d))),
+    jsonb_build_object('clave', 'avisos', 'titulo', 'Avisos leídos', 'detalle', 'Más de 30 días.', 'filas', (select count(*) from public.notificaciones where leido and creado < now() - interval '30 days')),
+    jsonb_build_object('clave', 'soporte', 'titulo', 'Chat de soporte', 'detalle', 'Mensajes de más de 30 días.', 'filas', (select count(*) from public.soporte where creado < now() - interval '30 days')),
+    jsonb_build_object('clave', 'cola', 'titulo', 'Cola de push enviada', 'detalle', 'Ya entregada.', 'filas', (select count(*) from public.cola_push where tomado_at is not null)),
+    jsonb_build_object('clave', 'sesiones', 'titulo', 'Sesiones vencidas', 'detalle', 'Links de clientes ya vencidos.', 'filas', (select count(*) from public.sesiones_cliente where vence < now())),
+    jsonb_build_object('clave', 'auditoria', 'titulo', 'Registro de cambios', 'detalle', 'Más de 180 días.', 'filas', (select count(*) from public.auditoria where at < now() - interval '180 days')));
+end $$;
+create or replace function public.cfx_limpiar(p_clave text) returns int language sql security definer set search_path = public, pg_temp as $$
+  select public.admin_limpiar(p_clave) $$;
+grant execute on function public.cfx_limpieza(), public.cfx_limpiar(text) to authenticated;
+
+grant execute on function public.borrar_avisos(bigint), public.soporte_borrar(), public.admin_soporte_borrar(uuid), public.cfx_respaldo() to authenticated;
+
+-- ---------------------------------------------------------------------
+-- CodeFix · Inventario (igual en las 6 apps; lo usa el Centro de Mando → Apps → Respaldo y limpieza).
+--   Muestra las tablas que esta versión ya NO usa (restos de versiones antiguas) con cuántas filas tienen.
+--   Nada se borra solo: las vacías se borran con un toque; las que tienen datos piden descargar el respaldo y escribir "sí".
+--   cfx_tablas() = las tablas que crea este archivo (la revisa pruebas/inventario.py --verificar).
+-- ---------------------------------------------------------------------
+create or replace function public.cfx_tablas() returns text[] language sql immutable as $$ select array['privado.archivos_por_borrar', 'privado.config', 'privado.fotos_pendientes', 'privado.limites', 'privado.pruebas_usadas', 'privado.secretos', 'privado.tareas_hechas', 'public.ajustes', 'public.auditoria', 'public.caja', 'public.categorias', 'public.clientes', 'public.cola_push', 'public.comprobantes', 'public.conexion_movs', 'public.conexiones', 'public.cuotas', 'public.cupones', 'public.feriados', 'public.invitaciones', 'public.keys', 'public.miembros', 'public.movimientos', 'public.negocios', 'public.notificaciones', 'public.perfiles', 'public.productos', 'public.push_subs', 'public.recordatorios', 'public.sesiones_cliente', 'public.solicitudes_pago', 'public.soporte', 'public.uso_mensual', 'public.ventas_cuotas'] $$;
+create or replace function public.cfx_inventario() returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare r record; n bigint; out jsonb := '[]'::jsonb;
+begin
+  perform privado.solo_admin();
+  for r in select s.nspname || '.' || c.relname as t, pg_total_relation_size(c.oid) as b from pg_class c join pg_namespace s on s.oid = c.relnamespace
+           where s.nspname in ('public', 'privado') and c.relkind in ('r', 'p') and not (s.nspname || '.' || c.relname = any (public.cfx_tablas()))
+           and not exists (select 1 from pg_depend d where d.objid = c.oid and d.deptype = 'e') order by 1
+  loop
+    execute 'select count(*) from ' || r.t into n;
+    out := out || jsonb_build_object('tabla', r.t, 'filas', n, 'bytes', r.b);
+  end loop;
+  return out;
+end $$;
+create or replace function public.cfx_inventario_datos(p_tabla text) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare j jsonb;
+begin
+  perform privado.solo_admin();
+  if not exists (select 1 from jsonb_array_elements(public.cfx_inventario()) x where x ->> 'tabla' = p_tabla) then raise exception 'Esa tabla no está en la lista de sobrantes'; end if;
+  execute 'select coalesce(jsonb_agg(to_jsonb(t)), ''[]'') from (select * from ' || p_tabla || ' limit 20000) t' into j;
+  return j;
+end $$;
+create or replace function public.cfx_inventario_borrar(p_tabla text, p_confirmacion text default '') returns text
+language plpgsql security definer set search_path = '' as $$
+declare x jsonb;
+begin
+  perform privado.solo_admin();
+  select e into x from jsonb_array_elements(public.cfx_inventario()) e where e ->> 'tabla' = p_tabla;
+  if x is null then raise exception 'Esa tabla no está en la lista de sobrantes'; end if;
+  if (x ->> 'filas')::bigint > 0 and lower(trim(coalesce(p_confirmacion, ''))) not in ('sí', 'si') then
+    raise exception 'La tabla tiene % filas: descarga el respaldo y escribe "sí" para borrarla', x ->> 'filas';
+  end if;
+  execute 'drop table ' || p_tabla || ' cascade';
+  return p_tabla || ' borrada';
+end $$;
+revoke all on function public.cfx_tablas(), public.cfx_inventario(), public.cfx_inventario_datos(text), public.cfx_inventario_borrar(text, text) from public, anon;
+grant execute on function public.cfx_inventario(), public.cfx_inventario_datos(text), public.cfx_inventario_borrar(text, text) to authenticated;
+
 
 -- Al correr este SQL la versión de la app queda liberada al tiro: todos ven "Actualizar" (al publicar una versión nueva, sube este número).
 update public.ajustes set version_liberada = '1.10.0' where id = 1 and case when version_liberada ~ '^\d+(\.\d+)*$'

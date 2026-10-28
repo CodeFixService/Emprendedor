@@ -1,8 +1,8 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.12.1';
-  const BD = 11; // versión de la base de datos que necesita esta versión de la app
+  const VERSION = '1.13.0';
+  const BD = 12; // versión de la base de datos que necesita esta versión de la app
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
   const sb = global.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, {
@@ -396,20 +396,6 @@
     const esc = (v) => { const s = v == null ? '' : String(v); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     return '﻿' + [columnas.map((c) => esc(c.t)).join(';'), ...filas.map((f) => columnas.map((c) => esc(c.v(f))).join(';'))].join('\r\n');
   }
-  function excel(hojas) {
-    const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const xml = ['<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">',
-      '<Styles><Style ss:ID="h"><Font ss:Bold="1"/><Interior ss:Color="#D1FAE5" ss:Pattern="Solid"/></Style></Styles>'];
-    for (const h of hojas) {
-      xml.push('<Worksheet ss:Name="' + esc(h.nombre).slice(0, 30) + '"><Table>');
-      xml.push('<Row>' + h.columnas.map((c) => '<Cell ss:StyleID="h"><Data ss:Type="String">' + esc(c.t) + '</Data></Cell>').join('') + '</Row>');
-      for (const f of h.filas) xml.push('<Row>' + h.columnas.map((c) => { const v = c.v(f); const num = typeof v === 'number'; return '<Cell><Data ss:Type="' + (num ? 'Number' : 'String') + '">' + esc(v) + '</Data></Cell>'; }).join('') + '</Row>');
-      xml.push('</Table></Worksheet>');
-    }
-    xml.push('</Workbook>');
-    return new Blob([xml.join('')], { type: 'application/vnd.ms-excel' });
-  }
-
   // Cambia los emojis del menú por los íconos de línea (si algo falla, queda el emoji).
   document.querySelectorAll('[data-ico]').forEach((n) => { try { vaciar(n).append(ico(n.dataset.ico, n.closest('.nav') ? 24 : 20)); } catch (e) { /* queda el emoji */ } });
 
@@ -417,6 +403,6 @@
     VERSION, BD, ico, centrarActivos, TEXTOS_DEF, PLANES_DEF, texto, plan, C, RAIZ, sb, $, el, vaciar, TEMAS, ICONOS, aplicarColor, pesos, fechaCorta, fechaLarga, hora, fechaHora, hoyISO, fechaISO, sumarDias, diasEntre, relativo, iniciales, colorDe, norm,
     V, ErrorApp, traducir, rpc, funcion, uuid, toast, cargando, conCarga, dialogo, confirmar, pedirTexto, error, copiar, wa, abrir,
     achicarImagen, FOTO, blobADataURL, pushSoportado, suscribirPush, pushActual, esIOS, instalada, instalar, registrarSW, versionMenor, revisarVersion, actualizarAhora, repararApp,
-    local, descargar, csv, excel, alPlan: null, alSesion: null, alBloqueo: null,
+    local, descargar, csv, alPlan: null, alSesion: null, alBloqueo: null,
   };
 })(window);
