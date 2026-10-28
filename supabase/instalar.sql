@@ -3052,4 +3052,47 @@ end $$;
 -- Al correr este SQL la versión de la app queda liberada al tiro: todos ven "Actualizar" (al publicar una versión nueva, sube este número).
 update public.ajustes set version_liberada = '1.10.0' where id = 1 and case when version_liberada ~ '^\d+(\.\d+)*$'
   then string_to_array(version_liberada, '.')::int[] < string_to_array('1.10.0', '.')::int[] else true end;
+-- =====================================================================
+-- Actualización automática (núcleo CodeFix): cada 10 minutos la base revisa GitHub (rama main).
+--   · Si hay una base nueva (version.json), descarga y ejecuta este mismo instalar.sql (no borra datos).
+--   · Si solo cambió la app, la libera para que los celulares se actualicen solos.
+--   Si algo falla no cambia nada y lo reintenta en la siguiente vuelta. Hay que correr este archivo UNA vez.
+-- =====================================================================
+create or replace function public.auto_actualizar() returns text
+language plpgsql security definer set search_path = '' as $f$
+declare
+  base constant text := 'https://raw.githubusercontent.com/CodeFixService/Emprendedor/main/';
+  marca text := '?t=' || extract(epoch from now())::bigint; j jsonb; v_bd text; v_app text; codigo text; lib text;
+  re constant text := '^[0-9]+(\.[0-9]+)*$';
+begin
+  execute 'select content from extensions.http_get($1)' into codigo using base || 'version.json' || marca;
+  j := codigo::jsonb; v_bd := j ->> 'bd'; v_app := j ->> 'version';
+  if v_bd ~ re and coalesce(((select valor from privado.config where clave = 'version_bd'))::text, '0') ~ re and string_to_array(v_bd, '.')::int[] > string_to_array(coalesce(((select valor from privado.config where clave = 'version_bd'))::text, '0'), '.')::int[] then
+    execute 'select content from extensions.http_get($1)' into codigo using base || 'supabase/instalar.sql' || marca;
+    if codigo is null or length(codigo) < 1000 then return 'instalar.sql no disponible'; end if;
+    execute codigo;
+    return 'base actualizada a ' || ((select valor from privado.config where clave = 'version_bd'))::text;
+  end if;
+  -- Solo cambió la app (la base ya está al día): se libera para que los celulares se actualicen solos.
+  if v_app ~ re and v_bd = ((select valor from privado.config where clave = 'version_bd'))::text then
+    lib := (select version_liberada from public.ajustes where id = 1);
+    if lib is null or lib !~ re or string_to_array(v_app, '.')::int[] > string_to_array(lib, '.')::int[] then
+      update public.ajustes set version_liberada = v_app where id = 1;
+      return 'app liberada ' || v_app;
+    end if;
+  end if;
+  return 'al día';
+exception when others then
+  return 'sin cambios: ' || sqlerrm;
+end $f$;
+revoke execute on function public.auto_actualizar() from public, anon, authenticated;
+do $$
+begin
+  create extension if not exists http with schema extensions;
+  perform cron.unschedule(jobid) from cron.job where jobname = 'cfx-auto';
+  perform cron.schedule('cfx-auto', '*/10 * * * *', 'select public.auto_actualizar()');
+exception when others then
+  raise notice 'Actualización automática no activada (%). Activa pg_cron en Supabase y vuelve a correr este archivo.', sqlerrm;
+end $$;
+
 select 'Libreta instalada v' || (select valor from privado.config where clave = 'version_bd') as resultado;

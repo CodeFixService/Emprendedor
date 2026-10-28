@@ -4,7 +4,7 @@
    caché "lc-app-<versión>" y "lc-meta" guarda cuál se está usando. También recibe las notificaciones push. */
 const ARCHIVOS = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
-  'vendor/supabase.js', 'js/config.js', 'js/barra.js', 'css/tema.css', 'js/core.js', 'js/inicio.js', 'js/app.js', 'js/portal.js', 'js/admin.js', 'js/iconos.js', 'js/instalar.js',
+  'vendor/supabase.js', 'js/config.js', 'js/auto.js', 'js/barra.js', 'css/tema.css', 'js/core.js', 'js/inicio.js', 'js/app.js', 'js/portal.js', 'js/admin.js', 'js/iconos.js', 'js/instalar.js',
   'app/', 'app/index.html', 'c/', 'c/index.html', 'c/manifest.webmanifest', 'admin/', 'admin/index.html', 'legal/', 'legal/index.html',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'icons/favicon.svg',
 ];

@@ -73,6 +73,8 @@
     banda('gracia', 'error', pl.en_gracia ? '⚠️ Tu mensualidad venció. Paga dentro de ' + pl.dias_gracia + ' días para no perder las funciones Pro.' : null, 'Pagar', () => { location.hash = 'plan'; });
     banda('fuera', 'aviso', st.uso && st.uso.fuera_de_plan ? '🔒 ' + st.uso.fuera_de_plan + ' clientes quedaron en "solo cobro" por el límite del plan Free.' : null, 'Ver', () => { location.hash = 'clientes/fuera'; });
     LC.revisarVersion(st.config, (txt, fn, forzada) => {
+      // Núcleo: la versión liberada se instala sola (sin botón).
+      if (txt && !forzada && window.CodeFixAuto) { window.CodeFixAuto(st.config.version_liberada, fn); return; }
       banda('actualizar', forzada ? 'error' : 'info', txt, txt ? 'Actualizar' : null, fn);
       // Aviso emergente una vez por versión y sesión
       const k = 'lc-aviso-' + st.config.version_liberada;
