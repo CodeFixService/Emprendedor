@@ -1073,7 +1073,7 @@
         pl.estado === 'free' && esDueno() ? el('div', { class: 'uso-mini' }, barra('Clientes activos', u.clientes || 0, ln.clientes), barra('Fiados y abonos del mes', u.movimientos || 0, ln.movimientos)) : null,
         cta),
       sec('Tu negocio'),
-      el('div', { class: 'lista' },
+      el('div', { class: 'lista cfx-grilla' },
         it('#soporte', 'chat', 'Soporte (chat conmigo)', p.soporte),
         it('#comprobantes', 'recibo', 'Comprobantes', p.comprobantes),
         esDueno() ? conPro(it('#cobranza', 'megafono', 'Cobrar a todos de una'), 'Cobrar a todos de una es Pro: ves quién te debe y le mandas el mensaje con un toque.') : null,
@@ -1083,17 +1083,17 @@
         it('#avisos', 'campana', 'Avisos', p.avisos),
         cola().length ? it('#pendientes', 'reloj', 'Por subir', cola().length) : null),
       esDueno() ? sec('Plan y crecimiento') : null,
-      esDueno() ? el('div', { class: 'lista' },
+      esDueno() ? el('div', { class: 'lista cfx-grilla' },
         it('#plan', 'estrella', 'Mi plan · ' + planTxt()),
         cfg.dias_referido > 0 ? it('#invita', 'regalo', 'Invita y gana ' + cfg.dias_referido + ' días de Pro') : null) : null,
       sec('Configuración'),
-      el('div', { class: 'lista' },
+      el('div', { class: 'lista cfx-grilla' },
         it('#ajustes', 'ajustes', 'Ajustes del negocio', null, esDueno()),
         it('#apariencia', 'paleta', 'Apariencia: color e ícono', null, esDueno()),
         it('#cuenta', 'usuario', 'Mi cuenta'),
         it('#ayuda', 'ayuda', 'Ayuda'),
         S.st.es_admin ? it('../admin/', 'escudo', 'Administración') : null),
-      el('div', { class: 'lista' }, el('button', { class: 'item', type: 'button', onclick: salir }, el('span', { class: 'ic-caja rojo' }, LC.ico('salir', 20)), el('span', { class: 'crece rojo' }, 'Cerrar sesión'))));
+      el('div', { class: 'lista cfx-grilla' }, el('button', { class: 'item', type: 'button', onclick: salir }, el('span', { class: 'ic-caja rojo' }, LC.ico('salir', 20)), el('span', { class: 'crece rojo' }, 'Cerrar sesión'))));
   }
 
   // ================= COMPROBANTES =================
