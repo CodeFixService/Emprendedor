@@ -328,6 +328,8 @@
     const cuerpo = el('div');
     const t = a.transferencia || {}, ln = a.lim_normal || {};
     if (secAj === 'precios') {
+      cuerpo.append(el('div', { class: 'tarjeta' }, el('p', null, '⭐ Precios, links de pago y datos de transferencia del Premium ahora se configuran una sola vez para las 6 apps en el Centro de Mando → Pagos. Aquí ya no hace falta tocar nada.')));
+    } else if (secAj === 'precios_antiguo') {
       const f = { act: inp(a.precio_activacion, { type: 'number', inputmode: 'numeric' }), mes: inp(a.precio_mensual, { type: 'number', inputmode: 'numeric' }), anual: inp(a.precio_anual, { type: 'number', inputmode: 'numeric' }),
         wsp: inp(a.contacto_whatsapp, { type: 'tel', placeholder: '+56 9 …' }), conInc: inp(a.conexiones_incluidas, { type: 'number' }), conPaq: inp(a.conexiones_paquete, { type: 'number' }),
         linkAnual: inp(a.link_pago_anual, { type: 'url', placeholder: 'https://link.mercadopago.cl/…' }),
