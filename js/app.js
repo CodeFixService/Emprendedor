@@ -39,6 +39,8 @@
     if (!S.st.terminos_ok) await pedirTerminos();
     // Núcleo (pagos.js): billetera nueva que debe su primer pago → pantalla de activación.
     S.cx = await rpc('cfx_pago_estado').catch(() => null);
+    // Núcleo (premium.js): con Pro la billetera se ve dorada y la primera vez saluda.
+    (window.CFX_PREMIUM ? Promise.resolve() : new Promise((r) => addEventListener('load', r))).then(() => window.CFX_PREMIUM && CFX_PREMIUM.marcar({ premium: S.st.plan.estado === 'pro', id: S.uid, hasta: S.st.plan.hasta, beneficios: LC.plan(S.st.config, 'pro').beneficios }));
     if (esDueno() && S.cx && S.cx.bloqueado) CFX_PAGOS.abrir({ rpc, salir });
     window.addEventListener('online', () => { red(); sincronizar(); });
     window.addEventListener('offline', red);
