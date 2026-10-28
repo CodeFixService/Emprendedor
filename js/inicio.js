@@ -34,6 +34,15 @@
     }
     $('#diasPrueba').textContent = c.dias_prueba;
     $('#txtPrueba').textContent = c.dias_prueba > 0 ? c.dias_prueba + ' días de Pro gratis' : 'Gratis para siempre';
+    // Precios: los mismos de las 6 apps (núcleo, se editan en el Centro de Mando → Pagos).
+    rpc('cfx_precios').then((x) => {
+      const n = (x && x.negocio) || {}; if (!n.mensual) return;
+      $('#precioPremium').textContent = LC.pesos(n.mensual) + '/mes';
+      const ah = n.anual ? Math.round(100 - n.anual * 100 / (n.mensual * 12)) : 0;
+      $('#precioAnual').textContent = n.anual ? 'o ' + LC.pesos(n.anual) + ' al año' + (ah > 0 ? ' (ahorras ' + ah + '%)' : '') : '';
+      $('#precioActivacion').textContent = n.exigir_inicio ? 'Primer pago ' + LC.pesos(n.inicio) + ': ' + (n.inicio_dias || 30) + ' días de Pro' : '';
+      if (n.exigir_inicio) { $('#txtPrueba').textContent = 'Parte con ' + (n.inicio_dias || 30) + ' días de Pro por ' + LC.pesos(n.inicio); $('#diasPrueba').textContent = n.inicio_dias || 30; }
+    }).catch(() => {});
     const l = c.lim_normal || {};
     const ul = vaciar($('#listaNormal'));
     [(l.caja || 300) + ' ventas y gastos al mes', l.clientes + ' clientes y ' + l.movimientos + ' fiados/abonos al mes', l.cuotas + ' ventas en cuotas',

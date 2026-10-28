@@ -37,6 +37,9 @@
     try { await refrescarEstado(); } catch (e) { if (!S.st) { error(e); return; } }
     if (!S.st.negocio) { location.replace('../#app'); return; }
     if (!S.st.terminos_ok) await pedirTerminos();
+    // Núcleo (pagos.js): billetera nueva que debe su primer pago → pantalla de activación.
+    S.cx = await rpc('cfx_pago_estado').catch(() => null);
+    if (esDueno() && S.cx && S.cx.bloqueado) CFX_PAGOS.abrir({ rpc, salir });
     window.addEventListener('online', () => { red(); sincronizar(); });
     window.addEventListener('offline', red);
     red();
@@ -210,11 +213,9 @@
   const soloDueno = () => { if (!esDueno()) { pintar(el('div', { class: 'vacio' }, el('span', { class: 'ico' }, '🔒'), 'Solo el dueño de la libreta puede ver esto.')); return true; } return false; };
 
   // ================= Plan: aviso de límite =================
-  function precioAct() { const pl = S.st.plan, c = S.st.config; return pl.activado ? 0 : pl.precio_activacion != null ? pl.precio_activacion : c.precio_activacion; }
-  function precioPro() {
-    const c = S.st.config, act = precioAct(), anual = c.precio_anual > 0 ? ' (o ' + pesos(c.precio_anual) + ' al año)' : '';
-    return (act > 0 ? pesos(act) + ' de activación + ' + pesos(c.precio_mensual) + ' al mes' : pesos(c.precio_mensual) + ' al mes') + anual;
-  }
+  // Precios del Pro: los mismos de las 6 apps (núcleo: cfx_pago_estado, se editan en el Centro de Mando → Pagos).
+  const precios = () => ((S.cx && S.cx.config && S.cx.config.negocio) || {});
+  function precioPro() { const n = precios(); return pesos(n.mensual) + ' al mes' + (n.anual > 0 ? ' (o ' + pesos(n.anual) + ' al año)' : ''); }
   function alPlan(msg) {
     dialogo(LC.texto(S.st.config, 'pro_titulo'), el('div', null, el('p', null, msg),
       el('div', { class: 'tarjeta plana' }, el('strong', null, 'Con ' + LC.plan(S.st.config, 'pro').nombre + ' desbloqueas'), el('ul', { class: 'lista-pro' }, LC.plan(S.st.config, 'pro').beneficios.map((t) => el('li', null, t))),
@@ -1401,7 +1402,8 @@
     const sub = pl.estado === 'pro' ? (pl.en_gracia ? 'Tu mensualidad venció el ' : 'Pagado hasta el ') + fechaLarga(pl.hasta)
       : pl.estado === 'prueba' ? 'Tienes todo Pro gratis: ' + (diasP <= 1 ? 'termina hoy' : 'te quedan ' + diasP + ' días') + '. Después sigues gratis en Free.'
       : 'Tu billetera funciona gratis con límites. Las funciones Pro están en pausa: no se borra nada.';
-    const act = precioAct(), actBase = pl.activado ? 0 : cfg.precio_activacion;
+    S.cx = await rpc('cfx_pago_estado').catch(() => S.cx);
+    const pn = precios(), pend = !!(S.cx && S.cx.ultimo && S.cx.ultimo.estado === 'pendiente');
     const comp = [['Ventas, gastos y fiado', '✓', '✓'], ['Link del cliente con PIN y comprobantes', '✓', '✓'], ['Cobro por WhatsApp (tono amable)', '✓', '✓'],
       ['Clientes activos', ln.clientes, '♾️'], ['Fiados y abonos al mes', ln.movimientos, '♾️'], ['Ingresos y gastos al mes', ln.caja, '♾️'], ['Ventas en cuotas activas', ln.cuotas, '♾️'],
       ['Cobrar a todos de una', '🔒', '✓'], ['Recibos con imagen', '🔒', '✓'], ['Reportes avanzados y Excel', '🔒', '✓'], ['Metas y presupuesto', '🔒', '✓'],
@@ -1410,7 +1412,7 @@
     pintar(el('h2', null, 'Mi plan'),
       el('div', { class: 'tarjeta ' + (pl.estado === 'free' ? '' : 'hero') },
         el('div', { class: 't' }, 'Tu billetera'), el('div', { class: 'grande', style: 'font-size:1.8em' }, titulo), el('div', { class: 't' }, sub),
-        pl.pago_pendiente ? el('div', { class: 'tag naranjo mt' }, '⏳ Pago en revisión') : null),
+        pend ? el('div', { class: 'tag naranjo mt' }, '⏳ Pago en revisión') : null),
       pl.estado === 'free' ? el('div', { class: 'tarjeta' }, el('h2', null, 'Tu uso este mes (Free)'),
         barra('Clientes activos', u.clientes, ln.clientes), barra('Fiados y abonos', u.movimientos, ln.movimientos), barra('Ingresos y gastos', u.caja, ln.caja),
         barra('Ventas en cuotas activas', u.cuotas, ln.cuotas), barra('Comprobantes recibidos', u.comprobantes, ln.comprobantes)) : null,
@@ -1419,82 +1421,26 @@
           comp.map(([t, f, p2]) => el('tr', null, el('td', null, t), el('td', null, String(f)), el('td', null, String(p2)))))),
       el('div', { class: 'tarjeta', id: 'activar' }, el('h2', null, pl.estado === 'pro' ? 'Renovar Pro' : 'Activar Pro'),
         el('div', { class: 'plan-elegir' },
-          el('button', { class: 'plan-op', type: 'button', onclick: () => pasarPro(1) }, el('span', { class: 'sutil' }, 'Mensual'), el('span', { class: 'p' }, pesos(pl.mensual || cfg.precio_mensual)), el('span', { class: 'sutil' }, 'al mes, sin contrato')),
-          pl.anual ? el('button', { class: 'plan-op activo', type: 'button', onclick: () => pasarPro(12) }, el('span', { class: 'sutil' }, 'Anual'), el('span', { class: 'p' }, pesos(pl.anual)),
+          el('button', { class: 'plan-op', type: 'button', onclick: () => pasarPro() }, el('span', { class: 'sutil' }, 'Mensual'), el('span', { class: 'p' }, pesos(pn.mensual)), el('span', { class: 'sutil' }, 'al mes, sin contrato')),
+          pn.anual ? el('button', { class: 'plan-op activo', type: 'button', onclick: () => pasarPro() }, el('span', { class: 'sutil' }, 'Anual'), el('span', { class: 'p' }, pesos(pn.anual)),
             ahorroAnual() > 0 ? el('span', { class: 'tag verde' }, 'Ahorras ' + ahorroAnual() + '%') : el('span', { class: 'sutil' }, 'un solo pago al año')) : null),
-        act > 0 ? el('p', { class: 'sutil' }, '+ activación ', act < actBase ? el('s', null, pesos(actBase)) : null, ' ', el('strong', null, pesos(act)), ' (una sola vez, en el primer pago)') : null,
         pl.conexiones_extra ? el('p', { class: 'sutil' }, 'Incluye ' + pl.conexiones_extra + ' paquete' + (pl.conexiones_extra > 1 ? 's' : '') + ' de conexiones extra.') : null,
-        pl.cupon ? el('p', { class: 'verde' }, '🏷️ Cupón ' + pl.cupon + ': ' + pl.descuento + '% de descuento en la activación') : null,
-        pl.pago_pendiente ? el('div', { class: 'banda aviso' }, '⏳ Tu pago está en revisión. Te avisamos apenas se apruebe.') : null,
+        pend ? el('div', { class: 'banda aviso' }, '⏳ Tu pago está en revisión. Te avisamos apenas se apruebe.') : null,
         el('div', { class: 'col' },
-          el('button', { class: 'btn primario', type: 'button', disabled: pl.pago_pendiente, onclick: () => pasarPro() }, LC.ico('estrella', 18), pl.estado === 'pro' ? 'Pagar Pro' : 'Pasar a Pro'),
+          el('button', { class: 'btn primario', type: 'button', disabled: pend, onclick: () => pasarPro() }, LC.ico('estrella', 18), pl.estado === 'pro' ? 'Pagar Pro' : 'Pasar a Pro'),
           el('button', { class: 'btn', type: 'button', onclick: quieroPro }, '💬 Ayúdame por soporte'),
-          !pl.activado ? el('button', { class: 'btn texto', type: 'button', onclick: usarCupon }, '🏷️ Tengo un cupón de descuento') : null,
           el('button', { class: 'btn texto', type: 'button', onclick: usarKey }, '🔑 Tengo una key'),
           cfg.dias_referido > 0 ? el('a', { class: 'btn texto', href: '#invita' }, '🎁 O gana Pro gratis invitando a otros negocios') : null)),
       el('p', { class: 'sutil' }, 'Te avisamos antes de que venza cada mensualidad. Si no pagas, vuelves a Free: tu billetera sigue funcionando y no se borra nada.'));
   }
-  async function usarCupon() {
-    const k = await pedirTexto('Cupón de descuento', 'Tu cupón', { placeholder: 'Ej: FERIA50', max: 20 });
-    if (!k) return;
-    try { const r = await conCarga(() => rpc('usar_cupon', { p_codigo: k })); toast('¡Cupón aplicado! Activación: ' + pesos(r.precio_activacion) + ' 🎉'); vPlan(); } catch (e) { error(e); }
-  }
   async function quieroPro() {
     try { await conCarga(() => rpc('pedir_pro')); toast('Listo ✓ Te responderemos por el chat de soporte.'); location.hash = 'soporte'; } catch (e) { error(e); }
   }
-  const ahorroAnual = () => { const pl = S.st.plan, m = pl.mensual || S.st.config.precio_mensual; return pl.anual && m ? Math.round(100 - pl.anual * 100 / (m * 12)) : 0; };
-  // Pasar a Pro en 3 pasos (como en Centro de Mando): elige mensual o anual → paga → sube el comprobante. Lo aprueba el administrador.
-  async function pasarPro(mesesIni) {
+  const ahorroAnual = () => { const n = precios(); return n.anual && n.mensual ? Math.round(100 - n.anual * 100 / (n.mensual * 12)) : 0; };
+  // Pasar a Pro: módulo común del núcleo (link sin monto + comisión, o transferencia, y comprobante). Lo aprueba el administrador en el Centro de Mando.
+  function pasarPro() {
     if (!esDueno()) return alPlan('Pídele al dueño de la billetera que active Pro.');
-    await refrescarEstado().catch(() => {});
-    const pl = S.st.plan, cfg = S.st.config, tr = cfg.transferencia || {};
-    if (pl.pago_pendiente) { toast('Ya tienes un pago en revisión. Te avisamos apenas se apruebe.'); return; }
-    const act = precioAct(), mensual = pl.mensual || cfg.precio_mensual, anual = pl.anual || 0;
-    let meses = mesesIni === 12 && anual ? 12 : mesesIni === 1 || !anual ? 1 : 12;
-    const total = el('div', { class: 'total-pago' });
-    const op = (m, t, precio, nota) => el('button', { class: 'plan-op', type: 'button', 'data-m': m, onclick: () => { meses = m; marcar(); } },
-      el('span', { class: 'sutil' }, t), el('span', { class: 'p' }, precio), nota);
-    const ops = el('div', { class: 'plan-elegir' }, op(1, 'Mensual', pesos(mensual), el('span', { class: 'sutil' }, 'al mes')),
-      anual ? op(12, 'Anual', pesos(anual), ahorroAnual() > 0 ? el('span', { class: 'tag verde' }, 'Ahorras ' + ahorroAnual() + '%') : el('span', { class: 'sutil' }, 'al año')) : null);
-    function marcar() {
-      ops.querySelectorAll('.plan-op').forEach((b) => b.classList.toggle('activo', Number(b.dataset.m) === meses));
-      vaciar(total).append(el('div', { class: 'sutil' }, 'Pagas ahora'), el('div', { class: 'grande' }, pesos((meses === 12 ? anual : mensual) + act)),
-        el('div', { class: 'sutil' }, (meses === 12 ? 'Pro por 12 meses' : 'Pro por 1 mes') + (act > 0 ? ' + activación de ' + pesos(act) + ' (una sola vez)' : '')));
-    }
-    marcar();
-    const paso = (n, t) => el('div', { class: 'paso-pago' }, el('b', null, n), el('strong', null, t));
-    // Cada plan tiene su link: el anual usa el suyo (si no hay, el mensual) y viceversa.
-    const linkPago = () => (meses === 12 ? cfg.link_pago_anual || cfg.link_pago : cfg.link_pago || cfg.link_pago_anual);
-    const datos = [['Banco', tr.banco], ['Tipo', tr.tipo], ['Número', tr.numero], ['RUT', tr.rut], ['Nombre', tr.titular], ['Correo', tr.email]].filter((x) => x[1]);
-    const foto = el('input', { type: 'file', accept: 'image/*' });
-    const nota = el('input', { maxlength: 200, placeholder: 'Ej: transferí desde la cuenta de mi pareja' });
-    const err = el('div', { class: 'error' });
-    const ok = await dialogo('⭐ Pasar a Pro', el('div', null,
-      paso(1, 'Elige tu plan'), ops, total,
-      paso(2, 'Paga'),
-      el('div', { class: 'col' },
-        cfg.link_pago || cfg.link_pago_anual ? el('button', { class: 'btn primario', type: 'button', onclick: () => abrir(linkPago()) }, '💳 Pagar en línea') : null,
-        datos.length ? el('details', null, el('summary', { class: 'btn ancho' }, '🏦 Pagar por transferencia'),
-          el('div', { class: 'tarjeta plana mt' }, datos.map(([k, v]) => el('div', { class: 'copiar-fila' }, el('div', { class: 'crece' }, el('div', { class: 'k' }, k), el('div', { class: 'v' }, v)),
-            el('button', { class: 'btn chico', type: 'button', onclick: () => copiar(String(v)) }, 'Copiar'))))) : null,
-        !cfg.link_pago && !cfg.link_pago_anual && !datos.length ? el('p', { class: 'sutil' }, 'Escríbenos por soporte y te pasamos los datos para pagar.') : null),
-      paso(3, 'Sube tu comprobante'),
-      el('div', { class: 'campo' }, el('label', null, 'Foto o captura del comprobante'), foto),
-      el('div', { class: 'campo' }, el('label', null, 'Nota (opcional)'), nota), err),
-      [{ texto: 'Cancelar', valor: null }, { texto: 'Enviar comprobante', clase: 'primario', valor: true, antes: () => {
-        if (!foto.files[0]) { err.textContent = 'Sube la foto del comprobante para que podamos revisarlo.'; return false; }
-        return true;
-      } }], { sinFoco: true });
-    if (!ok) return;
-    try {
-      const blob = await LC.achicarImagen(foto.files[0], LC.FOTO('comprobante').lado, LC.FOTO('comprobante').kb * 1024);
-      const ruta = S.neg.id + '/' + uuid() + (blob.type === 'image/webp' ? '.webp' : '.jpg');
-      const { error: e } = await conCarga(() => sb.storage.from('pagos').upload(ruta, blob, { contentType: blob.type }));
-      if (e) throw e;
-      await conCarga(() => rpc('solicitar_pago', { p_meses: meses, p_path: ruta, p_nota: nota.value }));
-      toast('¡Gracias! Te avisaremos apenas se apruebe.', { ms: 5000 }); await refrescarEstado().catch(() => {});
-      if (S.vista === 'plan') vPlan(); else router(true);
-    } catch (e) { error(e); }
+    CFX_PAGOS.abrir({ rpc, alPagar: () => { if (S.vista === 'plan') vPlan(); } });
   }
 
   // ================= INVITA Y GANA =================
