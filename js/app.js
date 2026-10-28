@@ -603,7 +603,7 @@
 
   // ---------- Pago de un fiado: todo o una parte, con foto del comprobante opcional ----------
   async function subirFotoPago(archivo) {
-    const blob = await LC.achicarImagen(archivo, 1080, 200 * 1024);
+    const blob = await LC.achicarImagen(archivo, LC.FOTO('comprobante').lado, LC.FOTO('comprobante').kb * 1024);
     const ruta = S.neg.id + '/pagos/' + uuid() + (blob.type === 'image/webp' ? '.webp' : '.jpg');
     const { error: e } = await sb.storage.from('comprobantes').upload(ruta, blob, { contentType: blob.type });
     if (e) throw LC.traducir(e);
@@ -1486,7 +1486,7 @@
       } }], { sinFoco: true });
     if (!ok) return;
     try {
-      const blob = await LC.achicarImagen(foto.files[0], 1080, 200 * 1024);
+      const blob = await LC.achicarImagen(foto.files[0], LC.FOTO('comprobante').lado, LC.FOTO('comprobante').kb * 1024);
       const ruta = S.neg.id + '/' + uuid() + (blob.type === 'image/webp' ? '.webp' : '.jpg');
       const { error: e } = await conCarga(() => sb.storage.from('pagos').upload(ruta, blob, { contentType: blob.type }));
       if (e) throw e;

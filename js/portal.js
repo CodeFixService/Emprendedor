@@ -157,7 +157,7 @@
       if (!foto.files[0]) { err.textContent = 'Sube la foto o captura del comprobante'; return false; }
       try {
         let blob = null;
-        if (foto.files[0]) blob = await LC.achicarImagen(foto.files[0], 1080, 200 * 1024);
+        if (foto.files[0]) blob = await LC.achicarImagen(foto.files[0], LC.FOTO('comprobante').lado, LC.FOTO('comprobante').kb * 1024);
         const r = await conCarga(() => rpc('portal_comprobante', { p_sesion: sesion, p_monto: m, p_fecha: fecha.value, p_comentario: com.value, p_con_foto: !!blob }));
         if (blob && r.foto_token) {
           const data = await LC.blobADataURL(blob);

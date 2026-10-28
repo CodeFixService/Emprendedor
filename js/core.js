@@ -283,6 +283,8 @@
     if (w) { try { w.opener = null; } catch (e) { /* nada */ } } else location.href = url;
   }
 
+  // Calidad de fotos según su uso: viene del núcleo (fotos.js); estos valores son el respaldo.
+  const FOTO = (k) => (window.CFX_FOTO && window.CFX_FOTO[k]) || { comprobante: { lado: 1000, calidad: 0.6, kb: 110 }, documento: { lado: 1400, calidad: 0.72, kb: 300 }, vitrina: { lado: 1080, calidad: 0.8, kb: 220 }, portada: { lado: 1280, calidad: 0.8, kb: 300 }, perfil: { lado: 400, calidad: 0.8, kb: 45 }, logo: { lado: 256, calidad: 0.85, kb: 30 } }[k];
   // ---------- Imágenes: se achican en el celular antes de subir ----------
   async function achicarImagen(archivo, maxLado, maxBytes) {
     if (!archivo || !/^image\//.test(archivo.type) && !/\.(heic|heif)$/i.test(archivo.name || '')) throw new ErrorApp('Elige una imagen (foto o captura).');
@@ -414,7 +416,7 @@
   global.LC = {
     VERSION, BD, ico, centrarActivos, TEXTOS_DEF, PLANES_DEF, texto, plan, C, RAIZ, sb, $, el, vaciar, TEMAS, ICONOS, aplicarColor, pesos, fechaCorta, fechaLarga, hora, fechaHora, hoyISO, fechaISO, sumarDias, diasEntre, relativo, iniciales, colorDe, norm,
     V, ErrorApp, traducir, rpc, funcion, uuid, toast, cargando, conCarga, dialogo, confirmar, pedirTexto, error, copiar, wa, abrir,
-    achicarImagen, blobADataURL, pushSoportado, suscribirPush, pushActual, esIOS, instalada, instalar, registrarSW, versionMenor, revisarVersion, actualizarAhora, repararApp,
+    achicarImagen, FOTO, blobADataURL, pushSoportado, suscribirPush, pushActual, esIOS, instalada, instalar, registrarSW, versionMenor, revisarVersion, actualizarAhora, repararApp,
     local, descargar, csv, excel, alPlan: null, alSesion: null, alBloqueo: null,
   };
 })(window);
