@@ -1511,6 +1511,7 @@
     pintar(el('h2', null, 'Mi cuenta'),
       el('div', { class: 'tarjeta' }, dato('Correo', S.email), dato('Rol', esDueno() ? 'Dueño' : 'Ayudante'), dato('Libreta', S.neg.nombre)),
       el('div', { class: 'lista' },
+        esDueno() ? el('button', { class: 'item', type: 'button', onclick: () => CFX_VERIFICAR.abrir({ rpc }) }, el('span', null, '🪪'), el('span', { class: 'crece' }, 'Verificar mi identidad')) : null,
         el('button', { class: 'item', type: 'button', onclick: async () => {
           try {
             if (sub) { await rpc('borrar_push', { p_endpoint: sub.endpoint }); await sub.unsubscribe(); toast('Notificaciones desactivadas'); }
