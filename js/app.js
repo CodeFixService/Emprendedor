@@ -40,7 +40,10 @@
     // Núcleo (pagos.js): billetera nueva que debe su primer pago → pantalla de activación.
     S.cx = await rpc('cfx_pago_estado').catch(() => null);
     // Núcleo (premium.js): con Pro la billetera se ve dorada y la primera vez saluda.
-    (window.CFX_PREMIUM ? Promise.resolve() : new Promise((r) => addEventListener('load', r))).then(() => window.CFX_PREMIUM && (window.CFX_AYUDA_PEND = { rpc: (f, x) => LC.rpc(f, x), app: 'billetera' }, window.CFX_AYUDA && CFX_AYUDA.iniciar(window.CFX_AYUDA_PEND), true) && CFX_PREMIUM.marcar({ premium: S.st.plan.estado === 'pro', id: S.uid, hasta: S.st.plan.hasta, beneficios: LC.plan(S.st.config, 'pro').beneficios }));
+    // Núcleo (ayuda.js): cabecera común [campana][FREE/PRO][foto], menú de la cuenta, ayuda y sensación Premium.
+    window.CFX_AYUDA_PEND = { rpc: (f, x) => LC.rpc(f, x), app: 'billetera', admin: !!S.st.es_admin, premium: S.st.plan.estado === 'pro', pro: S.st.plan.estado !== 'free', id: S.uid, hasta: S.st.plan.hasta,
+      beneficios: LC.plan(S.st.config, 'pro').beneficios, nombre: S.neg.nombre, email: (S.st.email || ''), cuenta: '#cuenta', panel: S.st.es_admin ? '../admin/' : null, salir };
+    if (window.CFX_AYUDA) window.CFX_AYUDA.iniciar(window.CFX_AYUDA_PEND);
     if (esDueno() && S.cx && S.cx.bloqueado) CFX_PAGOS.abrir({ rpc, salir });
     window.addEventListener('online', () => { red(); sincronizar(); });
     window.addEventListener('offline', red);
@@ -206,7 +209,6 @@
     const vistas = { inicio: vInicio, caja: vCaja, clientes: vClientes, cliente: vCliente, anotar: vAnotar, mas: vMas, comprobantes: vComprobantes, reportes: vReportes,
       productos: vProductos, ayudantes: vMas, ajustes: vAjustes, plan: vPlan, avisos: vAvisos, cuenta: vCuenta, ayuda: vAyuda, pendientes: vPendientes, soporte: vSoporte,
       apariencia: vApariencia, cobranza: vCobranza, conexiones: vConexiones, conexion: vConexion, invita: vInvita };
-    if (v !== 'soporte' && canalSoporte) { sb.removeChannel(canalSoporte); canalSoporte = null; }
     const fn = vistas[v] || vInicio;
     if (!silencioso) window.scrollTo(0, 0);
     Promise.resolve(fn(a, b)).catch(error);
@@ -1074,13 +1076,12 @@
         cta),
       sec('Tu negocio'),
       el('div', { class: 'lista cfx-grilla' },
-        it('#soporte', 'chat', 'Soporte (chat conmigo)', p.soporte),
+        it('#soporte', 'chat', 'Chat con soporte'),
         it('#comprobantes', 'recibo', 'Comprobantes', p.comprobantes),
         esDueno() ? conPro(it('#cobranza', 'megafono', 'Cobrar a todos de una'), 'Cobrar a todos de una es Pro: ves quién te debe y le mandas el mensaje con un toque.') : null,
         it('#reportes', 'grafico', 'Reportes', null, esDueno()),
         esDueno() ? marcaPro(it('#conexiones', 'enlace', 'Billeteras conectadas')) : null,
         it('#productos', 'etiqueta', 'Productos frecuentes', null, esDueno()),
-        it('#avisos', 'campana', 'Avisos', p.avisos),
         cola().length ? it('#pendientes', 'reloj', 'Por subir', cola().length) : null),
       esDueno() ? sec('Plan y crecimiento') : null,
       esDueno() ? el('div', { class: 'lista cfx-grilla' },
@@ -1431,13 +1432,10 @@
         el('div', { class: 'col' },
           el('button', { class: 'btn primario', type: 'button', disabled: pend, onclick: () => pasarPro() }, LC.ico('estrella', 18), pl.estado === 'pro' ? 'Pagar Pro' : 'Pasar a Pro'),
           el('button', { class: 'btn', type: 'button', onclick: quieroPro }, '💬 Ayúdame por soporte'),
-          el('button', { class: 'btn texto', type: 'button', onclick: usarKey }, '🔑 Tengo una key'),
           cfg.dias_referido > 0 ? el('a', { class: 'btn texto', href: '#invita' }, '🎁 O gana Pro gratis invitando a otros negocios') : null)),
       el('p', { class: 'sutil' }, 'Te avisamos antes de que venza cada mensualidad. Si no pagas, vuelves a Free: tu billetera sigue funcionando y no se borra nada.'));
   }
-  async function quieroPro() {
-    try { await conCarga(() => rpc('pedir_pro')); toast('Listo ✓ Te responderemos por el chat de soporte.'); location.hash = 'soporte'; } catch (e) { error(e); }
-  }
+  const quieroPro = () => { if (window.CFX_AYUDA) window.CFX_AYUDA.chat(); };
   const ahorroAnual = () => { const n = precios(); return n.anual && n.mensual ? Math.round(100 - n.anual * 100 / (n.mensual * 12)) : 0; };
   // Pasar a Pro: módulo común del núcleo (link sin monto + comisión, o transferencia, y comprobante). Lo aprueba el administrador en el Centro de Mando.
   function pasarPro() {
@@ -1470,12 +1468,6 @@
       el('p', { class: 'sutil' }, 'Cuenta cuando tu invitado anota ' + cfg.ref_min_registros + ' ventas, gastos o fiados y lleva 3 días con su billetera. Máximo ' + cfg.ref_max_premios +
         ' premios. Si tienes Pro pagado, los días se suman a tu plan; si no, son días de Pro de regalo.'));
   }
-  async function usarKey() {
-    const k = await pedirTexto('Usar key', 'Tu key', { placeholder: 'LC-XXXX-XXXX-XXXX', max: 20 });
-    if (!k) return;
-    try { const r = await conCarga(() => rpc('usar_key', { p_codigo: k })); toast('¡Pro activo hasta el ' + fechaLarga(r.hasta) + '! 🎉'); await cargarClientes(); vPlan(); } catch (e) { error(e); }
-  }
-
   // ================= AVISOS =================
   async function vAvisos() {
     const { data } = await sb.from('notificaciones').select('*').order('creado', { ascending: false }).limit(60);
@@ -2001,35 +1993,8 @@
       } }, d.estado === 'activa' ? 'Desconectar' : 'Cancelar solicitud'));
   }
 
-  // ================= SOPORTE: chat directo =================
-  let canalSoporte = null;
-  async function vSoporte() {
-    const cont = el('div', { class: 'chat-soporte' });
-    const txt = el('textarea', { maxlength: 1000, placeholder: 'Escribe tu mensaje…', 'aria-label': 'Mensaje' });
-    const cargar = async () => {
-      const lista = await rpc('soporte_leer');
-      vaciar(cont);
-      if (!lista.length) cont.append(el('div', { class: 'vacio' }, el('span', { class: 'ico' }, '💬'), 'Escríbenos tu duda o pide Pro. Te respondemos aquí mismo y te llega un aviso.'));
-      lista.forEach((m) => cont.append(el('div', { class: 'msg' + (m.de === 'negocio' ? ' mio' : '') }, m.texto, el('div', { class: 'meta' }, (m.de === 'admin' ? 'Soporte · ' : '') + fechaHora(m.creado)))));
-      window.scrollTo(0, document.body.scrollHeight);
-      refrescarEstado().catch(() => {});
-    };
-    const enviar = async () => {
-      const t = txt.value.trim(); if (!t) return;
-      try { await rpc('soporte_enviar', { p_texto: t }); txt.value = ''; await cargar(); } catch (e) { error(e); }
-    };
-    txt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } });
-    const borrar = async () => {
-      if (!await confirmar('Borrar chat', 'Se borra toda la conversación con soporte. Los mensajes también se borran solos a los 30 días.', 'Borrar', 'rojo')) return;
-      try { await rpc('soporte_borrar'); toast('Chat borrado ✓'); await cargar(); } catch (e) { error(e); }
-    };
-    pintar(el('div', { class: 'fila mb' }, el('h2', { style: 'margin:0', class: 'crece' }, '💬 Soporte'), el('button', { class: 'btn-icono', type: 'button', 'aria-label': 'Borrar chat', onclick: borrar }, '🗑️')),
-      el('p', { class: 'sutil' }, 'Chat privado con el equipo de Libreta de Cobros. Solo tú y soporte ven estos mensajes. Se guardan 30 días.'), cont,
-      el('div', { class: 'escribir' }, txt, el('button', { class: 'btn primario', type: 'button', onclick: enviar, 'aria-label': 'Enviar' }, 'Enviar')));
-    await cargar();
-    if (!canalSoporte) canalSoporte = sb.channel('sop-' + S.neg.id).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'soporte', filter: 'negocio=eq.' + S.neg.id },
-      (p) => { if (p.new.de === 'admin' && S.vista === 'soporte') cargar(); }).subscribe();
-  }
+  // Soporte: el chat común de las 6 apps (núcleo, llega al Centro de Mando → Mensajes).
+  async function vSoporte() { location.hash = 'mas'; if (window.CFX_AYUDA) window.CFX_AYUDA.chat(); }
 
   arrancar().catch(error);
 })();

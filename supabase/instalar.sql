@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '17'),
+  ('version_bd', '18'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -3187,8 +3187,9 @@ begin
   update public.ajustes set textos = textos || jsonb_build_object(p_clave, p_valor) where id = 1;
 end $$;
 create or replace function public.cfx_destinatarios(p_destino text) returns setof uuid language sql stable security definer set search_path = public, pg_temp as $$
-  select n.dueno from public.negocios n where n.estado = 'activo' and p_destino <> 'clientes'
-    and (p_destino in ('todos', 'negocios') or (p_destino = 'premium' and privado.estado_plan(n.id) = 'pro') or (p_destino = 'gratis' and privado.estado_plan(n.id) <> 'pro'))
+  -- Todas las cuentas de cada billetera (dueño y ayudantes); "negocios" = solo los dueños.
+  select distinct m.usuario from public.miembros m join public.negocios n on n.id = m.negocio where m.activo and n.estado <> 'eliminado' and p_destino <> 'clientes'
+    and (p_destino = 'todos' or (p_destino = 'negocios' and m.rol = 'dueno') or (p_destino = 'premium' and privado.estado_plan(n.id) = 'pro') or (p_destino = 'gratis' and privado.estado_plan(n.id) <> 'pro'))
 $$;
 create or replace function public.cfx_marcar_verificado(p_cuenta uuid, p_si boolean) returns void
 language sql security definer set search_path = '' as $$ select null::void $$;

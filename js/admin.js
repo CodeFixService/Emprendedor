@@ -1,4 +1,5 @@
-/* Panel del superadministrador: billeteras, planes, pagos, cupones, keys, avisos y ajustes. No ve clientes ni deudas de los negocios. */
+/* Panel del superadministrador: billeteras, pagos de conexiones extra y ajustes propios de la Libreta. No ve clientes ni deudas de los negocios.
+   Precios, planes, textos, keys, cupones, avisos a todos, soporte y versiones se manejan en el Centro de Mando (Pagos, Control, Mensajes y Apps). */
 (function () {
   'use strict';
   const { el, $, vaciar, rpc, sb, V, error, toast, conCarga, dialogo, confirmar, pedirTexto, pesos, fechaCorta, fechaLarga, fechaHora, copiar, wa, abrir, local } = LC;
@@ -18,27 +19,29 @@
     if (!data.session) { location.replace('../#ingresar'); return; }
     const st = await rpc('mi_estado');
     if (!st.es_admin) { pintar(el('div', { class: 'vacio' }, el('span', { class: 'ico' }, '🔒'), 'Solo el administrador puede entrar aquí.', el('br'), el('a', { href: '../app/' }, 'Volver a la app'))); return; }
-    if (bdVieja(st.config)) document.querySelector('.app').insertBefore(el('a', { class: 'banda error', href: '#ajustes/versiones', style: 'text-decoration:none' },
+    if (bdVieja(st.config)) document.querySelector('.app').insertBefore(el('a', { class: 'banda error', href: '#ajustes', style: 'text-decoration:none' },
       el('span', null, '⚠️ La base de datos está en v' + (st.config.version_bd || '4 o menos') + ' y esta versión de la app necesita v' + LC.BD + '. Corre la consulta de actualización.'), el('span', { class: 'btn chico' }, 'Ver cómo')), document.getElementById('vista'));
     LC.revisarVersion(st.config, (txt, fn) => {
       const v = document.getElementById('admUpd'); if (v) v.remove();
       if (txt) document.querySelector('.app').insertBefore(el('div', { id: 'admUpd', class: 'banda info' }, el('span', null, txt + ' Tu celular aún no la tiene.'), el('button', { class: 'btn chico', type: 'button', onclick: fn }, 'Actualizar')), document.getElementById('vista'));
     });
+    // Núcleo (ayuda.js): cabecera común con el plan y el menú de la cuenta.
+    window.CFX_AYUDA_PEND = { rpc, app: 'billetera', admin: true, email: data.session.user.email, nombre: 'Administración', cuenta: '#ajustes/cuenta', salir, quitar: '#salir' };
+    if (window.CFX_AYUDA) window.CFX_AYUDA.iniciar(window.CFX_AYUDA_PEND);
     window.addEventListener('hashchange', router);
     router();
   }
   function router() {
     const [v, a] = (location.hash.slice(1) || 'resumen').split('/');
     document.querySelectorAll('#nav a').forEach((x) => x.classList.toggle('activo', x.dataset.v === v));
-    if (v !== 'soporte' && canal) { sb.removeChannel(canal); canal = null; }
-    ({ resumen: vResumen, negocios: vNegocios, pagos: vPagos, ajustes: vAjustes, keys: vKeys, avisos: vAvisos, soporte: vSoporte, cupones: vCupones }[v] || vResumen)(a).catch(error);
+    ({ resumen: vResumen, negocios: vNegocios, pagos: vPagos, ajustes: vAjustes }[v] || vResumen)(a).catch(error);
   }
 
   // ---------- Resumen ----------
   async function vResumen() {
     const [r, op] = await conCarga(() => Promise.all([rpc('admin_resumen'), rpc('admin_oportunidades')]));
     $('#badgePagos').textContent = r.pagos_pendientes; $('#badgePagos').classList.toggle('oculto', !r.pagos_pendientes);
-    $('#badgeSoporte').textContent = r.soporte_sin_leer; $('#badgeSoporte').classList.toggle('oculto', !r.soporte_sin_leer);
+
     const pct = Math.round(r.bd_mb * 100 / 500);
     const conv = r.negocios ? Math.round(r.convertidos * 100 / r.negocios) : 0;
     const dias = []; for (let i = 29; i >= 0; i--) dias.push(LC.sumarDias(LC.hoyISO(), -i));
@@ -50,21 +53,13 @@
         el('div', { class: 'avatar', style: 'background:' + LC.colorDe(n.nombre) }, LC.iniciales(n.nombre)),
         el('a', { class: 'crece', href: '#negocios/' + n.id, style: 'color:inherit;text-decoration:none' }, el('div', { class: 'nom' }, n.nombre), el('div', { class: 'sub' }, sub(n))),
         n.whatsapp ? el('button', { class: 'btn-icono', type: 'button', 'aria-label': 'WhatsApp', onclick: () => abrir(wa(n.whatsapp, plantilla(n))) }, '💬') : null,
-        el('a', { class: 'btn-icono', href: '#soporte/' + n.id, style: 'text-decoration:none', 'aria-label': 'Chat' }, '✉️'))))) : null;
+        null)))) : null;
     const cfgP = r.mrr;
-    const avisoVersion = el('div');
-    Promise.all([leerPublicada(), rpc('config_publica')]).then(([pub, c]) => {
-      const bd = Number(c.version_bd || 0);
-      if (LC.versionMenor(c.version_liberada, pub.version) || bd < pub.bd) avisoVersion.append(el('a', { class: 'banda info', href: '#ajustes/versiones', style: 'text-decoration:none' },
-        '🚀 Hay una versión nueva lista (v' + pub.version + '). Actualízala en 4 pasos: base de datos, función, probar y liberar.', el('span', { class: 'btn chico' }, 'Empezar')));
-    }).catch(() => {});
     pintarUso();
     pintar(el('h2', null, 'Resumen'),
-      avisoVersion,
       !r.cron_ok ? el('div', { class: 'banda error' }, '⚠️ Las tareas automáticas no están activas: en Supabase → Database → Extensions enciende pg_cron y pg_net, y vuelve a correr el SQL de actualización.') : null,
       !r.push_ok ? el('div', { class: 'banda aviso' }, '⚠️ Falta generar las claves push.', el('a', { class: 'btn chico', href: '#ajustes/push' }, 'Ir')) : null,
       r.pagos_pendientes ? el('a', { class: 'banda info', href: '#pagos', style: 'text-decoration:none' }, '💳 ' + r.pagos_pendientes + ' pago(s) por revisar', el('span', { class: 'btn chico' }, 'Revisar')) : null,
-      r.soporte_sin_leer ? el('a', { class: 'banda info', href: '#soporte', style: 'text-decoration:none' }, '💬 ' + r.soporte_sin_leer + ' chat(s) de soporte sin leer', el('span', { class: 'btn chico' }, 'Ver')) : null,
       el('div', { class: 'kpi hero mb' }, el('div', { class: 't' }, 'Ingreso mensual recurrente (Pro activos × mensualidad)'), el('div', { class: 'grande' }, pesos(cfgP)),
         el('div', { class: 't' }, 'Cobrado este mes: ' + pesos(r.ingresos_mes) + ' · ' + r.convertidos + ' clientes han pagado (' + conv + '% de las billeteras)')),
       el('h3', null, 'Embudo de ventas'),
@@ -97,9 +92,8 @@
         pct >= 70 ? el('p', { class: 'naranjo mt' }, 'Pasaste el 70%: es momento de pasar a Supabase Pro.') : null,
         el('p', { class: 'sutil mt' }, 'Avisos en cola: ' + r.cola_push),
         el('details', { class: 'mt' }, el('summary', { class: 'sutil', style: 'cursor:pointer' }, 'Ver cada tabla y limpiar'), usoDetalle)),
-      el('div', { class: 'grid3' }, el('a', { class: 'btn', href: '#avisos' }, '📣 Mensajes'), el('a', { class: 'btn', href: '#cupones' }, '🏷️ Cupones'), el('a', { class: 'btn', href: '#keys' }, '🔑 Keys')),
       el('button', { class: 'btn ancho mt', type: 'button', onclick: probar }, '🩺 Probar servidor de avisos'),
-      el('button', { class: 'btn texto ancho mt', type: 'button', onclick: salir }, '🚪 Cerrar sesión'));
+      null);
   }
   const usoDetalle = el('div', { class: 'mt' });
   async function pintarUso() {
@@ -179,7 +173,6 @@
           n.plan !== 'pro' ? el('button', { class: 'btn', type: 'button', onclick: () => cerrarCon('prueba') }, n.plan === 'prueba' ? '🎁 Extender prueba' : '🎁 Dar prueba Pro')
             : el('button', { class: 'btn', type: 'button', onclick: () => cerrarCon('quitar') }, '⬇️ Quitar Pro')),
         n.plan === 'prueba' ? el('button', { class: 'btn', type: 'button', onclick: () => cerrarCon('quitar') }, '⬇️ Terminar prueba (pasa a Free)') : null,
-        el('a', { class: 'btn', href: '#soporte/' + n.id }, '💬 Chat de soporte' + (n.soporte ? ' (' + n.soporte + ')' : '')),
         el('button', { class: 'btn', type: 'button', onclick: () => cerrarCon('conexiones') }, '🤝 Paquetes de conexiones'),
         el('button', { class: 'btn', type: 'button', onclick: () => cerrarCon('nota') }, '📝 Nota interna'),
         el('button', { class: 'btn', type: 'button', onclick: () => cerrarCon('aviso') }, '📣 Enviar aviso'),
@@ -242,66 +235,6 @@
       el('p', { class: 'sutil' }, 'Aquí llegan los "Ya pagué" de las billeteras (Pro y conexiones extra). Revisa que la plata llegó y aprueba.'), lista);
   }
 
-  // ---------- Keys ----------
-  async function vKeys() {
-    const d = await conCarga(() => rpc('admin_keys'));
-    pintar(el('div', { class: 'fila entre mb' }, el('h2', { style: 'margin:0' }, 'Keys Pro'), el('a', { class: 'btn chico', href: '#resumen' }, '← Volver')),
-      el('button', { class: 'btn primario ancho mb', type: 'button', onclick: crearKeys }, '＋ Generar keys'),
-      el('div', { class: 'lista' }, d.length ? d.map((k) => el('div', { class: 'item', style: 'cursor:default' },
-        el('div', { class: 'crece' }, el('div', { class: 'nom', style: 'font-family:monospace' }, k.codigo), el('div', { class: 'sub' }, k.meses + ' mes(es) · ' + pesos(k.precio) + (k.usada_por ? ' · usada por ' + (k.negocio_nombre || '—') + ' el ' + fechaCorta(k.usada_at) : k.revocada ? ' · revocada' : ' · libre'))),
-        !k.usada_por && !k.revocada ? el('button', { class: 'btn chico', type: 'button', onclick: () => copiar(k.codigo) }, 'Copiar') : null,
-        !k.usada_por && !k.revocada ? el('button', { class: 'btn-icono', type: 'button', 'aria-label': 'Revocar', onclick: async () => { if (await confirmar('Revocar key', '¿Revocar ' + k.codigo + '?', 'Revocar', 'rojo')) { await rpc('admin_revocar_key', { p_codigo: k.codigo }).catch(error); vKeys(); } } }, '🚫') : null))
-        : el('div', { class: 'vacio' }, 'Aún no generas keys.')));
-  }
-  async function crearKeys() {
-    const meses = el('select', null, [1, 3, 6, 12].map((m) => el('option', { value: m }, m + (m === 1 ? ' mes' : ' meses'))));
-    const cant = el('input', { type: 'number', min: 1, max: 50, value: 1, inputmode: 'numeric' }), precio = el('input', { type: 'number', min: 0, inputmode: 'numeric', placeholder: 'Para tus reportes' });
-    const ok = await dialogo('Generar keys', el('div', null, el('div', { class: 'campo' }, el('label', null, 'Duración'), meses), el('div', { class: 'campo' }, el('label', null, 'Cantidad'), cant), el('div', { class: 'campo' }, el('label', null, 'Precio de venta (cada una)'), precio)),
-      [{ texto: 'Cancelar', valor: null }, { texto: 'Generar', clase: 'primario', valor: true }]);
-    if (!ok) return;
-    try {
-      const k = await conCarga(() => rpc('admin_crear_keys', { p_meses: Number(meses.value), p_cantidad: Number(cant.value), p_precio: Number(precio.value || 0) }));
-      await dialogo('Keys listas', el('div', null, el('div', { class: 'tarjeta plana', style: 'font-family:monospace;white-space:pre' }, k.join('\n')), el('button', { class: 'btn ancho', type: 'button', onclick: () => copiar(k.join('\n')) }, 'Copiar todas')));
-      vKeys();
-    } catch (e) { error(e); }
-  }
-
-  // ---------- Cupones de descuento en la activación ----------
-  async function vCupones() {
-    const d = await conCarga(() => rpc('admin_cupones'));
-    pintar(el('div', { class: 'fila entre mb' }, el('h2', { style: 'margin:0' }, '🏷️ Cupones'), el('a', { class: 'btn chico', href: '#resumen' }, '← Volver')),
-      el('p', { class: 'sutil' }, 'Descuento en la activación de Pro. Tus clientes lo escriben en Mi plan → "Tengo un cupón". El uso se cuenta cuando apruebas su pago.'),
-      el('button', { class: 'btn primario ancho mb', type: 'button', onclick: () => editarCupon() }, '＋ Nuevo cupón'),
-      el('div', { class: 'lista' }, d.length ? d.map((c) => el('div', { class: 'item', style: 'cursor:default' + (c.valido ? '' : ';opacity:.55') },
-        el('div', { class: 'crece' }, el('div', { class: 'nom', style: 'font-family:monospace' }, c.codigo + ' · ' + c.descuento + '%'),
-          el('div', { class: 'sub' }, c.usos + (c.usos_max ? ' de ' + c.usos_max : '') + ' usos · ' + c.aplicados + ' esperando pago' + (c.vence ? ' · vence ' + fechaCorta(c.vence) : '') + (c.valido ? '' : ' · no vigente'))),
-        el('button', { class: 'btn chico', type: 'button', onclick: () => copiar(c.codigo) }, 'Copiar'),
-        el('button', { class: 'btn-icono', type: 'button', 'aria-label': c.activo ? 'Desactivar' : 'Activar', onclick: async () => { await rpc('admin_cupon_activo', { p_codigo: c.codigo, p_activo: !c.activo }).catch(error); vCupones(); } }, c.activo ? '⏸️' : '▶️')))
-        : el('div', { class: 'vacio' }, 'Aún no creas cupones.')));
-  }
-  async function editarCupon() {
-    const cod = el('input', { maxlength: 20, placeholder: 'FERIA50', style: 'text-transform:uppercase' }), desc = el('input', { type: 'number', min: 1, max: 100, value: 50, inputmode: 'numeric' });
-    const usos = el('input', { type: 'number', min: 1, inputmode: 'numeric', placeholder: 'Sin límite' }), vence = el('input', { type: 'date', min: LC.hoyISO() });
-    const campo = (t, i, a) => el('div', { class: 'campo' }, el('label', null, t), i, a ? el('div', { class: 'ayuda' }, a) : null);
-    const err = el('div', { class: 'error' });
-    await dialogo('Nuevo cupón', el('div', null, campo('Código', cod, 'Letras, números o guiones (3 a 20).'), el('div', { class: 'grid2' }, campo('Descuento %', desc), campo('Máximo de usos', usos)), campo('Vence (opcional)', vence), err),
-      [{ texto: 'Cancelar', valor: null }, { texto: 'Crear', clase: 'primario', valor: true, antes: async () => {
-        try { await conCarga(() => rpc('admin_guardar_cupon', { p_codigo: cod.value, p_descuento: Number(desc.value), p_usos_max: usos.value ? Number(usos.value) : null, p_vence: vence.value || null })); return true; }
-        catch (e) { err.textContent = LC.traducir(e).message; return false; }
-      } }]);
-    vCupones();
-  }
-
-  // ---------- Avisos ----------
-  async function vAvisos() {
-    const n = await conCarga(() => rpc('admin_segmentos'));
-    const grupos = [['todos', '📣 A todas las billeteras', n.todos], ['free', '🙂 Solo Free (para ofrecer Pro)', n.free], ['prueba', '🎁 Solo en prueba Pro', n.prueba],
-      ['pro', '⭐ Solo Pro (novedades, gracias)', n.pro], ['vencen', '⏰ Les vence el Pro o la prueba esta semana', n.vencen]];
-    pintar(el('div', { class: 'fila entre mb' }, el('h2', { style: 'margin:0' }, 'Mensajes masivos'), el('a', { class: 'btn chico', href: '#resumen' }, '← Volver')),
-      el('p', { class: 'sutil' }, 'Llegan a la bandeja de avisos de cada billetera y como notificación al celular.'),
-      el('div', { class: 'lista' }, grupos.map(([v, t, c]) => el('button', { class: 'item', type: 'button', disabled: !c, onclick: () => enviarAviso(v) },
-        el('span', { class: 'crece' }, t), el('span', { class: 'tag' }, c + ' billetera' + (c === 1 ? '' : 's'))))));
-  }
   async function enviarAviso(destino, negocio) {
     const tit = el('input', { maxlength: 80 }), cue = el('textarea', { maxlength: 300 });
     const ok = await dialogo('Nuevo aviso', el('div', null, el('div', { class: 'campo' }, el('label', null, 'Título'), tit), el('div', { class: 'campo' }, el('label', null, 'Mensaje'), cue)),
@@ -310,159 +243,68 @@
     try { const n = await conCarga(() => rpc('admin_aviso', { p_destino: destino, p_negocio: negocio || null, p_titulo: tit.value, p_cuerpo: cue.value })); toast('Enviado a ' + n + ' libreta(s) ✓'); } catch (e) { error(e); }
   }
 
-  // ---------- Ajustes ----------
-  // ---------- Ajustes (sub-pestañas, todo editable desde aquí) ----------
-  let secAj = 'precios';
-  const SECCIONES = [['precios', '💳 Precios y links'], ['planes', '⭐ Planes'], ['reglas', '⚖️ Reglas'], ['textos', '✏️ Textos'], ['ventas', '🏷️ Cupones y keys'],
-    ['avisos', '📣 Avisos'], ['push', '🔔 Notificaciones'], ['registro', '📜 Registro'], ['versiones', '🔄 Versiones'], ['cuenta', '👤 Mi cuenta']];
+  // ---------- Ajustes (cuadrícula del núcleo: solo lo propio de la Libreta) ----------
   async function vAjustes(sec) {
-    if (sec && SECCIONES.some((x) => x[0] === sec)) secAj = sec;
     const { data: a, error: e } = await sb.from('ajustes').select('*').single();
     if (e) throw LC.traducir(e);
     const cfg = await rpc('config_publica');
     const inp = (v, attrs) => { const i = el('input', attrs || {}); i.value = v == null ? '' : v; return i; };
     const num = (i) => Math.round(Number(i.value));
     const campo = (tx, i, ay) => el('div', { class: 'campo' }, el('label', null, tx), i, ay ? el('div', { class: 'ayuda' }, ay) : null);
-    const guardar = (fn) => el('button', { class: 'btn primario ancho', type: 'button', onclick: async () => {
-      try { await conCarga(() => rpc('admin_guardar_ajustes', { p: fn() })); toast('Guardado ✓'); vAjustes(); } catch (er) { error(er); } } }, 'Guardar');
-    const cuerpo = el('div');
-    const t = a.transferencia || {}, ln = a.lim_normal || {};
-    if (secAj === 'precios') {
-      cuerpo.append(el('div', { class: 'tarjeta' }, el('p', null, '⭐ Precios, links de pago y datos de transferencia del Premium ahora se configuran una sola vez para las 6 apps en el Centro de Mando → Pagos. Aquí ya no hace falta tocar nada.')));
-    } else if (secAj === 'precios_antiguo') {
-      const f = { act: inp(a.precio_activacion, { type: 'number', inputmode: 'numeric' }), mes: inp(a.precio_mensual, { type: 'number', inputmode: 'numeric' }), anual: inp(a.precio_anual, { type: 'number', inputmode: 'numeric' }),
-        wsp: inp(a.contacto_whatsapp, { type: 'tel', placeholder: '+56 9 …' }), conInc: inp(a.conexiones_incluidas, { type: 'number' }), conPaq: inp(a.conexiones_paquete, { type: 'number' }),
-        linkAnual: inp(a.link_pago_anual, { type: 'url', placeholder: 'https://link.mercadopago.cl/…' }),
-        conPrecio: inp(a.precio_paquete, { type: 'number', inputmode: 'numeric' }), tb: inp(t.banco), tt: inp(t.tipo), tn: inp(t.numero, { inputmode: 'numeric' }), tr: inp(t.rut), ttit: inp(t.titular), te: inp(t.email, { type: 'email' }) };
-      const ls = espacios(a.links_pro && a.links_pro.length ? a.links_pro : (a.link_pago ? [{ texto: 'Mercado Pago', url: a.link_pago, activo: true }] : []));
-      cuerpo.append(el('div', { class: 'tarjeta' }, el('h2', null, 'Precio Pro'), el('div', { class: 'grid3' }, campo('Activación (una vez)', f.act), campo('Mensualidad', f.mes), campo('Plan anual', f.anual, '0 = sin plan anual')),
-          el('p', { class: 'sutil' }, 'El primer pago es activación + mensualidad (o + año); después solo la mensualidad o el año. El anual da 12 meses al aprobarlo.')),
-        el('div', { class: 'tarjeta' }, el('h2', null, 'Link de pago mensual (2 espacios)'), ls.caja, el('p', { class: 'sutil' }, 'El activo es el que ven las billeteras al pagar la mensualidad, conexiones extra y cupones.')),
-        el('div', { class: 'tarjeta' }, el('h2', null, 'Link de pago anual'), campo('Link para pagar el año completo', f.linkAnual, 'Debe empezar con https://. Si lo dejas vacío, el plan anual usa el link mensual.')),
-        el('div', { class: 'tarjeta' }, el('h2', null, '🤝 Conexiones extra'), el('div', { class: 'grid3' }, campo('Incluidas', f.conInc), campo('Por paquete', f.conPaq), campo('Precio/mes', f.conPrecio))),
-        el('div', { class: 'tarjeta' }, el('h2', null, 'Tus datos de transferencia'), campo('Banco', f.tb), campo('Tipo de cuenta', f.tt), campo('Número', f.tn), campo('RUT', f.tr), campo('Titular', f.ttit), campo('Correo', f.te), campo('Tu WhatsApp de soporte', f.wsp)),
-        guardar(() => ({ precio_activacion: num(f.act), precio_mensual: num(f.mes), precio_anual: num(f.anual), link_pago_anual: f.linkAnual.value.trim(), links_pro: ls.valor(), contacto_whatsapp: f.wsp.value.trim() ? V.telefono(f.wsp.value) : '',
-          conexiones_incluidas: num(f.conInc), conexiones_paquete: num(f.conPaq), precio_paquete: num(f.conPrecio),
-          transferencia: { banco: f.tb.value.trim(), tipo: f.tt.value.trim(), numero: f.tn.value.replace(/\D/g, ''), rut: f.tr.value ? V.rutBonito(V.rut(f.tr.value)) : '', titular: f.ttit.value.trim(), email: f.te.value.trim() } })));
-    } else if (secAj === 'planes') {
-      const pf = LC.plan(cfg, 'free'), pp = LC.plan(cfg, 'pro');
-      const bloque = (p) => ({ nombre: inp(p.nombre, { maxlength: 30 }), desc: inp(p.descripcion, { maxlength: 160 }), ben: (() => { const x = el('textarea', { rows: 6, maxlength: 3000 }); x.value = (p.beneficios || []).join('\n'); return x; })() });
-      const bf = bloque(pf), bp = bloque(pp);
-      const l = { lc: inp(ln.clientes, { type: 'number' }), lm: inp(ln.movimientos, { type: 'number' }), lcaja: inp(ln.caja, { type: 'number' }), lq: inp(ln.cuotas, { type: 'number' }),
-        lp: inp(ln.productos, { type: 'number' }), lk: inp(ln.comprobantes, { type: 'number' }), lcat: inp(ln.categorias, { type: 'number' }), lh: inp(ln.historial_meses, { type: 'number' }) };
-      const tarjeta = (tit, b) => el('div', { class: 'tarjeta' }, el('h2', null, tit), campo('Nombre', b.nombre), campo('Descripción', b.desc), campo('Beneficios (uno por línea)', b.ben, 'Salen en la portada, en "Mi plan" y en el aviso de Pro.'));
-      const pl = (b) => ({ nombre: b.nombre.value.trim(), descripcion: b.desc.value.trim(), beneficios: b.ben.value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 20) });
-      cuerpo.append(tarjeta('Plan gratis', bf), el('div', { class: 'tarjeta' }, el('h2', null, 'Límites del plan gratis'), el('p', { class: 'sutil' }, 'Pro y la prueba no tienen límites.'),
-          el('div', { class: 'grid2' }, campo('Clientes activos', l.lc), campo('Fiados y abonos/mes', l.lm), campo('Ingresos y gastos/mes', l.lcaja), campo('Cuotas activas', l.lq), campo('Productos', l.lp), campo('Comprobantes/mes', l.lk), campo('Categorías propias', l.lcat), campo('Historial (meses)', l.lh))),
-        tarjeta('Plan Pro', bp),
-        guardar(() => ({ planes: { free: pl(bf), pro: pl(bp) }, lim_normal: { clientes: num(l.lc), movimientos: num(l.lm), cuotas: num(l.lq), productos: num(l.lp), comprobantes: num(l.lk), historial_meses: num(l.lh), caja: num(l.lcaja), categorias: num(l.lcat) } })));
-    } else if (secAj === 'reglas') {
-      const f = { prueba: inp(a.dias_prueba, { type: 'number' }), gracia: inp(a.dias_gracia, { type: 'number' }), comp: inp(a.dias_comprobantes, { type: 'number' }), aviso: inp(a.dias_aviso, { type: 'number' }),
-        vlegal: inp(a.version_legal, { type: 'number' }), vmin: inp(a.version_min),
-        refDias: inp(a.dias_referido, { type: 'number' }), refMin: inp(a.ref_min_registros, { type: 'number' }), refMax: inp(a.ref_max_premios, { type: 'number' }) };
-      cuerpo.append(el('div', { class: 'tarjeta' }, el('h2', null, 'Reglas'),
-          el('div', { class: 'grid2' }, campo('Días de prueba Pro', f.prueba, 'Al crear una billetera.'), campo('Días de gracia', f.gracia, 'Después de vencer la mensualidad.'),
+    const guardar = (fn, k) => el('button', { class: 'btn primario ancho', type: 'button', onclick: async () => {
+      try { await conCarga(() => rpc('admin_guardar_ajustes', { p: fn() })); toast('Guardado ✓'); vAjustes(k); } catch (er) { error(er); } } }, 'Guardar');
+    const SECC = [
+      { k: 'conexiones', ico: '🤝', t: 'Conexiones extra', d: 'Incluidas, paquetes y precio', abrir: (z) => {
+        const f = { inc: inp(a.conexiones_incluidas, { type: 'number' }), paq: inp(a.conexiones_paquete, { type: 'number' }), pre: inp(a.precio_paquete, { type: 'number', inputmode: 'numeric' }) };
+        z.append(el('div', { class: 'tarjeta' }, el('p', { class: 'sutil' }, 'Conexiones entre billeteras: cuántas trae cada una y cuánto cuesta cada paquete extra (se paga en Pagos de este panel).'),
+          el('div', { class: 'grid3' }, campo('Incluidas', f.inc), campo('Por paquete', f.paq), campo('Precio/mes', f.pre))),
+        guardar(() => ({ conexiones_incluidas: num(f.inc), conexiones_paquete: num(f.paq), precio_paquete: num(f.pre) }), 'conexiones'));
+      } },
+      { k: 'reglas', ico: '⚖️', t: 'Reglas', d: 'Prueba, gracia, invitados y feriados', abrir: (z) => {
+        const f = { prueba: inp(a.dias_prueba, { type: 'number' }), gracia: inp(a.dias_gracia, { type: 'number' }), comp: inp(a.dias_comprobantes, { type: 'number' }), aviso: inp(a.dias_aviso, { type: 'number' }),
+          vlegal: inp(a.version_legal, { type: 'number' }), refDias: inp(a.dias_referido, { type: 'number' }), refMin: inp(a.ref_min_registros, { type: 'number' }), refMax: inp(a.ref_max_premios, { type: 'number' }) };
+        z.append(el('div', { class: 'tarjeta' }, el('div', { class: 'grid2' }, campo('Días de prueba Pro', f.prueba, 'Al crear una billetera.'), campo('Días de gracia', f.gracia, 'Después de vencer la mensualidad.'),
             campo('Días que se guardan los comprobantes', f.comp, 'Después la foto se borra sola.'), campo('Aviso antes de vencer (días)', f.aviso, 'Además avisa 3 y 1 día antes y el mismo día.'))),
-        el('div', { class: 'tarjeta' }, el('h2', null, '🎁 Invita y gana'), el('p', { class: 'sutil' }, 'Cada billetera tiene su link para invitar. Cuando el invitado se usa de verdad, quien invitó gana días de Pro.'),
-          el('div', { class: 'grid3' }, campo('Días de Pro por invitado', f.refDias, '0 = apagado'), campo('Registros mínimos', f.refMin, 'Ventas, gastos o fiados del invitado'), campo('Máximo de premios', f.refMax, 'Por billetera'))),
-        el('div', { class: 'tarjeta' }, el('h2', null, 'Avanzado'), campo('Versión de los textos legales', f.vlegal, 'Súbela si cambias los Términos: todos deberán aceptarlos de nuevo.'),
-          campo('Versión mínima obligatoria', f.vmin, 'Quien tenga una versión menor ve un aviso rojo para actualizar.')),
-        el('div', { class: 'tarjeta' }, el('h2', null, 'Feriados'), el('p', { class: 'sutil' }, 'En feriados no se puede cobrar.'), el('button', { class: 'btn', type: 'button', onclick: feriados }, 'Ver y editar feriados')),
-        guardar(() => ({ dias_prueba: num(f.prueba), dias_gracia: num(f.gracia), dias_comprobantes: num(f.comp), dias_aviso: num(f.aviso), version_legal: num(f.vlegal), version_min: f.vmin.value.trim(),
-          dias_referido: num(f.refDias), ref_min_registros: num(f.refMin), ref_max_premios: num(f.refMax) })));
-    } else if (secAj === 'textos') {
-      const nombres = { landing_titulo: 'Título de la portada', landing_bajada: 'Texto bajo el título', pro_titulo: 'Título del aviso de Pro', pago_instrucciones: 'Instrucciones de pago en el link del cliente ({negocio} = nombre)' };
-      const campos = Object.keys(LC.TEXTOS_DEF).map((k) => { const x = el('textarea', { rows: 3, maxlength: 1000 }); x.value = LC.texto(cfg, k); return [k, x]; });
-      cuerpo.append(el('div', { class: 'tarjeta' }, el('h2', null, 'Textos de la app'), ...campos.map(([k, x]) => campo(nombres[k] || k, x))),
-        guardar(() => ({ textos: Object.fromEntries(campos.map(([k, x]) => [k, x.value.trim()]).filter(([k, v]) => v && v !== LC.TEXTOS_DEF[k])) })));
-    } else if (secAj === 'ventas') {
-      cuerpo.append(el('div', { class: 'col' }, el('a', { class: 'btn', href: '#cupones' }, '🏷️ Cupones de descuento'), el('a', { class: 'btn', href: '#keys' }, '🔑 Keys Pro')));
-    } else if (secAj === 'avisos') {
-      return vAvisos();
-    } else if (secAj === 'push') {
-      cuerpo.append(el('div', { class: 'tarjeta' }, el('h2', null, 'Notificaciones push'), el('p', null, cfg.vapid_public ? '✅ Claves push configuradas' : '⚠️ Falta generar las claves push'),
-        el('div', { class: 'col' }, el('button', { class: 'btn', type: 'button', onclick: generarVapid }, cfg.vapid_public ? 'Regenerar claves push' : 'Generar claves push'),
-          el('button', { class: 'btn', type: 'button', onclick: probar }, '🩺 Probar servidor'))));
-    } else if (secAj === 'registro') {
-      const d = await rpc('admin_auditoria').catch(() => []);
-      cuerpo.append(el('div', { class: 'lista' }, d.length ? d.map((x) => el('div', { class: 'item', style: 'cursor:default' }, el('div', { class: 'crece' },
-        el('div', { class: 'nom' }, x.accion + (x.negocio ? ' · ' + x.negocio : '')), el('div', { class: 'sub', style: 'white-space:normal' }, JSON.stringify(x.detalle || {}).slice(0, 160))),
-        el('span', { class: 'sutil' }, fechaHora(x.at)))) : el('div', { class: 'vacio' }, 'Sin registros.')));
-    } else if (secAj === 'versiones') {
-      cuerpo.append(tarjetaVersiones(a, cfg));
-    } else if (secAj === 'cuenta') {
-      const { data: u } = await sb.auth.getSession();
-      cuerpo.append(el('div', { class: 'tarjeta' }, el('h2', null, 'Mi cuenta'), el('p', null, (u.session && u.session.user.email) || ''),
-        el('div', { class: 'col' }, el('button', { class: 'btn', type: 'button', onclick: async () => {
-          const c1 = await pedirTexto('Cambiar contraseña', 'Nueva contraseña', { tipo: 'password', min: 8, max: 72 }); if (!c1) return;
-          const { error: er } = await sb.auth.updateUser({ password: c1 }); if (er) error(er); else toast('Contraseña cambiada ✓');
-        } }, '🔑 Cambiar contraseña'), el('button', { class: 'btn texto', type: 'button', style: 'color:var(--deuda)', onclick: salir }, '🚪 Cerrar sesión'))));
-    }
-    pintar(el('h2', null, 'Ajustes'), el('div', { class: 'subtabs' }, SECCIONES.map(([k, tx]) => el('button', { class: 'chip' + (secAj === k ? ' activo' : ''), type: 'button', onclick: () => { secAj = k; vAjustes(); } }, tx))), cuerpo);
-  }
-  // 2 espacios de link (texto + link) con interruptor: solo uno activo.
-  function espacios(lista) {
-    const ls = [0, 1].map((i) => ({ texto: (lista[i] && lista[i].texto) || '', url: (lista[i] && lista[i].url) || '', activo: !!(lista[i] && lista[i].activo) }));
-    if (!ls.some((x) => x.activo)) ls[0].activo = true;
+          el('div', { class: 'tarjeta' }, el('h2', null, '🎁 Invita y gana'), el('p', { class: 'sutil' }, 'Cada billetera tiene su link para invitar. Cuando el invitado se usa de verdad, quien invitó gana días de Pro.'),
+            el('div', { class: 'grid3' }, campo('Días de Pro por invitado', f.refDias, '0 = apagado'), campo('Registros mínimos', f.refMin, 'Ventas, gastos o fiados del invitado'), campo('Máximo de premios', f.refMax, 'Por billetera'))),
+          el('div', { class: 'tarjeta' }, campo('Versión de los textos legales', f.vlegal, 'Súbela si cambias los Términos: todos deberán aceptarlos de nuevo.'),
+            el('p', { class: 'sutil' }, 'En feriados no se puede cobrar.'), el('button', { class: 'btn', type: 'button', onclick: feriados }, '📅 Ver y editar feriados')),
+          guardar(() => ({ dias_prueba: num(f.prueba), dias_gracia: num(f.gracia), dias_comprobantes: num(f.comp), dias_aviso: num(f.aviso), version_legal: num(f.vlegal),
+            dias_referido: num(f.refDias), ref_min_registros: num(f.refMin), ref_max_premios: num(f.refMax) }), 'reglas'));
+      } },
+      { k: 'push', ico: '🔔', t: 'Notificaciones', d: 'Claves push y servidor', abrir: (z) => {
+        z.append(el('div', { class: 'tarjeta' }, el('p', null, cfg.vapid_public ? '✅ Claves push configuradas' : '⚠️ Falta generar las claves push'),
+          el('div', { class: 'col' }, el('button', { class: 'btn', type: 'button', onclick: generarVapid }, cfg.vapid_public ? 'Regenerar claves push' : 'Generar claves push'),
+            el('button', { class: 'btn', type: 'button', onclick: probar }, '🩺 Probar servidor'),
+            el('button', { class: 'btn texto', type: 'button', onclick: copiarFuncion }, '📋 Copiar código de la función "enviar"'))));
+      } },
+      { k: 'registro', ico: '📜', t: 'Registro de cambios', d: 'Lo que se hizo en el panel', abrir: async (z) => {
+        const d = await rpc('admin_auditoria').catch(() => []);
+        z.append(el('div', { class: 'lista' }, d.length ? d.map((x) => el('div', { class: 'item', style: 'cursor:default' }, el('div', { class: 'crece' },
+          el('div', { class: 'nom' }, x.accion + (x.negocio ? ' · ' + x.negocio : '')), el('div', { class: 'sub', style: 'white-space:normal' }, JSON.stringify(x.detalle || {}).slice(0, 160))),
+          el('span', { class: 'sutil' }, fechaHora(x.at)))) : el('div', { class: 'vacio' }, 'Sin registros.')));
+      } },
+      { k: 'cuenta', ico: '👤', t: 'Mi cuenta', d: 'Clave y cerrar sesión', abrir: async (z) => {
+        const { data: u } = await sb.auth.getSession();
+        z.append(el('div', { class: 'tarjeta' }, el('p', null, (u.session && u.session.user.email) || ''),
+          el('div', { class: 'col' }, el('button', { class: 'btn', type: 'button', onclick: async () => {
+            const c1 = await pedirTexto('Cambiar contraseña', 'Nueva contraseña', { tipo: 'password', min: 8, max: 72 }); if (!c1) return;
+            const { error: er } = await sb.auth.updateUser({ password: c1 }); if (er) error(er); else toast('Contraseña cambiada ✓');
+          } }, '🔑 Cambiar contraseña'))));
+      } }
+    ];
     const caja = el('div');
-    const pintarS = () => vaciar(caja).append(...ls.map((x, i) => el('div', { class: 'slotpago' + (x.activo ? ' on' : '') },
-      el('label', { class: 'check' }, el('input', { type: 'radio', name: 'slotPro', checked: x.activo, onchange: () => { ls.forEach((y, j) => { y.activo = j === i; }); pintarS(); } }), el('strong', null, 'Espacio ' + (i + 1) + (x.activo ? ' · activo' : ''))),
-      el('input', { maxlength: 60, placeholder: 'Nombre (ej: Mercado Pago)', value: x.texto, oninput: (ev) => { x.texto = ev.target.value; } }),
-      el('input', { type: 'url', inputmode: 'url', maxlength: 300, placeholder: 'https://mpago.la/…', value: x.url, style: 'margin-top:6px', oninput: (ev) => { x.url = ev.target.value; } }))));
-    pintarS();
-    return { caja, valor: () => ls.map((x) => ({ texto: x.texto.trim(), url: x.url.trim(), activo: x.activo })) };
+    pintar(caja);
+    const aj = window.CFX_AJUSTES.montar(caja, SECC, { arriba: '<h2>Ajustes</h2><p class="sutil">Precios, planes, textos, keys, cupones, avisos, soporte y versiones se manejan en el Centro de Mando.</p>' });
+    if (sec && SECC.some((x) => x.k === sec)) aj.abrir(sec);
   }
-  // Asistente de actualización en 4 pasos: 1) base de datos, 2) función del servidor, 3) probar en tu celular, 4) liberar para todos.
-  // Nadie recibe cambios hasta el paso 4, y no se puede liberar si la base de datos o la función quedaron atrás.
-  async function leerPublicada() {
-    const j = await (await fetch('../version.json?t=' + Date.now(), { cache: 'no-store' })).json();
-    return { version: String(j.version || ''), bd: Number(j.bd || 0), funcion: String(j.funcion || '') };
-  }
-  function tarjetaVersiones(a, cfg) {
-    const caja = el('div', null, el('p', { class: 'sutil' }, 'Revisando…'));
-    const paso = (n, ok, titulo, ...cuerpo) => el('div', { class: 'paso-act ' + (ok === true ? 'ok' : ok === false ? 'pend' : '') },
-      el('b', null, ok === true ? '✓' : n), el('div', { class: 'crece' }, el('strong', null, titulo), ...cuerpo));
-    (async () => {
-      let pub;
-      try { pub = await leerPublicada(); } catch (e) { vaciar(caja).append(el('p', { class: 'rojo' }, 'No se pudo leer la versión publicada en GitHub. Revisa tu internet.')); return; }
-      const bd = Number((cfg && cfg.version_bd) || 0);
-      let fn = null; try { const r = await LC.funcion({ accion: 'ping' }); fn = r && r.ok ? String(r.version) : null; } catch (e) { fn = null; }
-      const okBd = bd >= pub.bd, okFn = !pub.funcion || (fn && !LC.versionMenor(fn, pub.funcion)), okCel = !LC.versionMenor(LC.VERSION, pub.version);
-      const liberada = !LC.versionMenor(a.version_liberada, pub.version);
-      const bLib = el('button', { class: 'btn primario ancho', type: 'button', disabled: liberada || !okBd || !okFn }, liberada ? '✓ La v' + pub.version + ' ya está liberada para todos' : '🚀 Liberar v' + pub.version + ' para todos');
-      bLib.onclick = async () => {
-        if (!await confirmar('Liberar actualización', '¿Liberar la v' + pub.version + '? A todos les aparecerá "✨ Hay una versión nueva" con el botón Actualizar.', 'Liberar')) return;
-        try { await conCarga(() => rpc('admin_guardar_ajustes', { p: { version_liberada: pub.version } })); toast('✅ v' + pub.version + ' liberada para todos'); if (!okCel) LC.actualizarAhora(); else vAjustes('versiones'); } catch (e) { error(e); }
-      };
-      vaciar(caja).append(...[
-        el('div', { class: 'grid2 mb' }, kpi('Publicada en GitHub', 'v' + pub.version), kpi('Liberada para todos', 'v' + a.version_liberada, liberada ? 'verde' : 'naranjo'),
-          kpi('Tu celular', 'v' + LC.VERSION, okCel ? 'verde' : 'naranjo'), kpi('Base de datos', bd ? 'v' + bd : '—', okBd ? 'verde' : 'rojo')),
-        liberada && okBd && okFn ? el('div', { class: 'banda info' }, '✅ Todo al día. Cuando publique una versión nueva, aquí verás los pasos.') : null,
-        // La base se actualiza sola cada 10 minutos (desde GitHub): aquí solo se ve su estado.
-        paso(1, okBd, 'Base de datos' + (okBd ? ' al día (v' + bd + ')' : ': actualizándose sola a la v' + pub.bd),
-          okBd ? null : el('p', { class: 'sutil' }, 'Se actualiza sola en máximo 10 minutos, sin borrar datos.'),
-          okBd ? null : el('button', { class: 'btn chico', type: 'button', onclick: () => vAjustes('versiones') }, '🔄 Revisar de nuevo')),
-        okFn ? null : paso(2, pub.funcion ? !!okFn : null, 'Función del servidor "enviar"' + (okFn ? ' al día' + (fn ? ' (v' + fn + ')' : '') : fn ? ': tienes v' + fn + ', falta v' + pub.funcion : ': no responde'),
-          okFn ? null : el('p', { class: 'sutil' }, 'Copia el código y en Supabase → Edge Functions → enviar → Code: borra todo, pega y toca Deploy. Si no existe, créala con el nombre "enviar" y apaga "Verify JWT".'),
-          el('div', { class: 'fila envolver' }, el('button', { class: 'btn chico' + (okFn ? '' : ' primario'), type: 'button', onclick: copiarFuncion }, '📋 Copiar código'),
-            el('a', { class: 'btn chico', href: 'https://supabase.com/dashboard/project/' + new URL(LC.C.SUPABASE_URL).hostname.split('.')[0] + '/functions', target: '_blank', rel: 'noopener' }, '↗ Abrir Edge Functions'),
-            el('button', { class: 'btn chico', type: 'button', onclick: () => vAjustes('versiones') }, '🩺 Probar de nuevo'))),
-        paso(3, okCel, okCel ? 'Tu celular ya tiene la v' + LC.VERSION : 'Pruébala en tu celular',
-          okCel ? el('p', { class: 'sutil' }, 'Revisa que todo funcione antes de liberarla.') : el('p', { class: 'sutil' }, 'Solo tu celular se actualiza. Revisa que todo funcione antes de liberarla.'),
-          okCel ? null : el('button', { class: 'btn chico primario', type: 'button', onclick: LC.actualizarAhora }, '⬇️ Actualizar mi celular a la v' + pub.version)),
-        paso(4, liberada, 'Liberar para todos', el('p', { class: 'sutil' }, !okBd || !okFn ? '🔒 Espera que la base termine de actualizarse: si liberas antes, la app de tus clientes fallaría.' : 'A cada billetera le aparece el botón Actualizar. Nadie recibe cambios hasta que tú lo apruebas.'), bLib),
-        el('button', { class: 'btn texto ancho', type: 'button', onclick: async () => { if (await confirmar('Reparar la app', 'Vuelve a descargar la app en este celular. No borra datos.', 'Reparar')) LC.repararApp(); } }, '🛠️ Reparar la app en este celular')].filter(Boolean));
-    })();
-    return el('div', { class: 'tarjeta', id: 'actualizaciones' }, el('h2', null, '🔄 Actualizar la app'), caja);
-  }
-  async function copiarArchivo(ruta, prueba, aviso) {
+  const copiarFuncion = async () => {
     try {
-      const t = await (await fetch(ruta + '?t=' + Date.now(), { cache: 'no-store' })).text();
-      if (!prueba.test(t)) throw new Error('No se pudo leer ' + ruta.split('/').pop());
-      copiar(t.split('\n').filter((x) => !x.startsWith('--') && !x.startsWith('//')).join('\n').trim(), aviso);
+      const t = await (await fetch('../supabase/functions/enviar/corto.ts?t=' + Date.now(), { cache: 'no-store' })).text();
+      if (!/^import /m.test(t)) throw new Error('No se pudo leer corto.ts');
+      copiar(t.split('\n').filter((x) => !x.startsWith('--') && !x.startsWith('//')).join('\n').trim(), 'Código copiado ✓ Pégalo en Edge Functions → enviar → Deploy');
     } catch (e) { toast('No se pudo copiar: ' + e.message, { error: true }); }
-  }
-  const copiarFuncion = () => copiarArchivo('../supabase/functions/enviar/corto.ts', /^import /m, 'Código copiado ✓ Pégalo en Edge Functions → enviar → Deploy');
+  };
   const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   async function generarVapid() {
     const cfg = await rpc('config_publica');
@@ -473,7 +315,7 @@
       const priv = (await crypto.subtle.exportKey('jwk', kp.privateKey)).d;
       await rpc('admin_set_secret', { p_nombre: 'vapid_private', p_valor: priv });
       await rpc('admin_set_secret', { p_nombre: 'vapid_public', p_valor: pub });
-      toast('Claves push listas ✓'); vAjustes();
+      toast('Claves push listas ✓'); vAjustes('push');
     } catch (e) { error(e); }
   }
   async function feriados() {
@@ -484,47 +326,6 @@
       el('h3', null, 'Agregar'), el('div', { class: 'grid2' }, fecha, nombre)),
     [{ texto: 'Cerrar', valor: null }, { texto: 'Agregar', clase: 'primario', valor: true }]);
     if (r && fecha.value) { await rpc('admin_feriado', { p_fecha: fecha.value, p_nombre: nombre.value, p_borrar: false }).catch(error); feriados(); }
-  }
-
-  // ---------- Soporte ----------
-  let canal = null;
-  async function vSoporte(neg) {
-    if (neg) return chatSoporte(neg);
-    const d = await conCarga(() => rpc('admin_soporte_lista'));
-    pintar(el('h2', null, 'Soporte'), el('p', { class: 'sutil' }, 'Chats privados con cada billetera. Te llega un aviso cuando alguien escribe.'),
-      el('div', { class: 'lista' }, d.length ? d.map((c) => el('a', { class: 'item', href: '#soporte/' + c.negocio },
-        el('div', { class: 'avatar', style: 'background:' + LC.colorDe(c.nombre) }, LC.iniciales(c.nombre)),
-        el('div', { class: 'crece' }, el('div', { class: 'nom' }, c.nombre), el('div', { class: 'sub' }, c.ultimo_texto || '')),
-        c.sin_leer ? el('span', { class: 'tag rojo' }, c.sin_leer) : el('span', { class: 'sutil' }, fechaCorta(c.ultimo))))
-        : el('div', { class: 'vacio' }, 'Aún no hay mensajes de soporte.')));
-  }
-  async function chatSoporte(neg) {
-    const cont = el('div', { class: 'chat-soporte' }), titulo = el('h2', { style: 'margin:0' }, 'Soporte');
-    const txt = el('textarea', { maxlength: 1000, placeholder: 'Escribe tu respuesta…', 'aria-label': 'Mensaje' });
-    const cargar = async () => {
-      const d = await rpc('admin_soporte_ver', { p_negocio: neg });
-      titulo.textContent = '💬 ' + (d.negocio || 'Soporte');
-      vaciar(cont);
-      if (!d.mensajes.length) cont.append(el('div', { class: 'vacio' }, 'Sin mensajes. Escríbele primero si quieres.'));
-      d.mensajes.forEach((m) => cont.append(el('div', { class: 'msg' + (m.de === 'admin' ? ' mio' : '') }, m.texto, el('div', { class: 'meta' }, fechaHora(m.creado) + (m.de === 'admin' && m.leido ? ' · ✓✓ visto' : '')))));
-      window.scrollTo(0, document.body.scrollHeight);
-    };
-    const enviar = async () => {
-      const t = txt.value.trim(); if (!t) return;
-      try { await rpc('admin_soporte_enviar', { p_negocio: neg, p_texto: t }); txt.value = ''; await cargar(); } catch (e) { error(e); }
-    };
-    txt.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } });
-    const borrar = async () => {
-      if (!await confirmar('Borrar chat', 'Se borra la conversación completa con esta billetera (para ambos). Los mensajes se borran solos a los 30 días.', 'Borrar', 'rojo')) return;
-      try { await rpc('admin_soporte_borrar', { p_negocio: neg }); toast('Chat borrado ✓'); location.hash = '#soporte'; } catch (e) { error(e); }
-    };
-    pintar(el('div', { class: 'fila mb' }, el('a', { class: 'btn-icono', href: '#soporte', style: 'text-decoration:none', 'aria-label': 'Volver' }, '←'), titulo,
-      el('button', { class: 'btn-icono', type: 'button', 'aria-label': 'Borrar chat', style: 'margin-left:auto', onclick: borrar }, '🗑️')),
-      cont, el('div', { class: 'escribir' }, txt, el('button', { class: 'btn primario', type: 'button', onclick: enviar }, 'Enviar')));
-    await cargar();
-    if (canal) sb.removeChannel(canal);
-    canal = sb.channel('adm-sop-' + neg).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'soporte', filter: 'negocio=eq.' + neg },
-      (p) => { if (p.new.de === 'negocio') cargar(); }).subscribe();
   }
 
   // ---------- Crear cuenta para un cliente ----------
