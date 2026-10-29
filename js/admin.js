@@ -1,4 +1,4 @@
-/* Panel del superadministrador: billeteras, pagos de conexiones extra y ajustes propios de la Libreta. No ve clientes ni deudas de los negocios.
+/* Panel del superadministrador: billeteras y ajustes propios (los pagos de conexiones extra se revisan en CM → Pagos) de la Libreta. No ve clientes ni deudas de los negocios.
    Precios, planes, textos, keys, cupones, avisos a todos, soporte y versiones se manejan en el Centro de Mando (Pagos, Control, Mensajes y Apps). */
 (function () {
   'use strict';
@@ -34,13 +34,13 @@
   function router() {
     const [v, a] = (location.hash.slice(1) || 'resumen').split('/');
     document.querySelectorAll('#nav a').forEach((x) => x.classList.toggle('activo', x.dataset.v === v));
-    ({ resumen: vResumen, negocios: vNegocios, pagos: vPagos, ajustes: vAjustes }[v] || vResumen)(a).catch(error);
+    ({ resumen: vResumen, negocios: vNegocios, registro: () => vAjustes('registro'), ajustes: vAjustes }[v] || vResumen)(a).catch(error);
   }
 
   // ---------- Resumen ----------
   async function vResumen() {
     const [r, op] = await conCarga(() => Promise.all([rpc('admin_resumen'), rpc('admin_oportunidades')]));
-    $('#badgePagos').textContent = r.pagos_pendientes; $('#badgePagos').classList.toggle('oculto', !r.pagos_pendientes);
+
 
     const pct = Math.round(r.bd_mb * 100 / 500);
     const conv = r.negocios ? Math.round(r.convertidos * 100 / r.negocios) : 0;
@@ -59,7 +59,7 @@
     pintar(el('h2', null, 'Resumen'),
       !r.cron_ok ? el('div', { class: 'banda error' }, '⚠️ Las tareas automáticas no están activas: en Supabase → Database → Extensions enciende pg_cron y pg_net, y vuelve a correr el SQL de actualización.') : null,
       !r.push_ok ? el('div', { class: 'banda aviso' }, '⚠️ Falta generar las claves push.', el('a', { class: 'btn chico', href: '#ajustes/push' }, 'Ir')) : null,
-      r.pagos_pendientes ? el('a', { class: 'banda info', href: '#pagos', style: 'text-decoration:none' }, '💳 ' + r.pagos_pendientes + ' pago(s) por revisar', el('span', { class: 'btn chico' }, 'Revisar')) : null,
+      r.pagos_pendientes ? el('a', { class: 'banda info', href: window.CFX_AYUDA ? CFX_AYUDA.panelCM() + '#pagos' : '#', style: 'text-decoration:none' }, '💳 ' + r.pagos_pendientes + ' pago(s) de conexiones por revisar en el Centro de Mando', el('span', { class: 'btn chico' }, 'Revisar')) : null,
       el('div', { class: 'kpi hero mb' }, el('div', { class: 't' }, 'Ingreso mensual recurrente (Pro activos × mensualidad)'), el('div', { class: 'grande' }, pesos(cfgP)),
         el('div', { class: 't' }, 'Cobrado este mes: ' + pesos(r.ingresos_mes) + ' · ' + r.convertidos + ' clientes han pagado (' + conv + '% de las billeteras)')),
       el('h3', null, 'Embudo de ventas'),
@@ -134,7 +134,7 @@
         el('span', { class: 'tag ' + (n.estado !== 'activo' ? 'rojo' : { pro: 'premium', prueba: 'marca', free: '' }[n.plan]) }, n.estado !== 'activo' ? n.estado : PLAN[n.plan]))));
     };
     inp.oninput = () => { busca = inp.value; clearTimeout(t); t = setTimeout(() => cargar().catch(error), 300); };
-    pintar(el('div', { class: 'fila entre mb' }, el('h2', { style: 'margin:0' }, 'Billeteras'), el('button', { class: 'btn chico primario', type: 'button', onclick: crearCuenta }, '＋ Crear cuenta')), inp,
+    pintar(el('div', { class: 'fila entre mb' }, el('h2', { style: 'margin:0' }, 'Billeteras'), el('button', { class: 'btn chico primario', type: 'button', id: 'bCrearCta', onclick: crearCuenta }, '＋ Crear cuenta')), inp,
       el('div', { class: 'chips mt' }, [['todos', 'Todas'], ['pro', '⭐ Pro'], ['prueba', 'En prueba'], ['free', 'Free'], ['vence', '⏳ Por vencer'], ['inactivos', '💤 Sin actividad 7 días'], ['suspendido', '⛔ Suspendidas'], ['eliminado', 'Por borrar']].map(([v, tx]) =>
         el('button', { class: 'chip' + (filtro === v ? ' activo' : ''), type: 'button', onclick: () => { filtro = v; vNegocios(); } }, tx))),
       lista,
@@ -210,31 +210,7 @@
     return r;
   }
 
-  // ---------- Pagos ----------
-  let filtroPago = 'pendiente';
-  async function vPagos() {
-    const todos = await conCarga(() => rpc('admin_pagos'));
-    const d = filtroPago ? todos.filter((x) => x.estado === filtroPago) : todos;
-    const lista = el('div', { class: 'col' });
-    if (!d.length) lista.append(el('div', { class: 'lista' }, el('div', { class: 'vacio' }, 'Sin pagos aquí.')));
-    for (const s of d) {
-      const foto = el('div');
-      if (s.comprobante_path) sb.storage.from('pagos').createSignedUrl(s.comprobante_path, 600).then(({ data: u }) => { if (u) foto.append(el('img', { class: 'foto-comp mt', src: u.signedUrl, alt: 'Comprobante', onclick: () => abrir(u.signedUrl) }),
-        el('button', { class: 'btn chico mt', type: 'button', onclick: async () => { try { LC.descargar('pago-' + LC.norm(s.negocio_nombre).replace(/[^a-z0-9]+/g, '-') + '-' + String(s.creado).slice(0, 10) + '.jpg', await (await fetch(u.signedUrl)).blob()); } catch (e) { abrir(u.signedUrl); } } }, '⬇️ Descargar')); });
-      lista.append(el('div', { class: 'tarjeta' },
-        el('div', { class: 'fila entre' }, el('strong', null, s.negocio_nombre), el('span', { class: 'tag ' + (s.estado === 'aprobada' ? 'verde' : s.estado === 'rechazada' ? 'rojo' : 'naranjo') }, s.estado)),
-        el('div', null, (s.tipo === 'conexiones' ? '🤝 ' + s.paquetes + ' paquete' + (s.paquetes > 1 ? 's' : '') + ' de conexiones' : s.meses === 12 ? '📅 Pro anual (12 meses)' : 'Pro 1 mes') + ' · ' + pesos(s.monto) + ' · ' + fechaHora(s.creado)), s.cupon ? el('div', { class: 'verde' }, '🏷️ Usó el cupón ' + s.cupon) : null,
-        s.nota ? el('p', { class: 'sutil' }, '“' + s.nota + '”') : null, s.motivo ? el('p', { class: 'rojo' }, s.motivo) : null, foto,
-        s.estado === 'pendiente' ? el('div', { class: 'grid2 mt' },
-          el('button', { class: 'btn peligro', type: 'button', onclick: async () => { const m = await pedirTexto('Rechazar pago', 'Motivo (lo verá el negocio)', { min: 3, max: 150, boton: 'Rechazar', clase: 'rojo' }); if (m) { try { await conCarga(() => rpc('admin_resolver_pago', { p_id: s.id, p_aprobar: false, p_motivo: m })); vPagos(); } catch (e) { error(e); } } } }, 'Rechazar'),
-          el('button', { class: 'btn verde', type: 'button', onclick: async () => { if (await confirmar('Aprobar pago', 'Revisa que el dinero (' + pesos(s.monto) + ') haya llegado. ¿Aprobar ' + (s.tipo === 'conexiones' ? s.paquetes + ' paquete(s) de conexiones' : s.meses === 12 ? '12 meses de Pro (plan anual)' : '1 mes de Pro') + '?', 'Aprobar')) { try { await conCarga(() => rpc('admin_resolver_pago', { p_id: s.id, p_aprobar: true, p_motivo: null })); toast('Aprobado ✓'); vPagos(); } catch (e) { error(e); } } } }, 'Aprobar')) : null));
-    }
-    const cuenta = (e) => todos.filter((x) => !e || x.estado === e).length;
-    pintar(el('h2', null, 'Pagos'), el('div', { class: 'subtabs' }, [['pendiente', '🧾 Por revisar'], ['aprobada', '✅ Aprobados'], ['rechazada', '❌ Rechazados'], ['', 'Todos']].map(([k, tx]) =>
-      el('button', { class: 'chip' + (filtroPago === k ? ' activo' : ''), type: 'button', onclick: () => { filtroPago = k; vPagos(); } }, tx + ' (' + cuenta(k) + ')'))),
-      el('p', { class: 'sutil' }, 'Aquí llegan los "Ya pagué" de las billeteras (Pro y conexiones extra). Revisa que la plata llegó y aprueba.'), lista);
-  }
-
+  // ---------- Avisos ----------
   async function enviarAviso(destino, negocio) {
     const tit = el('input', { maxlength: 80 }), cue = el('textarea', { maxlength: 300 });
     const ok = await dialogo('Nuevo aviso', el('div', null, el('div', { class: 'campo' }, el('label', null, 'Título'), tit), el('div', { class: 'campo' }, el('label', null, 'Mensaje'), cue)),

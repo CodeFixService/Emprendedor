@@ -21,7 +21,7 @@
   <nav class="nav" id="nav" aria-label="Menú de administración">
     <a href="#resumen" data-v="resumen"><span class="ico" data-ico="grafico">📈</span>Resumen</a>
     <a href="#negocios" data-v="negocios"><span class="ico" data-ico="tienda">🏪</span>Billeteras</a>
-    <a href="#pagos" data-v="pagos"><span class="ico" data-ico="tarjeta">💳</span>Pagos<span id="badgePagos" class="punto oculto"></span></a>
+    <a href="#registro" data-v="registro"><span class="ico" data-ico="documento">📜</span>Registro</a>
     <a href="#ajustes" data-v="ajustes"><span class="ico" data-ico="ajustes">⚙️</span>Ajustes</a>
   </nav>
   <script src="../vendor/supabase.js"></script>
@@ -30,6 +30,7 @@
   <script src="../js/admin.js"></script>
 <script src="../js/iconos.js"></script>
 <script src="../js/instalar.js"></script>
+<script>window.CFX_BARRA = { orden: ['resumen', 'negocios', '+', 'registro', 'ajustes'], nuevo: { texto: 'Cuenta', ir: 'negocios', click: '#bCrearCta' } }; // pagos de conexiones extra: CM → Pagos</script>
 <script src="../js/barra.js"></script>
 <script src="../js/auto.js"></script>
 <script src="../js/fotos.js"></script>

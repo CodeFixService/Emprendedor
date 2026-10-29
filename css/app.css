@@ -379,3 +379,5 @@ table.uso td.r { text-align: right; font-variant-numeric: tabular-nums; }
 .grid2 > *, .grid3 > * { min-width: 0; }
 .grid3 > .btn, .grid2 > .btn { padding: 0 8px; white-space: normal; line-height: 1.2; }
 @media (max-width: 380px) { .grid3 > .btn { font-size: .85em; gap: 5px; } .app { padding-left: 12px; padding-right: 12px; } .barra-sup { margin-left: -12px; margin-right: -12px; padding-left: 12px; padding-right: 12px; } }
+/* Más en cuadrícula: la flecha "›" de las filas no se usa en tarjetas (quedaba sola en otra línea). */
+.cfx-grilla > a.item > .sutil:last-child { display: none; }
