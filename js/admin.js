@@ -283,6 +283,7 @@
         z.append(el('div', { class: 'lista' }, d.length ? d.map((x) => el('div', { class: 'item', style: 'cursor:default' }, el('div', { class: 'crece' },
           el('div', { class: 'nom' }, x.accion + (x.negocio ? ' · ' + x.negocio : '')), el('div', { class: 'sub', style: 'white-space:normal' }, JSON.stringify(x.detalle || {}).slice(0, 160))),
           el('span', { class: 'sutil' }, fechaHora(x.at)))) : el('div', { class: 'vacio' }, 'Sin registros.')));
+        window.CFX_AJUSTES.registro(z, (f, x) => rpc(f, x), { recargar: () => vAjustes('registro') });
       } },
       { k: 'cuenta', ico: '👤', t: 'Mi cuenta', d: 'Clave y cerrar sesión', abrir: async (z) => {
         const { data: u } = await sb.auth.getSession();

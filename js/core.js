@@ -1,8 +1,8 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.18.0';
-  const BD = 18; // versión de la base de datos que necesita esta versión de la app
+  const VERSION = '1.19.0';
+  const BD = 19; // versión de la base de datos que necesita esta versión de la app
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
   const sb = global.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, {
@@ -108,13 +108,8 @@
     const svg = document.importNode(doc.documentElement, true); svg.setAttribute('class', 'ic'); return svg;
   }
   // Las barras de opciones que se deslizan de lado quedan mostrando la opción elegida (no vuelven al inicio).
-  function centrarActivos(raiz) {
-    requestAnimationFrame(() => (raiz || document).querySelectorAll('.subtabs, .chips').forEach((c) => {
-      const a = c.querySelector('.activo'); if (!a || c.scrollWidth <= c.clientWidth) return;
-      const ra = a.getBoundingClientRect(), rc = c.getBoundingClientRect();
-      c.scrollLeft = Math.max(0, c.scrollLeft + (ra.left - rc.left) - (rc.width - ra.width) / 2);
-    }));
-  }
+  // (El núcleo recuerda dónde quedó cada tira; aquí solo se asegura que la opción elegida se vea, sin mover la tira si ya se ve.)
+  function centrarActivos(raiz) { requestAnimationFrame(() => { if (window.CodeFixTiras) window.CodeFixTiras.ajustar(raiz); }); }
   function aplicarColor(hex, guardar) {
     const r = document.documentElement.style;
     if (!/^#[0-9a-f]{6}$/i.test(hex || '')) hex = null;
