@@ -340,7 +340,7 @@
       el('div', { class: 'chips mt' }, FILTROS.filter((f) => f[0] !== 'fuera' || S.st.uso.fuera_de_plan).map(([v, t]) => el('button', { class: 'chip' + (filtroCli === v ? ' activo' : ''), type: 'button', onclick: () => { filtroCli = v; vClientes(); } }, t))),
       el('div', { class: 'fila entre mb' }, el('span', { class: 'sutil' }, 'Ordenar por'), orden),
       lista,
-      el('button', { class: 'fab', type: 'button', 'aria-label': 'Nuevo cliente', onclick: () => formCliente() }, '＋'));
+      el('button', { class: 'fab con-texto', type: 'button', 'aria-label': 'Nuevo cliente', onclick: () => formCliente() }, '＋ Cliente'));
     pintarLista();
   }
 
