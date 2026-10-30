@@ -33,7 +33,7 @@
       const ul = vaciar($('#listaPro')); c.planes.pro.beneficios.forEach((t) => ul.append(el('li', null, String(t).replace(/^\S+\s/, (m) => /[A-Za-zÁÉÍÓÚáéíóúÑñ0-9]/.test(m) ? m : ''))));
     }
     $('#diasPrueba').textContent = c.dias_prueba;
-    $('#txtPrueba').textContent = c.dias_prueba > 0 ? c.dias_prueba + ' días de Pro gratis' : 'Gratis para siempre';
+    $('#txtPrueba').textContent = '30 días de Pro con tu primer pago';
     // Precios: los mismos de las 6 apps (núcleo, se editan en el Centro de Mando → Pagos).
     rpc('cfx_precios').then((x) => {
       const n = (x && x.negocio) || {}; if (!n.mensual) return;
