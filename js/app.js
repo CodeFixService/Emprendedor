@@ -161,7 +161,7 @@
     sb.channel('lc-' + id)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'movimientos', filter: 'negocio=eq.' + id }, () => { cargarClientes().then(refrescarVista).catch(() => {}); })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificaciones', filter: 'negocio=eq.' + id }, (p) => {
-        toast('🔔 ' + p.new.titulo); refrescarEstado().catch(() => {}); refrescarVista();
+        if (window.CFX_ANIM) window.CFX_ANIM.emergente({ titulo: p.new.titulo, cuerpo: p.new.cuerpo }); else toast('🔔 ' + p.new.titulo); refrescarEstado().catch(() => {}); refrescarVista();
       })
       .subscribe();
   }
@@ -1477,6 +1477,7 @@
     const quitar = async (ev, id) => {
       ev.preventDefault(); ev.stopPropagation();
       if (id == null && !await confirmar('Borrar avisos', '¿Borrar todos tus avisos?', 'Borrar', 'rojo')) return;
+      if (id == null && window.CFX_ANIM) await window.CFX_ANIM.salirTodos();
       try { await rpc('borrar_avisos', { p_id: id }); vAvisos(); } catch (e) { error(e); }
     };
     pintar(el('div', { class: 'fila mb' }, el('h2', { style: 'margin:0', class: 'crece' }, 'Avisos'), (data || []).length ? el('button', { class: 'btn chico', type: 'button', onclick: (e) => quitar(e, null) }, 'Borrar todos') : null),
