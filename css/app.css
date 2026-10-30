@@ -381,3 +381,5 @@ table.uso td.r { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 380px) { .grid3 > .btn { font-size: .85em; gap: 5px; } .app { padding-left: 12px; padding-right: 12px; } .barra-sup { margin-left: -12px; margin-right: -12px; padding-left: 12px; padding-right: 12px; } }
 /* Más en cuadrícula: la flecha "›" de las filas no se usa en tarjetas (quedaba sola en otra línea). */
 .cfx-grilla > a.item > .sutil:last-child { display: none; }
+/* Computador: el contenido no queda pegado al menú lateral (el núcleo quita el padding de .con-nav; aquí se deja el mismo aire que las otras apps). */
+@media (min-width: 900px) { body.cfx-con-barra .app.con-nav { padding-left: 28px !important; padding-right: 28px !important; } }
