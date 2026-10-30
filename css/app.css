@@ -197,7 +197,7 @@ input.mal { border-color: var(--deuda); }
 .banda.aviso { background: var(--aviso-suave); color: var(--aviso); }
 .banda.error { background: var(--deuda-suave); color: var(--deuda); }
 .banda.info { background: var(--marca-suave); color: var(--marca-2); }
-.banda .btn { margin-left: auto; }
+.banda .btn { margin-left: auto; white-space: nowrap; flex: none; }
 .pie { text-align: center; font-size: .75em; color: var(--texto-2); padding: 20px 0 8px; }
 .copiar-fila { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--borde); }
 .copiar-fila:last-child { border-bottom: 0; }

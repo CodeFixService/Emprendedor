@@ -335,12 +335,14 @@
     orden.onchange = () => { ordenCli = orden.value; pintarLista(); };
     pintar(
       el('div', { class: 'fila entre mb' }, el('h2', { style: 'margin:0' }, 'Clientes'),
-        lim ? el('span', { class: 'tag ' + (activos >= lim ? 'rojo' : activos >= lim * 0.8 ? 'naranjo' : '') }, activos + ' de ' + lim + ' (Normal)') : el('span', { class: 'tag premium' }, 'Ilimitados')),
+        el('div', { class: 'fila', style: 'gap:8px;align-items:center' },
+          lim ? el('span', { class: 'tag ' + (activos >= lim ? 'rojo' : activos >= lim * 0.8 ? 'naranjo' : '') }, activos + ' de ' + lim + ' (Normal)') : el('span', { class: 'tag premium' }, 'Ilimitados'),
+          // Arriba junto al título (flotando tapaba la lista).
+          el('button', { class: 'btn primario chico', type: 'button', 'aria-label': 'Nuevo cliente', onclick: () => formCliente() }, '＋ Cliente'))),
       busc,
       el('div', { class: 'chips mt' }, FILTROS.filter((f) => f[0] !== 'fuera' || S.st.uso.fuera_de_plan).map(([v, t]) => el('button', { class: 'chip' + (filtroCli === v ? ' activo' : ''), type: 'button', onclick: () => { filtroCli = v; vClientes(); } }, t))),
       el('div', { class: 'fila entre mb' }, el('span', { class: 'sutil' }, 'Ordenar por'), orden),
-      lista,
-      el('button', { class: 'fab con-texto', type: 'button', 'aria-label': 'Nuevo cliente', onclick: () => formCliente() }, '＋ Cliente'));
+      lista);
     pintarLista();
   }
 
