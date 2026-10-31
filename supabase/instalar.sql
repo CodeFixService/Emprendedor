@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '21'),
+  ('version_bd', '22'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -963,7 +963,7 @@ begin
   if n.conexiones_extra + p_paquetes > 200 then perform privado.fallo('Máximo 200 paquetes'); end if;
   v_monto := p_paquetes * a.precio_paquete;
   insert into public.solicitudes_pago (negocio, meses, monto, nota, tipo, paquetes) values (v_neg, 1, v_monto, privado.limpio(p_nota, 200), 'conexiones', p_paquetes);
-  perform privado.avisar_usuario(privado.admin_id(), 'Pago por revisar', n.nombre || ' pidió ' || p_paquetes * a.conexiones_paquete || ' conexiones más (' || privado.pesos(v_monto) || ').', 'admin/#pagos', true);
+  perform privado.avisar_usuario(privado.admin_id(), '💳 Pago por revisar', n.nombre || ' pidió ' || p_paquetes * a.conexiones_paquete || ' conexiones más (' || privado.pesos(v_monto) || ').', 'admin/#pagos', true);
   return jsonb_build_object('ok', true, 'monto', v_monto);
 end $$;
 
@@ -1104,9 +1104,9 @@ begin
   perform privado.recalcular(p_cliente);
   if p_tipo = 'ajuste' then perform privado.auditar(p_neg, 'ajuste', jsonb_build_object('mov', p_id, 'cliente', p_cliente, 'monto', p_monto * v_signo, 'motivo', v_desc)); end if;
   if p_tipo = 'cargo' and p_venta is null then
-    perform privado.push(null, null, p_cliente, n.nombre || ': nuevo cargo', 'Se anotó ' || privado.pesos(p_monto) || coalesce(' · ' || v_desc, '') || '. Toca para revisarlo.', 'c/');
+    perform privado.push(null, null, p_cliente, '🧾 ' || n.nombre || ': nuevo cargo', 'Se anotó ' || privado.pesos(p_monto) || coalesce(' · ' || v_desc, '') || '. Toca para revisarlo.', 'c/');
   elsif v_signo = -1 and p_comprobante is null then
-    perform privado.push(null, null, p_cliente, n.nombre || ': pago recibido', 'Se registró tu pago de ' || privado.pesos(p_monto) || '. ¡Gracias!', 'c/');
+    perform privado.push(null, null, p_cliente, '💰 ' || n.nombre || ': pago recibido', 'Se registró tu pago de ' || privado.pesos(p_monto) || '. ¡Gracias!', 'c/');
   end if;
   return jsonb_build_object('ok', true, 'saldo', (select saldo from public.clientes where id = p_cliente));
 end $$;
@@ -1638,7 +1638,7 @@ begin
       perform privado.recalcular(m.cliente);
     end if;
   end if;
-  perform privado.push(null, null, m.cliente, 'Respuesta a tu reclamo', v_com, 'c/');
+  perform privado.push(null, null, m.cliente, '💬 Respuesta a tu reclamo', v_com, 'c/');
 end $$;
 
 -- ---------- Cobrar ----------
@@ -1675,7 +1675,7 @@ begin
   insert into public.recordatorios (negocio, cliente, canal, tono, enviado_por) values (v_neg, p_cliente, p_canal, p_tono, auth.uid());
   if p_canal = 'push' then
     select nombre into n from public.negocios where id = v_neg;
-    perform privado.push(null, null, p_cliente, n.nombre || ': recordatorio', coalesce(privado.limpio(p_texto, 180), 'Tienes un saldo pendiente de ' || privado.pesos(c.saldo) || '.'), 'c/');
+    perform privado.push(null, null, p_cliente, '🔔 ' || n.nombre || ': recordatorio', coalesce(privado.limpio(p_texto, 180), 'Tienes un saldo pendiente de ' || privado.pesos(c.saldo) || '.'), 'c/');
   end if;
   return jsonb_build_object('ok', true);
 end $$;
@@ -1693,12 +1693,12 @@ begin
     r := privado.mov_insertar(v_neg, v_abono, k.cliente, 'abono', coalesce(p_monto, k.monto), -1, 'Transferencia (comprobante)',
       'transferencia', now(), null, null, false, true, p_id);
     update public.comprobantes set estado = 'aprobado', abono = v_abono, revisado_por = auth.uid(), revisado_at = now() where id = p_id;
-    perform privado.push(null, null, k.cliente, n.nombre || ': pago confirmado', 'Confirmamos tu transferencia de ' || privado.pesos(coalesce(p_monto, k.monto)) || '. ¡Gracias!', 'c/');
+    perform privado.push(null, null, k.cliente, '✅ ' || n.nombre || ': pago confirmado', 'Confirmamos tu transferencia de ' || privado.pesos(coalesce(p_monto, k.monto)) || '. ¡Gracias!', 'c/');
     return r;
   else
     if v_mot is null or char_length(v_mot) < 3 then perform privado.fallo('Escribe el motivo del rechazo'); end if;
     update public.comprobantes set estado = 'rechazado', motivo = v_mot, revisado_por = auth.uid(), revisado_at = now() where id = p_id;
-    perform privado.push(null, null, k.cliente, n.nombre || ': comprobante no aprobado', v_mot, 'c/');
+    perform privado.push(null, null, k.cliente, '❌ ' || n.nombre || ': comprobante no aprobado', v_mot, 'c/');
     return jsonb_build_object('ok', true);
   end if;
 end $$;
@@ -1832,7 +1832,7 @@ begin
     else a.precio_mensual + n.conexiones_extra * a.precio_paquete end + privado.precio_activacion(v_neg);
   insert into public.solicitudes_pago (negocio, meses, monto, comprobante_path, nota, cupon)
   values (v_neg, p_meses, v_monto, p_path, privado.limpio(p_nota, 200), case when not n.activado and privado.cupon_valido(n.cupon) then n.cupon end);
-  perform privado.avisar_usuario(privado.admin_id(), 'Pago por revisar', n.nombre || ' dice que pagó ' || privado.pesos(v_monto)
+  perform privado.avisar_usuario(privado.admin_id(), '💳 Pago por revisar', n.nombre || ' dice que pagó ' || privado.pesos(v_monto)
     || case when p_meses = 12 then ' (plan anual' else ' (mensualidad' end || case when n.activado then ').' else ' + activación).' end, 'admin/#pagos', true);
 end $$;
 
@@ -2281,7 +2281,7 @@ begin
   insert into public.comprobantes (negocio, cliente, monto, fecha, comentario) values (c.negocio, v_cli, p_monto, p_fecha, privado.limpio(p_comentario, 100))
   returning id into v_id;
   update public.uso_mensual set comprobantes = comprobantes + 1 where negocio = c.negocio and mes = date_trunc('month', hoy)::date;
-  perform privado.avisar_negocio(c.negocio, 'Comprobante de ' || c.nombre, 'Dice que transfirió ' || privado.pesos(p_monto) || '. Revísalo y apruébalo.', 'app/#comprobantes', true);
+  perform privado.avisar_negocio(c.negocio, '💰 ' || c.nombre || ' avisó que pagó', 'Dice que transfirió ' || privado.pesos(p_monto) || '. Revísalo y apruébalo.', 'app/#comprobantes', true);
   if coalesce(p_con_foto, false) then
     v_tok := encode(extensions.gen_random_bytes(24), 'hex');
     insert into privado.fotos_pendientes (comprobante, token_hash, vence) values (v_id, privado.sha(v_tok), now() + interval '15 minutes');
@@ -3548,6 +3548,28 @@ begin
   return n;
 end $$;
 
+-- ---------- Nueva versión disponible: push a todos al liberar (una sola vez por versión) ----------
+-- La llama el Centro de Mando después de liberar (Apps → Liberar) con las notas que se escriben ahí.
+create table if not exists public.cfx_versiones (version text primary key, notas text not null default '', avisados int not null default 0, creado timestamptz not null default now());
+alter table public.cfx_versiones enable row level security;
+create or replace function public.cfx_avisar_version(p_version text, p_notas text default '', p_app text default '') returns int
+language plpgsql security definer set search_path = '' as $$
+declare u uuid; n int := 0; v text := trim(coalesce(p_version, '')); nt text := left(trim(coalesce(p_notas, '')), 140);
+begin
+  perform privado.solo_admin();
+  if v !~ '^[0-9]+(\.[0-9]+){0,3}$' then raise exception 'Versión no válida'; end if;
+  if exists (select 1 from public.cfx_versiones where version = v) then return 0; end if;
+  for u in select * from public.cfx_destinatarios('todos') loop
+    perform public.cfx_avisar(u, '🚀 Nueva versión disponible', left(coalesce(nullif(trim(p_app), '') || ' ', '') || 'v' || v || case when nt <> '' then ' · ' || nt else '' end || '. Se actualiza sola al abrirla.', 240));
+    n := n + 1;
+  end loop;
+  insert into public.cfx_versiones (version, notas, avisados) values (v, nt, n);
+  perform public.cfx_anotar('version', 'v' || v || ' avisada a ' || n);
+  return n;
+end $$;
+revoke execute on function public.cfx_avisar_version(text, text, text) from public, anon;
+grant execute on function public.cfx_avisar_version(text, text, text) to authenticated;
+
 -- ---------- Keys de Premium (de un solo uso). Se guardan cifradas: el código completo solo se ve al crearlas. ----------
 create or replace function public.cfx_keys_crear(p_n int, p_rol text, p_dias int, p_nota text default '') returns jsonb
 language plpgsql security definer set search_path = '' as $$
@@ -4083,7 +4105,7 @@ grant execute on function public.cfx_es_socio(), public.cfx_socios_lista(), publ
 --   Nada se borra solo: las vacías se borran con un toque; las que tienen datos piden descargar el respaldo y escribir "sí".
 --   cfx_tablas() = las tablas que crea este archivo (la revisa pruebas/inventario.py --verificar).
 -- ---------------------------------------------------------------------
-create or replace function public.cfx_tablas() returns text[] language sql immutable as $$ select array['privado.archivos_por_borrar', 'privado.config', 'privado.fotos_pendientes', 'privado.limites', 'privado.pruebas_usadas', 'privado.secretos', 'privado.tareas_hechas', 'public.ajustes', 'public.auditoria', 'public.caja', 'public.categorias', 'public.cfx_chat', 'public.cfx_config', 'public.cfx_cupones', 'public.cfx_exentos', 'public.cfx_keys', 'public.cfx_pagos', 'public.cfx_ref_codigos', 'public.cfx_referidos', 'public.cfx_registro', 'public.cfx_socios', 'public.cfx_verificaciones', 'public.clientes', 'public.cola_push', 'public.comprobantes', 'public.conexion_movs', 'public.conexiones', 'public.cuotas', 'public.cupones', 'public.feriados', 'public.invitaciones', 'public.keys', 'public.miembros', 'public.movimientos', 'public.negocios', 'public.notificaciones', 'public.perfiles', 'public.productos', 'public.push_subs', 'public.recordatorios', 'public.sesiones_cliente', 'public.solicitudes_pago', 'public.soporte', 'public.uso_mensual', 'public.ventas_cuotas'] $$;
+create or replace function public.cfx_tablas() returns text[] language sql immutable as $$ select array['privado.archivos_por_borrar', 'privado.config', 'privado.fotos_pendientes', 'privado.limites', 'privado.pruebas_usadas', 'privado.secretos', 'privado.tareas_hechas', 'public.ajustes', 'public.auditoria', 'public.caja', 'public.categorias', 'public.cfx_chat', 'public.cfx_config', 'public.cfx_cupones', 'public.cfx_exentos', 'public.cfx_keys', 'public.cfx_pagos', 'public.cfx_ref_codigos', 'public.cfx_referidos', 'public.cfx_registro', 'public.cfx_socios', 'public.cfx_verificaciones', 'public.cfx_versiones', 'public.clientes', 'public.cola_push', 'public.comprobantes', 'public.conexion_movs', 'public.conexiones', 'public.cuotas', 'public.cupones', 'public.feriados', 'public.invitaciones', 'public.keys', 'public.miembros', 'public.movimientos', 'public.negocios', 'public.notificaciones', 'public.perfiles', 'public.productos', 'public.push_subs', 'public.recordatorios', 'public.sesiones_cliente', 'public.solicitudes_pago', 'public.soporte', 'public.uso_mensual', 'public.ventas_cuotas'] $$;
 create or replace function public.cfx_inventario() returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare r record; n bigint; out jsonb := '[]'::jsonb;

@@ -43,7 +43,6 @@
     const [r, op] = await conCarga(() => Promise.all([rpc('admin_resumen'), rpc('admin_oportunidades')]));
 
 
-    const pct = Math.round(r.bd_mb * 100 / 500);
     const conv = r.negocios ? Math.round(r.convertidos * 100 / r.negocios) : 0;
     const dias = []; for (let i = 29; i >= 0; i--) dias.push(LC.sumarDias(LC.hoyISO(), -i));
     const porDia = Object.fromEntries(L(r.registros_dia).map((x) => [x.dia, x.n]));
@@ -86,13 +85,8 @@
       op1('🙂 En Free y usando la app', op.free, (n) => (n.activado ? 'Venció su Pro' : 'Terminó su prueba') + ' · entró ' + (n.ultimo_uso ? LC.relativo(n.ultimo_uso.slice(0, 10)) : '—'), (n) => 'Hola ' + n.nombre + ', vi que sigues usando tu billetera 🙌 Si activas Pro tienes cobro a todos de una, recibos, reportes y todo sin límites. ¿Te cuento?'),
       !L(op.quieren_pro).length && !L(op.prueba_termina).length && !L(op.pro_vence).length && !L(op.free).length ? el('div', { class: 'lista' }, el('div', { class: 'vacio' }, 'Sin oportunidades por ahora.')) : null,
       el('button', { class: 'btn primario ancho mb mt', type: 'button', onclick: crearCuenta }, '＋ Crear cuenta para un cliente'),
-      el('div', { class: 'tarjeta' }, el('h2', null, 'Uso del servidor'),
-        el('div', { class: 'fila entre' }, el('span', null, 'Base de datos'), el('strong', null, r.bd_mb + ' MB de 500 MB')),
-        el('div', { class: 'barra ' + (pct >= 85 ? 'lleno' : pct >= 70 ? 'alerta' : '') }, el('i', { style: 'width:' + Math.min(pct, 100) + '%' })),
-        el('div', { class: 'fila entre mt' }, el('span', null, 'Archivos (fotos)'), el('strong', null, r.archivos_mb + ' MB de 1.024 MB')),
-        pct >= 70 ? el('p', { class: 'naranjo mt' }, 'Pasaste el 70%: es momento de pasar a Supabase Pro.') : null,
-        el('p', { class: 'sutil mt' }, 'Avisos en cola: ' + r.cola_push),
-        el('details', { class: 'mt' }, el('summary', { class: 'sutil', style: 'cursor:pointer' }, 'Ver cada tabla y limpiar'), usoDetalle)),
+      // El uso del servidor (base, archivos, cola) se ve en el Centro de Mando → Resumen (carrusel de servidores). Aquí solo limpiar y respaldar.
+      el('div', { class: 'tarjeta' }, el('h2', null, '🧹 Limpieza y respaldo'), usoDetalle),
       el('button', { class: 'btn ancho mt', type: 'button', onclick: probar }, '🩺 Probar servidor de avisos'),
       null);
   }
@@ -100,9 +94,8 @@
   async function pintarUso() {
     const u = await rpc('admin_uso').catch(() => null); if (!u) return;
     const limpiar = async (que, tx) => { if (!await confirmar('Limpiar', tx, 'Limpiar', 'rojo')) return; try { const n = await conCarga(() => rpc('admin_limpiar', { p_que: que })); toast('Listo ✓ (' + n + ')'); pintarUso(); } catch (e) { error(e); } };
-    vaciar(usoDetalle).append(el('table', { class: 'uso' }, (u.tablas || []).slice(0, 25).map((x) => el('tr', null, el('td', null, x.tabla), el('td', { class: 'r sutil' }, Math.max(0, x.filas) + ' filas'), el('td', { class: 'r' }, (x.bytes / 1024 / 1024).toFixed(2) + ' MB')))),
-      (u.archivos || []).length ? el('p', { class: 'sutil mt' }, 'Archivos: ' + u.archivos.map((x) => x.bucket + ' ' + x.n + ' (' + x.mb + ' MB)').join(' · ')) : null,
-      el('div', { class: 'grid2 mt' }, el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('comprobantes', 'Borra las fotos de comprobantes revisados más antiguas que los días de Ajustes → Reglas.') }, '🧾 Comprobantes viejos'),
+    vaciar(usoDetalle).append(
+      el('div', { class: 'grid2' }, el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('comprobantes', 'Borra las fotos de comprobantes revisados más antiguas que los días de Ajustes → Reglas.') }, '🧾 Comprobantes viejos'),
         el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('avisos', 'Borra los avisos leídos de más de 30 días.') }, '🔔 Avisos leídos'),
         el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('cola', 'Borra la cola de push ya enviada.') }, '📤 Cola de push'),
         el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('sesiones', 'Borra sesiones vencidas de los links de clientes.') }, '🔗 Sesiones vencidas'),
