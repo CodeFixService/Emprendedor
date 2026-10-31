@@ -383,3 +383,6 @@ table.uso td.r { text-align: right; font-variant-numeric: tabular-nums; }
 .cfx-grilla > a.item > .sutil:last-child { display: none; }
 /* Computador: el contenido no queda pegado al menú lateral (el núcleo quita el padding de .con-nav; aquí se deja el mismo aire que las otras apps). */
 @media (min-width: 900px) { body.cfx-con-barra .app.con-nav { padding-left: 28px !important; padding-right: 28px !important; } }
+/* Listas tipo menú (Mi cuenta, portal): cada fila separada con su línea, aunque el núcleo le dé estilo de botón */
+.lista > .item { border-style: solid !important; border-width: 0 0 1px 0 !important; border-color: var(--borde) !important; border-radius: 0 !important; box-shadow: none !important; min-height: 52px; margin: 0 !important; background: none !important; justify-content: flex-start !important; }
+.lista > .item:last-child { border-bottom-width: 0 !important; }
