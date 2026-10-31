@@ -1502,43 +1502,40 @@
   }
 
   // ================= MI CUENTA =================
+  // Nombre, ícono, color, modo, notificaciones, contraseña y borrar cuenta: perfil común del núcleo (ayuda.js → CFX_PERFIL).
+  window.CFX_PERFIL_APP = {
+    __proto__: LC.perfil,
+    nombre: () => (S.neg ? S.neg.nombre : ''), correo: () => S.email, sub: () => (esDueno() ? 'Dueño' : 'Ayudante'),
+    tituloNombre: 'Nombre de tu libreta', nombreFijo: 'Se cambia en Ajustes del negocio.',
+    get iconos() { return S.neg && esDueno() ? [''].concat(LC.ICONOS) : []; }, icono: () => (S.neg && S.neg.icono) || '',
+    guardar: async (d) => { if (esDueno() && (d.icono || '') !== (S.neg.icono || '')) { await conCarga(() => rpc('guardar_perfil', { p_icono: d.icono || null, p_color: S.neg.color || LC.TEMAS[0][0] })); await refrescarEstado(); } },
+    colores: LC.TEMAS.map(([hex, nom]) => [nom, hex]), libre: false, color: () => (S.neg && S.neg.color) || LC.TEMAS[0][0], probarColor: (c) => LC.aplicarColor(c, false),
+    get guardarColor() { return S.neg && esDueno() ? async (c) => { LC.aplicarColor(c, false); await conCarga(() => rpc('guardar_perfil', { p_icono: S.neg.icono || null, p_color: c })); await refrescarEstado(); } : null; },
+    pushActiva: async () => !!(await LC.pushActual().catch(() => null)),
+    activarPush: async () => { const s = await LC.suscribirPush(S.st.config.vapid_public); await rpc('guardar_push', { p_endpoint: s.endpoint, p_p256dh: s.keys.p256dh, p_auth: s.keys.auth }); },
+    desactivarPush: async () => { const s = await LC.pushActual(); if (s) { await rpc('borrar_push', { p_endpoint: s.endpoint }); await s.unsubscribe(); } },
+    eliminarTexto: () => (esDueno() ? 'Tu libreta se borrará para siempre en 30 días. Antes de eso puedes recuperarla ingresando de nuevo.' : 'Dejarás de ser ayudante y tu cuenta se borrará ahora.'),
+    eliminar: () => borrarCuenta()
+  };
   async function vCuenta() {
-    const sub = await LC.pushActual().catch(() => null);
     const tieneBloqueo = !!local.get('lc-bloqueo-' + S.uid, null);
     pintar(el('h2', null, 'Mi cuenta'),
+      el('div', { class: 'tarjeta', id: 'miPerfil' }),
       el('div', { class: 'tarjeta' }, dato('Correo', S.email), dato('Rol', esDueno() ? 'Dueño' : 'Ayudante'), dato('Libreta', S.neg.nombre)),
       el('div', { class: 'lista' },
         esDueno() ? el('button', { class: 'item', type: 'button', onclick: () => CFX_VERIFICAR.abrir({ rpc }) }, el('span', null, '🪪'), el('span', { class: 'crece' }, 'Verificar mi identidad')) : null,
-        el('button', { class: 'item', type: 'button', onclick: async () => {
-          try {
-            if (sub) { await rpc('borrar_push', { p_endpoint: sub.endpoint }); await sub.unsubscribe(); toast('Notificaciones desactivadas'); }
-            else { const s = await LC.suscribirPush(S.st.config.vapid_public); await rpc('guardar_push', { p_endpoint: s.endpoint, p_p256dh: s.keys.p256dh, p_auth: s.keys.auth }); toast('Notificaciones activadas ✓'); }
-            vCuenta();
-          } catch (e) { error(e); }
-        } }, el('span', { class: 'crece' }, '🔔 Notificaciones en este celular'), el('span', { class: 'tag ' + (sub ? 'verde' : '') }, sub ? 'Activas' : 'Apagadas')),
-        el('button', { class: 'item', type: 'button', onclick: cambiarClave }, el('span', { class: 'crece' }, '🔑 Cambiar contraseña'), el('span', { class: 'sutil' }, '›')),
         el('button', { class: 'item', type: 'button', onclick: async () => {
           if (tieneBloqueo) { local.del('lc-bloqueo-' + S.uid); toast('Bloqueo con PIN quitado'); return vCuenta(); }
           const p = await pedirTexto('PIN para abrir la app', 'PIN de 4 números (solo en este celular)', { inputmode: 'numeric', max: 4, validar: (v) => /^\d{4}$/.test(v) ? null : 'Deben ser 4 números' });
           if (!p) return; local.set('lc-bloqueo-' + S.uid, await sha(p)); toast('Bloqueo activado ✓'); vCuenta();
         } }, el('span', { class: 'crece' }, '🔒 Bloquear la app con PIN'), el('span', { class: 'tag ' + (tieneBloqueo ? 'verde' : '') }, tieneBloqueo ? 'Activo' : 'No')),
-        el('a', { class: 'item', href: '#apariencia' }, el('span', { class: 'crece' }, '🎨 Apariencia: color, ícono, modo oscuro y letra'), el('span', { class: 'sutil' }, '›')),
+        el('a', { class: 'item', href: '#apariencia' }, el('span', { class: 'crece' }, '🔠 Letra más grande'), el('span', { class: 'sutil' }, '›')),
         !LC.instalada() ? el('button', { class: 'item', type: 'button', onclick: () => LC.instalar() }, el('span', { class: 'crece' }, '📲 Instalar la app'), el('span', { class: 'sutil' }, '›')) : null,
         el('button', { class: 'item', type: 'button', onclick: async () => { if (await confirmar('Reparar la app', 'Se vuelve a descargar la app en este celular. No se borra ningún dato. Úsalo si algo se ve raro o no se actualiza.', 'Reparar')) LC.repararApp(); } },
           el('span', { class: 'crece' }, '🛠️ Reparar la app'), el('span', { class: 'tag' }, 'v' + LC.VERSION))),
       el('div', { class: 'lista' },
-        el('button', { class: 'item', type: 'button', onclick: salir }, el('span', { class: 'crece' }, '🚪 Cerrar sesión')),
-        el('button', { class: 'item', type: 'button', onclick: borrarCuenta }, el('span', { class: 'crece rojo' }, esDueno() ? '🗑️ Borrar mi cuenta y libreta' : '🗑️ Borrar mi cuenta de ayudante'))));
-  }
-  async function cambiarClave() {
-    const a = el('input', { type: 'password', autocomplete: 'new-password' }), b = el('input', { type: 'password', autocomplete: 'new-password' }), err = el('div', { class: 'error' });
-    await dialogo('Cambiar contraseña', el('div', null, el('div', { class: 'campo' }, el('label', null, 'Nueva'), a), el('div', { class: 'campo' }, el('label', null, 'Repítela'), b), err),
-      [{ texto: 'Cancelar', valor: null }, { texto: 'Guardar', clase: 'primario', valor: true, antes: async () => {
-        const m = V.clave(a.value, S.email); if (m) { err.textContent = m; return false; }
-        if (a.value !== b.value) { err.textContent = 'No coinciden'; return false; }
-        const { error: e } = await sb.auth.updateUser({ password: a.value }); if (e) { err.textContent = LC.traducir(e).message; return false; }
-        toast('Contraseña cambiada ✓'); return true;
-      } }]);
+        el('button', { class: 'item', type: 'button', onclick: salir }, el('span', { class: 'crece' }, '🚪 Cerrar sesión'))));
+    window.CFX_PERFIL.montar(document.getElementById('miPerfil'));
   }
   async function salir() {
     if (cola().length && !await confirmar('Hay movimientos sin subir', 'Si cierras sesión ahora se perderán ' + cola().length + ' movimientos. Conéctate a internet para subirlos primero.', 'Cerrar igual', 'rojo')) return;
@@ -1758,28 +1755,10 @@
 
   // ================= APARIENCIA: color, ícono, modo y letra =================
   function vApariencia() {
-    if (soloDueno()) return;
-    let ico = S.neg.icono || '', color = S.neg.color || LC.TEMAS[0][0], modo = local.get('lc-tema', 'auto');
-    const previa = el('div', { class: 'logo-mini grande' });
-    const iconos = el('div', { class: 'galeria' }), colores = el('div', { class: 'paleta' }), modos = el('div', { class: 'segmento' });
-    const pintarTodo = () => {
-      vaciar(previa).append(ico || iniciales(S.neg.nombre)); previa.classList.toggle('emoji', !!ico);
-      vaciar(iconos).append(el('button', { type: 'button', class: !ico ? 'activo' : '', 'aria-label': 'Sin ícono (iniciales)', onclick: () => { ico = ''; pintarTodo(); } }, iniciales(S.neg.nombre)),
-        ...LC.ICONOS.map((x) => el('button', { type: 'button', class: ico === x ? 'activo' : '', 'aria-label': 'Ícono ' + x, onclick: () => { ico = x; pintarTodo(); } }, x)));
-      vaciar(colores).append(...LC.TEMAS.map(([hex, nom]) => el('button', { type: 'button', class: color === hex ? 'activo' : '', title: nom, 'aria-label': 'Color ' + nom, style: 'background:' + hex, onclick: () => { color = hex; LC.aplicarColor(hex, false); pintarTodo(); } })));
-      vaciar(modos).append(...[['auto', '📱 Auto'], ['light', '☀️ Claro'], ['dark', '🌙 Oscuro']].map(([v, t]) => el('button', { type: 'button', class: modo === v ? 'activo' : '', onclick: () => { modo = v; local.set('lc-tema', v); aplicarTema(); pintarTodo(); } }, t)));
-    };
     const grande = el('input', { type: 'checkbox', id: 'letraG', checked: document.documentElement.classList.contains('grande'), onchange: () => { document.documentElement.classList.toggle('grande', grande.checked); local.set('lc-letra-grande', grande.checked); } });
-    pintar(el('h2', null, '🎨 Apariencia'),
-      el('div', { class: 'tarjeta fila' }, previa, el('div', { class: 'crece' }, el('strong', null, S.neg.nombre), el('div', { class: 'sutil' }, 'Así se ve tu billetera. Tu ícono también sale en el link de tus clientes.'))),
-      el('div', { class: 'tarjeta' }, el('h2', null, 'Color'), colores, el('p', { class: 'sutil mt' }, prem() ? 'Con Pro, tus clientes también ven tu color en su link.' : 'Con Pro, tus clientes también ven tu color en su link.')),
-      el('div', { class: 'tarjeta' }, el('h2', null, 'Ícono de perfil'), iconos, el('p', { class: 'sutil mt' }, 'Sin subir fotos: no gasta datos ni espacio.')),
-      el('div', { class: 'tarjeta' }, el('h2', null, 'Modo'), modos, el('label', { class: 'check mt', for: 'letraG' }, grande, el('span', null, '🔠 Letra más grande'))),
-      el('button', { class: 'btn primario ancho', type: 'button', onclick: async () => {
-        try { await conCarga(() => rpc('guardar_perfil', { p_icono: ico || null, p_color: color })); await refrescarEstado(); toast('Apariencia guardada ✓'); location.hash = 'mas'; } catch (e) { error(e); }
-      } }, 'Guardar'));
-    pintarTodo();
-    window.addEventListener('hashchange', () => { if (S.neg) LC.aplicarColor(S.neg.color); }, { once: true });
+    const caja = el('div', { class: 'tarjeta' });
+    pintar(el('h2', null, '🎨 Apariencia'), caja, el('div', { class: 'tarjeta' }, el('label', { class: 'check', for: 'letraG' }, grande, el('span', null, '🔠 Letra más grande'))));
+    window.CFX_PERFIL.montar(caja).abrir('estilo');
   }
 
   // ================= COBRAR A TODOS (Pro) =================

@@ -26,6 +26,7 @@
       if (txt) document.querySelector('.app').insertBefore(el('div', { id: 'admUpd', class: 'banda info' }, el('span', null, txt + ' Tu celular aún no la tiene.'), el('button', { class: 'btn chico', type: 'button', onclick: fn }, 'Actualizar')), document.getElementById('vista'));
     });
     // Núcleo (ayuda.js): cabecera común con el plan y el menú de la cuenta.
+    window.CFX_PERFIL_APP = { __proto__: LC.perfil, nombre: 'Administración', nombreFijo: 'Cuenta de administración.' };
     window.CFX_AYUDA_PEND = { rpc, app: 'billetera', admin: true, email: data.session.user.email, nombre: 'Administración', cuenta: '#ajustes/cuenta', salir, quitar: '#salir' };
     if (window.CFX_AYUDA) window.CFX_AYUDA.iniciar(window.CFX_AYUDA_PEND);
     window.addEventListener('hashchange', router);
@@ -261,14 +262,8 @@
           el('span', { class: 'sutil' }, fechaHora(x.at)))) : el('div', { class: 'vacio' }, 'Sin registros.')));
         window.CFX_AJUSTES.registro(z, (f, x) => rpc(f, x), { recargar: () => vAjustes('registro') });
       } },
-      { k: 'cuenta', ico: '👤', t: 'Mi cuenta', d: 'Clave y cerrar sesión', abrir: async (z) => {
-        const { data: u } = await sb.auth.getSession();
-        z.append(el('div', { class: 'tarjeta' }, el('p', null, (u.session && u.session.user.email) || ''),
-          el('div', { class: 'col' }, el('button', { class: 'btn', type: 'button', onclick: async () => {
-            const c1 = await pedirTexto('Cambiar contraseña', 'Nueva contraseña', { tipo: 'password', min: 8, max: 72 }); if (!c1) return;
-            const { error: er } = await sb.auth.updateUser({ password: c1 }); if (er) error(er); else toast('Contraseña cambiada ✓');
-          } }, '🔑 Cambiar contraseña'))));
-      } }
+      // Perfil común del núcleo (CFX_PERFIL): foto, modo, notificaciones y contraseña.
+      { k: 'cuenta', ico: '👤', t: 'Mi perfil', d: 'Foto, modo y contraseña', abrir: (z) => { const c = el('div', { class: 'tarjeta' }); z.append(c); window.CFX_PERFIL.montar(c); } }
     ];
     const caja = el('div');
     pintar(caja);

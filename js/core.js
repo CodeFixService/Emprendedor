@@ -1,7 +1,7 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.21.9';
+  const VERSION = '1.21.10';
   const BD = 21; // versión de la base de datos que necesita esta versión de la app
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
@@ -381,6 +381,19 @@
   };
   if (local.get('lc-letra-grande', false)) document.documentElement.classList.add('grande');
 
+  // ---------- Perfil común del núcleo (ayuda.js → CFX_PERFIL): lo que comparten la app y el panel ----------
+  // Cada página lo hereda: window.CFX_PERFIL_APP = { __proto__: LC.perfil, … }. Modo de pantalla: lc-tema (este celular).
+  const MODO = { light: 'claro', dark: 'oscuro' }, TEMA = { claro: 'light', oscuro: 'dark' };
+  if (TEMA[MODO[local.get('lc-tema', 'auto')]]) document.documentElement.setAttribute('data-theme', local.get('lc-tema'));
+  const perfil = {
+    modo: () => MODO[local.get('lc-tema', 'auto')] || 'auto',
+    guardarModo: (m) => { local.set('lc-tema', TEMA[m] || 'auto'); if (TEMA[m]) document.documentElement.setAttribute('data-theme', TEMA[m]); else document.documentElement.removeAttribute('data-theme'); },
+    clave: async (n) => {
+      const { data } = await sb.auth.getSession(), m = V.clave(n, data.session && data.session.user.email); if (m) throw new Error(m);
+      const { error: e } = await sb.auth.updateUser({ password: n }); if (e) throw traducir(e);
+    }
+  };
+
   // ---------- Descargas ----------
   function descargar(nombre, contenido, tipo) {
     const b = contenido instanceof Blob ? contenido : new Blob([contenido], { type: tipo || 'text/plain;charset=utf-8' });
@@ -398,6 +411,6 @@
     VERSION, BD, ico, centrarActivos, TEXTOS_DEF, PLANES_DEF, texto, plan, C, RAIZ, sb, $, el, vaciar, TEMAS, ICONOS, aplicarColor, pesos, fechaCorta, fechaLarga, hora, fechaHora, hoyISO, fechaISO, sumarDias, diasEntre, relativo, iniciales, colorDe, norm,
     V, ErrorApp, traducir, rpc, funcion, uuid, toast, cargando, conCarga, dialogo, confirmar, pedirTexto, error, copiar, wa, abrir,
     achicarImagen, FOTO, blobADataURL, pushSoportado, suscribirPush, pushActual, esIOS, instalada, instalar, registrarSW, versionMenor, revisarVersion, actualizarAhora, repararApp,
-    local, descargar, csv, alPlan: null, alSesion: null, alBloqueo: null,
+    local, perfil, descargar, csv, alPlan: null, alSesion: null, alBloqueo: null,
   };
 })(window);
