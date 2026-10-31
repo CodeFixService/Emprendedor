@@ -213,7 +213,15 @@
     if (!silencioso) window.scrollTo(0, 0);
     Promise.resolve(fn(a, b)).catch(error);
   }
-  function pintar(...nodos) { vaciar(vista).append(...nodos.flat().filter((x) => x != null && x !== false)); LC.centrarActivos(vista); }
+  // pintar dibuja en la pantalla o, si una opción del menú Más está abierta en su hoja (núcleo CFX_MENU), dentro de esa hoja (sin el título: la hoja ya lo tiene).
+  let destino = vista;
+  function pintar(...nodos) {
+    let l = nodos.flat().filter((x) => x != null && x !== false);
+    if (destino !== vista && l[0] && l[0].tagName === 'H2') l = l.slice(1);
+    vaciar(destino).append(...l); LC.centrarActivos(destino);
+  }
+  const enHoja = (fn) => (z) => { destino = z; Promise.resolve(fn()).catch(error); };
+  const fueraHoja = () => { destino = vista; };
   const soloDueno = () => { if (!esDueno()) { pintar(el('div', { class: 'vacio' }, el('span', { class: 'ico' }, '🔒'), 'Solo el dueño de la libreta puede ver esto.')); return true; } return false; };
 
   // ================= Plan: aviso de límite =================
@@ -1057,46 +1065,36 @@
   // ================= MÁS =================
   function vMas() {
     const p = S.st.pendientes || {}, pl = S.st.plan, cfg = S.st.config, u = S.st.uso || {}, ln = cfg.lim_normal || {};
-    const it = (h, ico, t, badge, solo) => solo === false ? null : el('a', { class: 'item', href: h }, el('span', { class: 'ic-caja' }, LC.ico(ico, 20)), el('span', { class: 'crece' }, t),
-      badge ? el('span', { class: 'tag rojo' }, badge) : null, el('span', { class: 'sutil' }, '›'));
-    const sec = (t) => el('div', { class: 'sec' }, t);
     const diasP = pl.prueba_hasta ? Math.max(0, Math.ceil((new Date(pl.prueba_hasta) - Date.now()) / 86400000)) : 0;
     const sub = pl.estado === 'pro' ? (pl.en_gracia ? '⚠️ Tu Pro venció: paga para no perderlo' : 'Pro pagado hasta el ' + fechaLarga(pl.hasta))
       : pl.estado === 'prueba' ? '🎁 Prueba Pro: ' + (diasP <= 1 ? 'termina hoy' : 'te quedan ' + diasP + ' días') : 'Plan Free · gratis para siempre';
-    const cta = !esDueno() ? null : pl.pago_pendiente ? el('div', { class: 'tag naranjo mt' }, '⏳ Pago en revisión: te avisamos apenas se apruebe')
-      : pl.estado !== 'pro' || pl.en_gracia ? el('button', { class: 'btn primario ancho mt', type: 'button', onclick: () => pasarPro() }, LC.ico('estrella', 18), pl.estado === 'pro' ? 'Pagar mi Pro' : 'Pasar a Pro')
-      : el('a', { class: 'btn texto ancho mt', href: '#plan' }, 'Ver mi plan ›');
-    const barra = (t, usado, max) => max ? el('div', null, el('div', { class: 'fila entre' }, el('span', { class: 'sutil' }, t), el('strong', null, usado + ' / ' + max)),
-      el('div', { class: 'barra ' + (usado >= max ? 'lleno' : usado >= max * 0.8 ? 'alerta' : '') }, el('i', { style: 'width:' + Math.min(100, Math.round(usado * 100 / max)) + '%' }))) : null;
-    pintar(
-      el('div', { class: 'tarjeta perfil-card' },
-        el('div', { class: 'fila' }, el('a', { class: 'logo-mini grande' + (S.neg.icono ? ' emoji' : ''), href: '#apariencia', style: 'text-decoration:none', 'aria-label': 'Apariencia' }, S.neg.icono || iniciales(S.neg.nombre)),
-          el('div', { class: 'crece', style: 'min-width:0' }, el('h2', { class: 'cortar', style: 'margin:0' }, S.neg.nombre), el('div', { class: 'sutil cortar' }, S.email)),
-          el('a', { class: 'tag ' + (pl.estado === 'free' ? '' : 'premium'), href: '#plan', style: 'text-decoration:none' }, planTxt())),
-        el('div', { class: 'sutil mt' }, sub),
-        pl.estado === 'free' && esDueno() ? el('div', { class: 'uso-mini' }, barra('Clientes activos', u.clientes || 0, ln.clientes), barra('Fiados y abonos del mes', u.movimientos || 0, ln.movimientos)) : null,
-        cta),
-      sec('Tu negocio'),
-      el('div', { class: 'lista cfx-grilla' },
-        it('#soporte', 'chat', 'Chat con soporte'),
-        it('#comprobantes', 'recibo', 'Comprobantes', p.comprobantes),
-        esDueno() ? conPro(it('#cobranza', 'megafono', 'Cobrar a todos de una'), 'Cobrar a todos de una es Pro: ves quién te debe y le mandas el mensaje con un toque.') : null,
-        it('#reportes', 'grafico', 'Reportes', null, esDueno()),
-        esDueno() ? marcaPro(it('#conexiones', 'enlace', 'Billeteras conectadas')) : null,
-        it('#productos', 'etiqueta', 'Productos frecuentes', null, esDueno()),
-        cola().length ? it('#pendientes', 'reloj', 'Por subir', cola().length) : null),
-      esDueno() ? sec('Plan y crecimiento') : null,
-      esDueno() ? el('div', { class: 'lista cfx-grilla' },
-        it('#plan', 'estrella', 'Mi plan · ' + planTxt()),
-        cfg.dias_referido > 0 ? it('#invita', 'regalo', 'Invita y gana ' + cfg.dias_referido + ' días de Pro') : null) : null,
-      sec('Configuración'),
-      el('div', { class: 'lista cfx-grilla' },
-        it('#ajustes', 'ajustes', 'Ajustes del negocio', null, esDueno()),
-        it('#apariencia', 'paleta', 'Apariencia: color e ícono', null, esDueno()),
-        it('#cuenta', 'usuario', 'Mi cuenta'),
-        it('#ayuda', 'ayuda', 'Ayuda'),
-        S.st.es_admin ? it('../admin/', 'escudo', 'Administración') : null),
-      el('div', { class: 'lista cfx-grilla' }, el('button', { class: 'item', type: 'button', onclick: salir }, el('span', { class: 'ic-caja rojo' }, LC.ico('salir', 20)), el('span', { class: 'crece rojo' }, 'Cerrar sesión'))));
+    // Menú común del núcleo (CFX_MENU): perfil arriba, opciones por grupo; las de Configuración se abren en una hoja desde abajo.
+    const caja = el('div');
+    pintar(caja);
+    const icoH = (n, t) => LC.ico(n, t).outerHTML;
+    // Mi plan: estado, uso (Free) y, si falta pagar, toca y abre el pago (antes era la tarjeta de arriba con "Pasar a Pro").
+    const uso = pl.estado === 'free' && esDueno() ? [ln.clientes && 'Clientes ' + (u.clientes || 0) + '/' + ln.clientes, ln.movimientos && 'Movimientos del mes ' + (u.movimientos || 0) + '/' + ln.movimientos].filter(Boolean).join(' · ') : '';
+    const pagar = esDueno() && !pl.pago_pendiente && (pl.estado !== 'pro' || pl.en_gracia);
+    const g = 'Tu negocio', d = esDueno();
+    const proPide = (msg) => (prem() ? null : () => alPlan(msg));
+    const items = [
+      { k: 'comprobantes', ico: icoH('recibo', 20), t: 'Comprobantes', dato: p.comprobantes || '', grupo: g, ir: '#comprobantes' },
+      d && { k: 'cobranza', ico: icoH('megafono', 20), t: 'Cobrar a todos de una', dato: prem() ? '' : '🔒 PRO', grupo: g, accion: proPide('Cobrar a todos de una es Pro: ves quién te debe y le mandas el mensaje con un toque.') || (() => { location.hash = 'cobranza'; }) },
+      d && { k: 'reportes', ico: icoH('grafico', 20), t: 'Reportes', grupo: g, ir: '#reportes' },
+      d && { k: 'conexiones', ico: icoH('enlace', 20), t: 'Billeteras conectadas', dato: prem() ? '' : '🔒 PRO', grupo: g, ir: '#conexiones' },
+      d && { k: 'productos', ico: icoH('etiqueta', 20), t: 'Productos frecuentes', grupo: g, ir: '#productos' },
+      cola().length && { k: 'pendientes', ico: icoH('reloj', 20), t: 'Por subir', dato: cola().length, grupo: g, ir: '#pendientes' },
+      d && { k: 'premium', ico: icoH('estrella', 20), t: pagar ? (pl.estado === 'pro' ? 'Pagar mi Pro' : 'Pasar a Pro') : 'Mi plan', d: (pl.pago_pendiente ? '⏳ Pago en revisión · ' : '') + sub.replace(/^[^\wÁÉÍÓÚáéíóú¡¿]+/, '') + (uso ? ' · ' + uso : ''),
+        dato: planTxt(), grupo: 'Tu plan', accion: pagar ? () => pasarPro() : () => { location.hash = 'plan'; } },
+      d && cfg.dias_referido > 0 && { k: 'invitar', ico: icoH('regalo', 20), t: 'Invita y gana', d: cfg.dias_referido + ' días de Pro por cada negocio', grupo: 'Tu plan', ir: '#invita' },
+      d && { k: 'ajustes', ico: icoH('ajustes', 20), t: 'Ajustes del negocio', d: 'Nombre, WhatsApp, mensajes y cobros', grupo: 'Configuración', abrir: enHoja(vAjustes), alCerrar: fueraHoja },
+      { k: 'cuenta', ico: icoH('usuario', 20), t: 'Mi cuenta', d: 'Verificar, PIN, instalar y reparar', grupo: 'Configuración', abrir: enHoja(vCuenta), alCerrar: fueraHoja },
+      { k: 'letra', ico: '🔠', t: 'Letra más grande', dato: document.documentElement.classList.contains('grande') ? 'Sí' : 'No', grupo: 'Configuración', accion: () => {
+        const on = !document.documentElement.classList.contains('grande'); document.documentElement.classList.toggle('grande', on); local.set('lc-letra-grande', on); vMas(); } },
+      { k: 'ayuda', ico: icoH('ayuda', 20), t: 'Ayuda', d: 'Preguntas frecuentes', grupo: 'Configuración', abrir: enHoja(vAyuda), alCerrar: fueraHoja },
+      S.st.es_admin && { k: 'panel', ico: icoH('escudo', 20), t: 'Administración', grupo: 'Tu plan', ir: '../admin/' }
+    ];
+    window.CFX_MENU.montar(caja, items);
   }
 
   // ================= COMPROBANTES =================
@@ -1520,7 +1518,6 @@
   async function vCuenta() {
     const tieneBloqueo = !!local.get('lc-bloqueo-' + S.uid, null);
     pintar(el('h2', null, 'Mi cuenta'),
-      el('div', { class: 'tarjeta', id: 'miPerfil' }),
       el('div', { class: 'tarjeta' }, dato('Correo', S.email), dato('Rol', esDueno() ? 'Dueño' : 'Ayudante'), dato('Libreta', S.neg.nombre)),
       el('div', { class: 'lista' },
         esDueno() ? el('button', { class: 'item', type: 'button', onclick: () => CFX_VERIFICAR.abrir({ rpc }) }, el('span', null, '🪪'), el('span', { class: 'crece' }, 'Verificar mi identidad')) : null,
@@ -1535,7 +1532,6 @@
           el('span', { class: 'crece' }, '🛠️ Reparar la app'), el('span', { class: 'tag' }, 'v' + LC.VERSION))),
       el('div', { class: 'lista' },
         el('button', { class: 'item', type: 'button', onclick: salir }, el('span', { class: 'crece' }, '🚪 Cerrar sesión'))));
-    window.CFX_PERFIL.montar(document.getElementById('miPerfil'));
   }
   async function salir() {
     if (cola().length && !await confirmar('Hay movimientos sin subir', 'Si cierras sesión ahora se perderán ' + cola().length + ' movimientos. Conéctate a internet para subirlos primero.', 'Cerrar igual', 'rojo')) return;
