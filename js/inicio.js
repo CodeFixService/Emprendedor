@@ -204,6 +204,7 @@
     if (pend && pend.tipo === 'negocio' && pend.nombre) {
       try {
         const r = await conCarga(() => rpc('crear_negocio', { p_nombre: pend.nombre, p_rubro: pend.rubro || 'otro', p_acepta: true, p_ref: codigoRef() }));
+        await rpc('cfx_legal_aceptar', { p_version: (window.CFX_LEGAL || {}).version || 2 }).catch(() => {});  // términos del núcleo: ya los aceptó al crear la cuenta
         local.del('lc-pendiente'); local.del('lc-ref'); local.set('lc-bienvenida', true);
         local.set('lc-msg', r.prueba ? '¡Listo! Tienes ' + r.dias + ' días de Pro gratis 🎉' : 'Tu billetera está lista (plan Free) 🎉');
         location.replace('app/'); return;
@@ -229,6 +230,7 @@
       if (!acepta.checked) return errorEn(form, 'Debes aceptar los Términos y la Privacidad');
       try {
         const r = await conCarga(() => rpc('crear_negocio', { p_nombre: nombre.value, p_rubro: rubro.value, p_acepta: true, p_ref: codigoRef() }));
+        await rpc('cfx_legal_aceptar', { p_version: (window.CFX_LEGAL || {}).version || 2 }).catch(() => {});  // términos del núcleo: ya los aceptó al crear la cuenta
         local.del('lc-pendiente'); local.del('lc-ref'); local.set('lc-bienvenida', true);
         local.set('lc-msg', r.prueba ? '¡Listo! Tienes ' + r.dias + ' días de Pro gratis 🎉' : 'Tu billetera está lista (plan Free) 🎉');
         location.replace('app/');

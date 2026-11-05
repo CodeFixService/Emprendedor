@@ -36,7 +36,7 @@
     if (S.st) aplicarEstado();
     try { await refrescarEstado(); } catch (e) { if (!S.st) { error(e); return; } }
     if (!S.st.negocio) { location.replace('../#app'); return; }
-    if (!S.st.terminos_ok) await pedirTerminos();
+    // Términos: los pide el núcleo (CFX_LEGAL, ayuda.js) con versión; ya no hay ventana propia.
     // Núcleo (pagos.js): billetera nueva que debe su primer pago → pantalla de activación.
     S.cx = await rpc('cfx_pago_estado').catch(() => null);
     // Núcleo (premium.js): con Pro la billetera se ve dorada y la primera vez saluda.
@@ -102,18 +102,6 @@
     $('#estadoRed').classList.toggle('oculto', !off);
     const n = cola().length;
     banda('cola', 'aviso', n ? '⏳ ' + n + ' movimiento' + (n > 1 ? 's' : '') + ' por subir' + (off ? ' (sin internet)' : '') : null, off ? null : 'Subir ahora', sincronizar);
-  }
-
-  async function pedirTerminos() {
-    const chk = el('input', { type: 'checkbox', id: 'terms' });
-    await dialogo('Términos actualizados', el('div', null,
-      el('p', null, 'Actualizamos los Términos y la Política de privacidad. Revísalos para seguir usando la app.'),
-      el('p', null, el('a', { href: '../legal/#terminos', target: '_blank' }, 'Ver Términos'), ' · ', el('a', { href: '../legal/#privacidad', target: '_blank' }, 'Ver Privacidad')),
-      el('label', { class: 'check', for: 'terms' }, chk, 'Acepto los Términos y la Política de privacidad')),
-    [{ texto: 'Aceptar', clase: 'primario', valor: true, antes: async () => {
-      if (!chk.checked) { toast('Marca la casilla para aceptar', { error: true }); return false; }
-      await rpc('aceptar_terminos'); return true;
-    } }], { fijo: true });
   }
 
   async function bloqueoLocal() {
