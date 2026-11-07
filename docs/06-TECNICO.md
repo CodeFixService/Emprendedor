@@ -10,7 +10,7 @@
 | Cosa | CodeFix Apps | Libreta de Cobros |
 |---|---|---|
 | Repositorio | `CodeFixService/Aplicaciones` | **`CodeFixService/Emprendedor`** |
-| URL | `…github.io/Aplicaciones/` | `…github.io/Emprendedor/` |
+| URL | `aplicaciones.…workers.dev/` | `emprendedor.…workers.dev/` |
 | Supabase | proyecto actual | **proyecto nuevo** (el 2º gratis de tu cuenta) |
 | Service worker, manifest, íconos, versión | los suyos | los suyos propios |
 | Datos guardados en el celular | claves `cfx-…` | claves `lc-…` (no se pisan) |

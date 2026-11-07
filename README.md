@@ -6,7 +6,7 @@
 **Estado:** ✅ **versión 1.9.0 lista y probada** (v1.9: **asistente de actualización en 4 pasos** en el admin — base de datos, función, probar y liberar — con botones para copiar cada comando; v1.8: menú con íconos de línea y "Más" con tarjeta de perfil, **Pasar a Pro mensual o anual** en 3 pasos con comprobante, **Invita y gana** días de Pro, Términos actualizados; billetera completa: caja, me deben, soporte; Free gratis para siempre, 7 días de Pro de regalo y Pro mensual con cupones; cobro con link de pago y cuotas y fiados que se marcan pagados, con comprobante; billeteras conectadas Pro). Para instalarla sigue [docs/08-PREPARATIVOS.md](docs/08-PREPARATIVOS.md) (parte B).
 
 App **100 % independiente**: repo propio (`CodeFixService/Emprendedor`), proyecto Supabase propio y dirección propia
-(`https://codefixservice.github.io/Emprendedor/`). No comparte código, base de datos, usuarios ni claves con CodeFix Apps
+(`https://emprendedor.juanjosuecastilloloyola.workers.dev/`). No comparte código, base de datos, usuarios ni claves con CodeFix Apps
 (repo `Aplicaciones`), que no se toca.
 
 ## Documentos (leer en orden)

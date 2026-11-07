@@ -14,8 +14,8 @@ Marca cada casilla al terminar. **La parte A se puede hacer ahora**, antes del c
 ### A2. Configurar el inicio de sesión
 - [ ] **Authentication → Sign In / Providers → Email**: deja **Enable email** encendido. **Confirm email**: apágalo por ahora (Save).
 - [ ] **Authentication → URL Configuration**:
-  - Site URL: `https://codefixservice.github.io/Emprendedor/` → Save.
-  - Redirect URLs → Add URL: `https://codefixservice.github.io/Emprendedor/**` → Save URLs.
+  - Site URL: `https://emprendedor.juanjosuecastilloloyola.workers.dev/` → Save.
+  - Redirect URLs → Add URL: `https://emprendedor.juanjosuecastilloloyola.workers.dev/**` → Save URLs.
 
 ### A3. Correo para "olvidé mi contraseña" (obligatorio)
 El correo de fábrica de Supabase **solo envía a los miembros de tu equipo** (máximo 2 por hora). Para los clientes hay que usar Gmail.
@@ -54,11 +54,11 @@ Todo en https://supabase.com/dashboard → organización **Emprendedor** → pro
 
 **B4. Publicar la app**
 6. [ ] Unir la rama del código a `main` (te dejo el Pull Request listo; tú tocas **Merge**).
-7. [ ] GitHub → repo **Emprendedor** → **Settings → Pages** → Source: **Deploy from a branch** → rama `main`, carpeta `/ (root)` → **Save**.
-   ✅ En 1–2 minutos abre `https://codefixservice.github.io/Emprendedor/`.
+7. [ ] Cloudflare publica solo cada cambio en `main` (worker **emprendedor**).
+   ✅ En 1–2 minutos abre `https://emprendedor.juanjosuecastilloloyola.workers.dev/`.
 
 **B5. Configurar desde tu panel**
-8. [ ] Abre `https://codefixservice.github.io/Emprendedor/#ingresar` → ingresa con el correo del paso 2 → te lleva a **Administración**.
+8. [ ] Abre `https://emprendedor.juanjosuecastilloloyola.workers.dev/#ingresar` → ingresa con el correo del paso 2 → te lleva a **Administración**.
 9. [ ] **Ajustes → Generar claves push** (una sola vez).
 10. [ ] En **Ajustes**: tu WhatsApp de soporte, link de pago (si tienes) y tus datos de transferencia → **Guardar ajustes**.
 11. [ ] **Ajustes → Probar servidor**: debe decir `✅ Función "enviar" v1.0.0`.
