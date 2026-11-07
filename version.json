@@ -1,1 +1,1 @@
-{"version": "1.21.40", "bd": 26, "funcion": "1.2.0", "notas": "🛡️ Más seguridad: verificación humana también al recuperar la contraseña y en compras sin cuenta, y encabezados de seguridad en la app"}
+{"version": "1.21.41", "bd": 27, "funcion": "1.2.0", "notas": "🩺 Monitoreo: los errores de la app se anotan solos para corregirlos rápido, y la base se mantiene activa y respaldada cada día"}
