@@ -1,1 +1,1 @@
-{"version": "1.21.46", "bd": 30, "funcion": "1.2.0", "notas": "⚙️ Mejoras internas: la base queda lista para calificaciones, cupones y tarjeta de sellos del núcleo (se prenden desde el Centro de Mando)"}
+{"version": "1.21.47", "bd": 31, "funcion": "1.2.0", "notas": "⚙️ Mejoras internas: limpieza automática cada noche y carrito del núcleo listos (CodeFix 2.51)."}
