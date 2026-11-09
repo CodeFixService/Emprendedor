@@ -1,1 +1,1 @@
-{"version": "1.21.48", "bd": 32, "funcion": "1.2.0", "notas": "⚙️ Mejoras internas: la base mide cuánto demora en abrir la app (se ve en el Centro de Mando) y lee Excel (CodeFix 2.52)."}
+{"version": "1.21.49", "bd": 33, "funcion": "1.2.0", "notas": "⚙️ Mejoras internas: análisis nocturno de la app para el Centro de Mando (CodeFix 2.54)."}
