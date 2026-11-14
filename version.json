@@ -1,1 +1,1 @@
-{"version": "1.21.50", "bd": 34, "funcion": "1.2.0", "notas": "🔒 Más seguridad al entrar: tras 3 claves malas se entra con el enlace al correo. Panel de administración ahora en el Centro de Mando."}
+{"version": "1.21.50", "bd": 34, "funcion": "1.2.0", "notas": "🔒 Más seguridad al entrar (3 claves malas → enlace al correo). 🔄 Cuando hay versión nueva te aparece el botón \"🔄 Actualizar\"."}
