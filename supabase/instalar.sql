@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '35'),
+  ('version_bd', '36'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -4788,7 +4788,7 @@ language sql immutable as $$
          ('analisis', '🔎 Para vender más', 'Cada noche: clientes en riesgo, productos quietos, stock que se acaba y grupos de clientes.'),
          ('estadisticas', '📈 Estadísticas', 'Ventas, productos que más dejan y gráficos en vivo.'),
          ('equipo', '🧑‍🍳 Mi equipo', 'Suma vendedores y bodega con su propia cuenta y permisos.'),
-         ('campanas', '📣 Campañas automáticas', 'Ofertas por notificación y correo a tus suscriptores.'),
+         ('campanas', '📣 Campañas automáticas', 'Mensajes automáticos a tus clientes: ofertas, cumpleaños y los que hace tiempo no vuelven.'),
          ('redes', '📲 Vender en redes', 'Pedir por WhatsApp, catálogo para Google e Instagram.'),
          ('webhooks', '🔗 Avisos a tu sistema', 'Cada pedido llega firmado a tu sistema o planilla (webhooks).'),
          ('medicion', '📊 Medir anuncios', 'Meta Pixel y Google Analytics en tu tienda: mide qué anuncio te trae ventas.'),
