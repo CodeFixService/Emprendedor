@@ -8,7 +8,7 @@
 import webpush from 'npm:web-push@3.6.7';
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -127,11 +127,23 @@ async function crearUsuario(req: Request, b: { email?: string; clave?: string; n
   return { ok: true };
 }
 
+// G37 · Entrar con QR ({accion: 'qr_entrar'}): el computador entra con la sesión que aprobó el celular (núcleo qr.js + qr.sql).
+async function qrEntrar(b: { token?: string; secreto?: string }) {
+  const s = db();
+  const { data: email, error } = await s.rpc('cfx_qr_canjear', { p_token: String(b.token || ''), p_secreto: String(b.secreto || '') });
+  if (error) return { ok: false, error: 'Actualiza la base de datos (falta Entrar con QR)' };
+  if (!email) return { ok: false, error: 'El código venció o ya se usó' };
+  const { data, error: e2 } = await s.auth.admin.generateLink({ type: 'magiclink', email: String(email) });
+  if (e2 || !data?.properties?.hashed_token) return { ok: false, error: 'No se pudo abrir la sesión' };
+  return { ok: true, token_hash: data.properties.hashed_token };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   try {
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : {};
     if (body?.accion === 'ping') return json({ ok: true, version: VERSION, servicio: !!Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') });
+    if (body?.accion === 'qr_entrar') return json(await qrEntrar(body));
     if (body?.accion === 'foto') return json(await subirFoto(body));
     if (body?.accion === 'limpiar') return json(await limpiar());
     if (body?.accion === 'crear_usuario') return json(await crearUsuario(req, body));
