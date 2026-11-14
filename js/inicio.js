@@ -91,8 +91,9 @@
       if (!V.email(email.value)) return errorEn(form, 'Escribe un correo válido');
       try {
         await conCarga(async () => {
-          const { error: er } = await sb.auth.signInWithPassword({ email: email.value.trim().toLowerCase(), password: clave.value });
-          if (er) throw LC.traducir(er);
+          const pw = () => sb.auth.signInWithPassword({ email: email.value.trim().toLowerCase(), password: clave.value });  // G35: 3 claves malas → enlace al correo
+          const { error: er } = await (window.CFX_QR ? window.CFX_QR.clave(email.value, pw) : pw());
+          if (er) throw er.code === 'cfx_bloqueado' ? er : LC.traducir(er);
         });
         await despuesDeEntrar();
       } catch (er) {

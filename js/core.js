@@ -1,13 +1,16 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.21.49';
-  const BD = 33; // versión de la base de datos que necesita esta versión de la app
+  const VERSION = '1.21.50';
+  const BD = 34; // versión de la base de datos que necesita esta versión de la app
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
   const sb = global.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, {
     auth: { persistSession: true, autoRefreshToken: true, storageKey: 'lc-auth', detectSessionInUrl: true },
   });
+  // G35 · 🔒 Clave pausada tras 3 intentos (núcleo qr.js): se entra con el enlace al correo y se desbloquea solo.
+  const qrIni = () => global.CFX_QR.iniciar({ sb, funcion: 'enviar', qrLib: RAIZ + 'vendor/qrcode.js' });
+  if (global.CFX_QR) qrIni(); else { const q = document.createElement('script'); q.src = RAIZ + 'js/qr.js'; q.onload = qrIni; document.head.appendChild(q); }
 
   // ---------- DOM seguro (nunca se usa innerHTML con datos) ----------
   const $ = (s, r) => (r || document).querySelector(s);

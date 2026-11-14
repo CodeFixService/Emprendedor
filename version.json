@@ -1,1 +1,1 @@
-{"version": "1.21.49", "bd": 33, "funcion": "1.2.0", "notas": "⚙️ Mejoras internas: análisis nocturno de la app para el Centro de Mando (CodeFix 2.54)."}
+{"version": "1.21.50", "bd": 34, "funcion": "1.2.0", "notas": "🔒 Más seguridad al entrar: tras 3 claves malas se entra con el enlace al correo. Panel de administración ahora en el Centro de Mando."}
