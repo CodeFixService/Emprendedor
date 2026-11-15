@@ -1,7 +1,7 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.21.59';
+  const VERSION = '1.21.60';
   const BD = 38; // versión de la base de datos que necesita esta versión de la app
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
@@ -204,6 +204,7 @@
   // ---------- Avisos en pantalla ----------
   function toast(msg, opts) {
     opts = opts || {};
+    if (window.CFX_AVISO) return window.CFX_AVISO(msg, opts);  // G58 aviso moderno del núcleo
     let cont = $('#toast'); if (!cont) { cont = el('div', { id: 'toast', role: 'status', 'aria-live': 'polite' }); document.body.append(cont); }
     const t = el('div', { class: 'toast' + (opts.error ? ' error' : '') }, msg);
     if (opts.accion) t.append(el('button', { onclick: () => { opts.accion.fn(); t.remove(); } }, opts.accion.texto));
