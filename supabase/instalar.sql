@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '40'),
+  ('version_bd', '41'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -4915,7 +4915,10 @@ language sql immutable as $$
          ('productos', '🛍️ Productos y stock', 'Vende productos en la caja y lleva su stock.'),
          ('agenda_redes', '🤖 Reservas por WhatsApp e Instagram', 'Link y respuestas listas para que reserven desde tus redes.'),
          -- G59: módulos de taller (BiciTaller primero; sirven para cualquier app con órdenes de trabajo).
-         ('presupuesto', '✅ Presupuesto por link', 'El cliente aprueba o rechaza cada arreglo desde su celular: sin llamadas ni reclamos.')
+         ('presupuesto', '✅ Presupuesto por link', 'El cliente aprueba o rechaza cada arreglo desde su celular: sin llamadas ni reclamos.'),
+         ('aviso_lista', '🔔 Aviso "bici lista"', 'Al dejarla lista, el cliente recibe el aviso por WhatsApp con el total y el link; si no la retira, se lo recordamos.'),
+         ('mantencion', '⏰ Recordatorio de mantención', 'Cada X meses le avisamos al cliente que le toca mantención: vuelve solo.'),
+         ('stock', '📦 Repuestos y stock', 'Stock de repuestos que baja solo con cada orden y pedido a tu proveedor por WhatsApp con un toque.')
 $$;
 
 create or replace function public.cfx_venta() returns jsonb
