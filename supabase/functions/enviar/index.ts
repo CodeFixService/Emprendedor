@@ -8,7 +8,34 @@
 import webpush from 'npm:web-push@3.6.7';
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
-const VERSION = '1.3.0';
+// ---------- G61 a · 📲 Push insistente (núcleo push.sql): cada aviso lleva su "grupo"; el celular confirma al recibirlo
+// (service worker → cfx_push_recibido). Sin confirmación se reenvía a 1, 2, 5, 10, 15, 30 min y luego cada 1 h, hasta 48 h.
+// deno-lint-ignore no-explicit-any
+type Rpc = { rpc: (f: string, a?: Record<string, unknown>) => any };
+type SubPush = { endpoint: string; p256dh: string; auth: string };
+const ACK_URL = (Deno.env.get('SUPABASE_URL') || '') + '/rest/v1/rpc/cfx_push_recibido';
+const ACK_KEY = Deno.env.get('SUPABASE_ANON_KEY') || '';
+const grupos = () => { const m = new Map<string, string>(); return (k: string) => { if (!m.has(k)) m.set(k, crypto.randomUUID()); return m.get(k)!; }; };
+function conAck(payload: string, grupo: string) {
+  try { const o = JSON.parse(payload); o.ack = grupo; o.ackUrl = ACK_URL; o.ackKey = ACK_KEY; return JSON.stringify(o); } catch { return payload; }
+}
+async function anotarPush(s: Rpc, lista: (SubPush & { grupo: string; payload: string })[]) {
+  if (!lista.length) return;
+  try { await s.rpc('cfx_push_anotar', { p_lista: lista.map((x) => ({ grupo: x.grupo, endpoint: x.endpoint, p256dh: x.p256dh, auth: x.auth, payload: x.payload })) }); } catch { /* sin push.sql todavía */ }
+}
+async function reintentarPush(s: Rpc, preparar: () => Promise<boolean>) {
+  let data: (SubPush & { payload: string })[] | null = null;
+  try { const r = await s.rpc('cfx_push_tomar'); data = r.error ? null : r.data; } catch { return 0; }
+  if (!data?.length || !(await preparar())) return 0;
+  let n = 0;
+  await Promise.allSettled(data.map(async (e) => {
+    try { await webpush.sendNotification({ endpoint: e.endpoint, keys: { p256dh: e.p256dh, auth: e.auth } }, e.payload, { TTL: 86400, urgency: 'high' }); n++; }
+    catch (err) { const c = (err as { statusCode?: number })?.statusCode; if (c === 404 || c === 410) await s.rpc('cfx_push_muerto', { p_endpoint: e.endpoint }); }
+  }));
+  return n;
+}
+
+const VERSION = '1.4.0';
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -33,6 +60,7 @@ async function enviarCola() {
     return { enviados: 0, error: 'Faltan las claves push (Admin → Ajustes)' };
   }
   webpush.setVapidDetails('mailto:soporte@libretadecobros.cl', sec.vapid_public, sec.vapid_private);
+  const reenviados = await reintentarPush(sb, async () => true), gr = grupos();
   let enviados = 0, fallidos = 0;
   for (let vuelta = 0; vuelta < 5; vuelta++) {
     const { data, error } = await sb.rpc('srv_cola_tomar', { p_max: 200 });
@@ -40,11 +68,11 @@ async function enviarCola() {
     const lista = (data || []) as Envio[];
     if (!lista.length) break;
     for (let i = 0; i < lista.length; i += 50) {
-      const grupo = lista.slice(i, i + 50);
+      const grupo = lista.slice(i, i + 50).map((e) => { const tag = e.tag || ('lc-' + e.id), g = gr(tag);
+        return { ...e, grupo: g, payload: conAck(JSON.stringify({ title: e.titulo, body: e.cuerpo, url: e.url || 'app/', tag }), g) }; });
+      await anotarPush(sb, grupo);
       const res = await Promise.allSettled(grupo.map((e) => webpush.sendNotification(
-        { endpoint: e.endpoint, keys: { p256dh: e.p256dh, auth: e.auth } },
-        JSON.stringify({ title: e.titulo, body: e.cuerpo, url: e.url || 'app/', tag: e.tag || ('lc-' + e.id) }),
-        { TTL: 86400 },
+        { endpoint: e.endpoint, keys: { p256dh: e.p256dh, auth: e.auth } }, e.payload, { TTL: 86400, urgency: 'high' },
       )));
       for (let j = 0; j < res.length; j++) {
         const r = res[j];
@@ -55,7 +83,7 @@ async function enviarCola() {
       }
     }
   }
-  return { enviados, fallidos };
+  return { enviados, fallidos, reenviados };
 }
 
 function tipoImagen(b: Uint8Array): string | null {

@@ -84,9 +84,15 @@ self.addEventListener('fetch', (e) => {
   })());
 });
 
+// G61 a 📲 Confirma al servidor que el aviso llegó (así deja de reenviarlo). Sin red: el servidor reintenta.
+function cfxAck(e, d) {
+  if (!d || !d.ack || !/^https:\/\//.test(d.ackUrl || '')) return;
+  e.waitUntil(fetch(d.ackUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: d.ackKey || '', Authorization: 'Bearer ' + (d.ackKey || '') }, body: JSON.stringify({ p_grupo: d.ack }) }).catch(() => {}));
+}
 self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (err) { d = { title: e.data && e.data.text() }; }
+  cfxAck(e, d);
   e.waitUntil(self.registration.showNotification(d.title || 'Libreta de Cobros', {
     body: d.body || '', icon: 'icons/icon-192.png', badge: 'icons/badge.png', tag: d.tag, renotify: !!d.tag, vibrate: [200, 100, 200],
     data: { url: new URL(d.url || 'app/', self.registration.scope).href },

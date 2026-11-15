@@ -1,8 +1,8 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.21.60';
-  const BD = 38; // versión de la base de datos que necesita esta versión de la app
+  const VERSION = '1.21.61';
+  const BD = 39; // versión de la base de datos que necesita esta versión de la app
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
   const sb = global.supabase.createClient(C.SUPABASE_URL, C.SUPABASE_ANON_KEY, {
@@ -121,7 +121,6 @@
       const os = '#' + [n >> 16, (n >> 8) & 255, n & 255].map((x) => Math.round(x * k).toString(16).padStart(2, '0')).join('');
       r.setProperty('--marca', hex); r.setProperty('--marca-2', os);
     } else { r.removeProperty('--marca'); r.removeProperty('--marca-2'); }
-    const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = hex || '#059669';
     if (guardar !== false) local.set('lc-color', hex);
   }
   const norm = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
