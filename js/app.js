@@ -48,7 +48,7 @@
     window.addEventListener('online', () => { red(); sincronizar(); });
     window.addEventListener('offline', red);
     red();
-    await Promise.all([cargarClientes().catch(() => {}), cargarProductos().catch(() => {})]);
+    await Promise.all([cargarClientes().catch(() => {}), cargarProductos().catch(() => {}), cargarModulos()]);
     tiempoReal();
     sincronizar();
     window.addEventListener('hashchange', router);
@@ -57,6 +57,18 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden) { refrescarEstado().catch(() => {}); cargarClientes().then(refrescarVista).catch(() => {}); } });
   }
 
+  // G94 · 🧩 Módulos de la billetera ({ acuerdo, contador, escalonado, gastos_fijos } → true/false). Base vieja: ninguno.
+  S.mod = {};
+  const mod = (k) => !!(S.mod && S.mod[k]);
+  async function cargarModulos() {
+    S.mod = await rpc('mis_modulos').catch(() => ({})) || {};
+    if (mod('gastos_fijos') && esDueno()) { const n = await rpc('gastos_fijos_aplicar').catch(() => 0); if (n > 0) toast('🔁 ' + n + (n === 1 ? ' gasto fijo anotado' : ' gastos fijos anotados') + ' en tu caja'); }
+  }
+  // Pantalla de un módulo que no está activo: qué hace + botón a la tienda (demo y comprar).
+  function sinModulo(k, tit) {
+    pintar(el('h2', null, tit), el('div', { class: 'tarjeta' }, el('p', null, 'Este módulo aún no está activo en tu billetera.'),
+      el('button', { class: 'btn primario', type: 'button', onclick: () => window.CFX_MODULOS_TIENDA && CFX_MODULOS_TIENDA.probar(k, { rpc, alCambiar: () => setTimeout(() => location.reload(), 1500) }) }, '🧩 Ver el módulo')));
+  }
   async function refrescarEstado() {
     S.st = await rpc('mi_estado');
     local.set('lc-estado-' + S.uid, S.st);
@@ -193,10 +205,10 @@
     const [v, a, b] = h.split('/');
     S.vista = v;
     document.querySelectorAll('#nav a').forEach((x) => x.classList.toggle('activo', x.dataset.v === v || (v === 'cliente' && x.dataset.v === 'clientes') ||
-      (['comprobantes', 'reportes', 'productos', 'ajustes', 'plan', 'cuenta', 'ayuda', 'pendientes', 'soporte', 'apariencia', 'cobranza', 'conexiones', 'conexion', 'invita', 'avisos'].includes(v) && x.dataset.v === 'mas')));
+      (['comprobantes', 'reportes', 'productos', 'ajustes', 'plan', 'cuenta', 'ayuda', 'pendientes', 'soporte', 'apariencia', 'cobranza', 'conexiones', 'conexion', 'invita', 'avisos', 'modulos', 'contador', 'fijos'].includes(v) && x.dataset.v === 'mas')));
     const vistas = { inicio: vInicio, caja: vCaja, clientes: vClientes, cliente: vCliente, anotar: vAnotar, mas: vMas, comprobantes: vComprobantes, reportes: vReportes,
       productos: vProductos, ayudantes: vMas, ajustes: vAjustes, plan: vPlan, avisos: vAvisos, cuenta: vCuenta, ayuda: vAyuda, pendientes: vPendientes, soporte: vSoporte,
-      apariencia: vApariencia, cobranza: vCobranza, conexiones: vConexiones, conexion: vConexion, invita: vInvita };
+      apariencia: vApariencia, cobranza: vCobranza, conexiones: vConexiones, conexion: vConexion, invita: vInvita, modulos: vModulos, contador: vContador, fijos: vFijos };
     const fn = vistas[v] || vInicio;
     if (!silencioso) window.scrollTo(0, 0);
     Promise.resolve(fn(a, b)).catch(error);
@@ -493,7 +505,8 @@
         el('a', { class: 'btn rojo', href: '#anotar/' + c.id + '/fiado' }, el('span', { class: 'ico' }, '＋'), 'Fiado'),
         el('a', { class: 'btn verde', href: '#anotar/' + c.id + '/abono' }, el('span', { class: 'ico' }, '－'), 'Abono'),
         el('button', { class: 'btn wsp', type: 'button', onclick: () => cobrar(c.id) }, el('span', { class: 'ico' }, '💬'), 'Cobrar'),
-        el('button', { class: 'btn', type: 'button', onclick: () => compartirLink(c.id) }, el('span', { class: 'ico' }, '🔗'), 'Link')),
+        el('button', { class: 'btn', type: 'button', onclick: () => compartirLink(c.id) }, el('span', { class: 'ico' }, '🔗'), 'Link'),
+        esDueno() && c.saldo > 0 ? el('button', { class: 'btn', type: 'button', onclick: () => acuerdo(c) }, el('span', { class: 'ico' }, '📝'), 'Acuerdo') : null),
       el('div', { class: 'chips' }, [['movimientos', 'Movimientos'], ['cuotas', 'Cuotas'], ['datos', 'Datos']].map(([v, t]) =>
         el('a', { class: 'chip' + (pestana === v ? ' activo' : ''), href: '#cliente/' + c.id + '/' + v, style: 'text-decoration:none' }, t))),
       cuerpo);
@@ -886,11 +899,15 @@
       return;
     }
     let tono = 'amable';
+    // G94 📈 Cobranza escalonada: el tono sube solo según los días de atraso (≤ 7 amable · ≤ 20 neutral · más firme).
+    const atraso = c.saldo > 0 && c.prox_venc ? Math.max(0, Math.floor((Date.now() - new Date(String(c.prox_venc).slice(0, 10) + 'T12:00:00')) / 86400000)) : 0;
+    const escal = mod('escalonado');
+    if (escal) tono = atraso > 20 ? 'firme' : atraso > 7 ? 'neutral' : 'amable';
     const info = { cuota: (await proximasCuotas(id).catch(() => ({})))[id], cuenta: incluirCuenta() };
     const prev = el('div', { class: 'tarjeta plana', style: 'white-space:pre-wrap;word-break:break-word' });
     const tonos = el('div', { class: 'segmento' });
     const pintarT = () => { vaciar(tonos); [['amable', 'Amable'], ['neutral', 'Neutral'], ['firme', 'Firme'], ['propio', 'Propio']].forEach(([v, t]) => {
-      const bloqueado = v !== 'amable' && !prem(); if (v === 'propio' && prem() && !S.neg.plantilla_propia) return;
+      const bloqueado = v !== 'amable' && !prem() && !(escal && v !== 'propio'); if (v === 'propio' && prem() && !S.neg.plantilla_propia) return;
       tonos.append(el('button', { type: 'button', class: (tono === v ? 'activo' : '') + (bloqueado ? ' bloq-pro' : ''), onclick: () => { if (bloqueado) return alPlan('Los tonos neutral, firme y tu mensaje propio son Pro.'); tono = v; pintarT(); } }, t + (bloqueado ? ' 🔒' : '')));
     }); prev.textContent = armarMensaje(tono, c, info); };
     pintarT();
@@ -898,7 +915,7 @@
     const botones = [{ texto: 'Cancelar', valor: null }];
     if (p.push) botones.push({ texto: '🔔 Aviso', valor: 'push' });
     botones.push({ texto: '💬 WhatsApp', clase: 'wsp', valor: 'wsp' });
-    const r = await dialogo('Cobrar a ' + c.nombre, el('div', null, tonos, el('div', { class: 'mt' }, prev), casilla,
+    const r = await dialogo('Cobrar a ' + c.nombre, el('div', null, escal ? el('p', { class: 'sutil', id: 'tonoAuto' }, '📈 Tono elegido solo: ' + (atraso > 0 ? atraso + ' días de atraso' : 'sin atraso')) : null, tonos, el('div', { class: 'mt' }, prev), casilla,
       !linkPagoDe(c) && esDueno() ? el('p', { class: 'sutil' }, '💡 Agrega tu link de pago en Ajustes y saldrá aquí.') : null,
       !c.telefono ? el('p', { class: 'rojo' }, 'Este cliente no tiene teléfono. Agrégalo en sus datos.') : null,
       el('p', { class: 'sutil' }, 'Se registra como recordatorio de cobro (máximo 2 por semana).')), botones);
@@ -1071,6 +1088,9 @@
       d && { k: 'reportes', ico: icoH('grafico', 20), t: 'Reportes', grupo: g, ir: '#reportes' },
       d && { k: 'conexiones', ico: icoH('enlace', 20), t: 'Billeteras conectadas', dato: prem() ? '' : '🔒 PRO', grupo: g, ir: '#conexiones' },
       d && { k: 'productos', ico: icoH('etiqueta', 20), t: 'Productos frecuentes', grupo: g, ir: '#productos' },
+      d && { k: 'fijos', ico: '🔁', t: 'Gastos fijos', d: 'Se anotan solos cada mes', dato: mod('gastos_fijos') ? '' : '🧩', grupo: g, ir: '#fijos' },
+      d && { k: 'contador', ico: '🧮', t: 'Link para el contador', dato: mod('contador') ? '' : '🧩', grupo: g, ir: '#contador' },
+      d && { k: 'modulos', ico: '🧩', t: 'Módulos', d: 'Acuerdos, contador, cobranza escalonada…', grupo: 'Tu plan', ir: '#modulos' },
       cola().length && { k: 'pendientes', ico: icoH('reloj', 20), t: 'Por subir', dato: cola().length, grupo: g, ir: '#pendientes' },
       d && { k: 'premium', ico: icoH('estrella', 20), t: pagar ? (pl.estado === 'pro' ? 'Pagar mi Pro' : 'Pasar a Pro') : 'Mi plan', d: (pl.pago_pendiente ? '⏳ Pago en revisión · ' : '') + sub.replace(/^[^\wÁÉÍÓÚáéíóú¡¿]+/, '') + (uso ? ' · ' + uso : ''),
         dato: planTxt(), grupo: 'Tu plan', accion: pagar ? () => pasarPro() : () => { location.hash = 'plan'; } },
@@ -1960,6 +1980,83 @@
   }
 
   // Soporte: el chat común de las 6 apps (núcleo, llega al Centro de Mando → Mensajes).
+  // ================= G94 · 🧩 MÓDULOS =================
+  function vModulos() {
+    if (soloDueno()) return;
+    const z = el('div'); pintar(el('h2', null, '🧩 Módulos'), el('p', { class: 'sutil' }, 'Suma solo lo que te sirve. Con Pro pagas menos.'), z);
+    if (window.CFX_MODULOS_TIENDA) CFX_MODULOS_TIENDA.montar(z, { rpc, alCambiar: () => setTimeout(() => location.reload(), 1500) }).cargar();
+  }
+  // 📝 Acuerdo de pago firmado por link
+  async function acuerdo(c) {
+    if (!mod('acuerdo')) return CFX_MODULOS_TIENDA && CFX_MODULOS_TIENDA.probar('acuerdo', { rpc, alCambiar: () => setTimeout(() => location.reload(), 1500) });
+    const L = await conCarga(() => rpc('acuerdos_de', { p_cliente: c.id })).catch((e) => { error(e); return null; }); if (!L) return;
+    const ult = L.find((a) => a.estado === 'pendiente' || a.estado === 'firmado');
+    const cal = (a) => { const r = []; const d = new Date(a.primera + 'T12:00:00'); const cuota = Math.ceil(a.monto / a.cuotas);
+      for (let k = 0; k < a.cuotas; k++) { const f = new Date(d); if (a.cada === 'mes') f.setMonth(d.getMonth() + k); else f.setDate(d.getDate() + k * (a.cada === 'semana' ? 7 : 15));
+        r.push(el('li', null, fechaCorta(f.toISOString().slice(0, 10)) + ' · ' + pesos(k === a.cuotas - 1 ? a.monto - cuota * (a.cuotas - 1) : cuota))); } return el('ol', { class: 'sutil' }, r); };
+    if (ult) {
+      const r = await dialogo('📝 Acuerdo de ' + c.nombre, el('div', { id: 'acuVer' }, el('p', null, el('strong', null, ult.estado === 'firmado' ? '✅ Firmado por ' + ult.firma_nombre + ' el ' + fechaLarga(ult.firmado_at) : '⏳ Esperando que lo acepte en su link')),
+        el('p', null, pesos(ult.monto) + ' en ' + ult.cuotas + (ult.cuotas === 1 ? ' pago' : ' cuotas')), cal(ult), ult.nota ? el('p', { class: 'sutil' }, ult.nota) : null),
+        [{ texto: 'Cerrar', valor: null }, { texto: '🗑️ Anular', valor: 'anular' }, ult.estado === 'pendiente' ? { texto: '📲 Enviar link', clase: 'wsp', valor: 'link' } : { texto: '＋ Nuevo', clase: 'primario', valor: 'nuevo' }]);
+      if (r === 'link') return compartirLink(c.id);
+      if (r === 'anular') { if (await window.CFX_DIALOGO.confirmar('¿Anular este acuerdo?', { si: 'Anular' })) { await conCarga(() => rpc('acuerdo_anular', { p_id: ult.id })).then(() => toast('Acuerdo anulado')).catch(error); } return; }
+      if (r !== 'nuevo') return;
+    }
+    const m = el('input', { id: 'acMonto', type: 'number', inputmode: 'numeric', value: Math.max(c.saldo, 0), min: 1 });
+    const n = el('input', { id: 'acCuotas', type: 'number', inputmode: 'numeric', value: 3, min: 1, max: 24 });
+    const f = el('input', { id: 'acPrimera', type: 'date', value: hoyISO() });
+    const cada = el('select', { id: 'acCada' }, [['mes', 'Cada mes'], ['quincena', 'Cada 15 días'], ['semana', 'Cada semana']].map(([v, t]) => el('option', { value: v }, t)));
+    const nota = el('input', { id: 'acNota', maxlength: 300, placeholder: 'Opcional: ej. sin intereses' });
+    const cmp = (t, i) => el('div', { class: 'campo' }, el('label', { for: i.id }, t), i);
+    const ok = await dialogo('📝 Acuerdo de pago', el('div', null, el('p', { class: 'sutil' }, c.nombre + ' lo acepta desde su link escribiendo su nombre. Queda firmado con fecha.'),
+      cmp('Monto total', m), cmp('Cuotas', n), cmp('Primera cuota', f), cmp('Frecuencia', cada), cmp('Nota', nota)), [{ texto: 'Cancelar', valor: null }, { texto: 'Crear acuerdo', clase: 'primario', valor: 1 }]);
+    if (!ok) return;
+    try {
+      await conCarga(() => rpc('acuerdo_crear', { p_cliente: c.id, p_monto: Math.round(+m.value), p_cuotas: Math.round(+n.value), p_primera: f.value, p_cada: cada.value, p_nota: nota.value.trim() }));
+      const v = await dialogo('✅ Acuerdo creado', el('p', null, 'Mándale su link para que lo acepte.'), [{ texto: 'Después', valor: null }, { texto: '📲 Enviar link', clase: 'wsp', valor: 1 }]);
+      if (v) compartirLink(c.id);
+    } catch (e) { error(e); }
+  }
+  // 🧮 Link para el contador
+  async function vContador() {
+    if (soloDueno()) return;
+    if (!mod('contador')) return sinModulo('contador', '🧮 Link para el contador');
+    const base = location.href.replace(/app\/.*$/, 'contador/');
+    const pint = (t) => pintar(el('h2', null, '🧮 Link para el contador'), el('p', { class: 'sutil' }, 'Tu contador ve ventas, gastos, fiado y abonos de cada mes, y baja la planilla. No ve nombres de clientes.'),
+      t ? el('div', { class: 'tarjeta' }, el('p', { id: 'ctLink', style: 'word-break:break-all' }, base + '?t=' + t),
+        el('div', { class: 'acciones' }, el('button', { class: 'btn wsp', type: 'button', onclick: () => abrir(wa('', '🧮 Link de ' + S.neg.nombre + ' para ver la caja del mes: ' + base + '?t=' + t)) }, '💬 Enviar'),
+          el('button', { class: 'btn', type: 'button', onclick: async () => { try { await navigator.clipboard.writeText(base + '?t=' + t); toast('📋 Copiado'); } catch (e) { /* sin permiso */ } } }, '📋 Copiar'),
+          el('button', { class: 'btn', type: 'button', id: 'ctOff', onclick: async () => { await conCarga(() => rpc('contador_link', { p_on: false })).catch(error); pint(null); } }, '⛔ Desactivar')))
+        : el('button', { class: 'btn primario', type: 'button', id: 'ctOn', onclick: async () => { const x = await conCarga(() => rpc('contador_link', { p_on: true })).catch(error); if (x) pint(x); } }, '🔗 Crear link'));
+    pint(S.neg.contador_token || null);
+  }
+  // 🔁 Gastos fijos automáticos
+  async function vFijos() {
+    if (soloDueno()) return;
+    if (!mod('gastos_fijos')) return sinModulo('gastos_fijos', '🔁 Gastos fijos');
+    const L = await conCarga(() => rpc('gastos_fijos_lista')).catch((e) => { error(e); return []; });
+    pintar(el('h2', null, '🔁 Gastos fijos'), el('p', { class: 'sutil' }, 'Se anotan solos en tu caja desde su día de cada mes.'),
+      el('button', { class: 'btn primario', type: 'button', id: 'gfNuevo', onclick: () => editarFijo() }, '＋ Nuevo gasto fijo'),
+      L.length ? el('div', { class: 'lista mt' }, L.map((g) => el('button', { type: 'button', class: 'item', onclick: () => editarFijo(g) }, el('span', { class: 'crece' }, g.categoria + (g.descripcion ? ' · ' + g.descripcion : ''),
+        el('div', { class: 'sutil' }, 'Día ' + g.dia + (g.activo ? '' : ' · ⏸️ pausado') + (g.ultimo_mes ? ' · anotado ' + g.ultimo_mes : ''))), el('strong', null, pesos(g.monto)))))
+        : el('div', { class: 'vacio' }, 'Ej.: arriendo día 5, luz día 20, sueldo día 30 → día 28.'));
+  }
+  async function editarFijo(g) {
+    g = g || { categoria: 'Arriendo', descripcion: '', monto: '', dia: 5, activo: true };
+    const cat = el('input', { id: 'gfCat', maxlength: 24, value: g.categoria }), des = el('input', { id: 'gfDes', maxlength: 120, value: g.descripcion || '' });
+    const mon = el('input', { id: 'gfMonto', type: 'number', inputmode: 'numeric', value: g.monto }), dia = el('input', { id: 'gfDia', type: 'number', inputmode: 'numeric', min: 1, max: 28, value: g.dia });
+    const act = el('input', { id: 'gfAct', type: 'checkbox' }); act.checked = g.activo !== false;
+    const cmp = (t, i) => el('div', { class: 'campo' }, el('label', { for: i.id }, t), i);
+    const r = await dialogo(g.id ? 'Editar gasto fijo' : 'Nuevo gasto fijo', el('div', null, cmp('Categoría', cat), cmp('Detalle', des), cmp('Monto', mon), cmp('Día del mes (1 a 28)', dia), el('label', null, act, ' Activo')),
+      [{ texto: 'Cancelar', valor: null }].concat(g.id ? [{ texto: '🗑️ Borrar', valor: 'b' }] : [], [{ texto: 'Guardar', clase: 'primario', valor: 1 }]));
+    if (!r) return;
+    try {
+      if (r === 'b') await conCarga(() => rpc('gasto_fijo_borrar', { p_id: g.id }));
+      else { await conCarga(() => rpc('gasto_fijo_guardar', { p_id: g.id || null, p_categoria: cat.value.trim(), p_descripcion: des.value.trim(), p_monto: Math.round(+mon.value), p_dia: Math.round(+dia.value), p_activo: act.checked }));
+        const n = await rpc('gastos_fijos_aplicar').catch(() => 0); toast(n > 0 ? '💾 Guardado · ' + n + ' anotado en la caja de este mes' : '💾 Guardado'); }
+      vFijos();
+    } catch (e) { error(e); }
+  }
   async function vSoporte() { location.hash = 'mas'; if (window.CFX_AYUDA) window.CFX_AYUDA.chat(); }
 
   arrancar().catch(error);

@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '54'),
+  ('version_bd', '55'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -1158,7 +1158,7 @@ begin
     'negocio', jsonb_build_object('id', n.id, 'nombre', n.nombre, 'rubro', n.rubro, 'whatsapp', n.whatsapp, 'banco', n.banco,
       'venc_defecto', n.venc_defecto, 'limite_general', n.limite_general, 'pin_activo', n.pin_activo, 'saldo_a_favor', n.saldo_a_favor,
       'icono', n.icono, 'color', n.color, 'plantilla_propia', n.plantilla_propia, 'estado', n.estado, 'link_pago', n.link_pago, 'links_pago', n.links_pago,
-      'motivo_suspension', n.motivo_suspension, 'creado', n.creado),
+      'motivo_suspension', n.motivo_suspension, 'creado', n.creado, 'contador_token', case when m.rol = 'dueno' then to_jsonb(n) ->> 'contador_token' end),
     'plan', jsonb_build_object('estado', privado.estado_plan(v_neg), 'premium', prem, 'hasta', n.premium_hasta,
       'en_prueba', privado.estado_plan(v_neg) = 'prueba', 'prueba_hasta', n.prueba_hasta, 'activado', n.activado,
       'en_gracia', privado.pagado(v_neg) and n.premium_hasta < now(), 'dias_gracia', a.dias_gracia,
@@ -1659,7 +1659,9 @@ begin
   if not found then perform privado.fallo('Cliente no encontrado'); end if;
   if p_canal not in ('whatsapp','push') then perform privado.fallo('Canal inválido'); end if;
   if p_tono not in ('amable','neutral','firme','propio') then perform privado.fallo('Tono inválido'); end if;
-  if p_tono <> 'amable' and not prem then perform privado.fallo('Los tonos neutral, firme y propio son Pro', 'PLAN'); end if;
+  -- G94: con el módulo 📈 Cobranza escalonada, neutral y firme también para Free (el tono lo elige la app según el atraso).
+  if p_tono <> 'amable' and not prem and not (p_tono in ('neutral', 'firme') and to_regprocedure('public.cfx_modulo_de(text,uuid)') is not null and public.cfx_modulo_de('escalonado', v_neg))
+    then perform privado.fallo('Los tonos neutral, firme y propio son Pro', 'PLAN'); end if;
   if c.saldo <= 0 then perform privado.fallo('Este cliente no tiene deuda'); end if;
   if p_canal = 'whatsapp' and c.telefono is null then perform privado.fallo('Agrega el teléfono del cliente para cobrarle por WhatsApp'); end if;
   if p_canal = 'push' and not exists (select 1 from public.push_subs where cliente = p_cliente) then
@@ -5052,7 +5054,7 @@ grant execute on function public.cfx_es_socio(), public.cfx_socios_lista(), publ
 --   Nada se borra solo: las vacías se borran con un toque; las que tienen datos piden descargar el respaldo y escribir "sí".
 --   cfx_tablas() = las tablas que crea este archivo (la revisa pruebas/inventario.py --verificar).
 -- ---------------------------------------------------------------------
-create or replace function public.cfx_tablas() returns text[] language sql immutable as $$ select array['privado.archivos_por_borrar', 'privado.config', 'privado.fotos_pendientes', 'privado.limites', 'privado.pruebas_usadas', 'privado.secretos', 'privado.tareas_hechas', 'public.ajustes', 'public.auditoria', 'public.caja', 'public.categorias', 'public.cfx_analisis', 'public.cfx_anuncio_vistos', 'public.cfx_anuncios', 'public.cfx_bloqueos', 'public.cfx_boleta_cuentas', 'public.cfx_boletas', 'public.cfx_brechas', 'public.cfx_calificaciones', 'public.cfx_cargas', 'public.cfx_carritos', 'public.cfx_chat', 'public.cfx_clave_temporal', 'public.cfx_config', 'public.cfx_consent', 'public.cfx_consent_hist', 'public.cfx_cupones', 'public.cfx_derechos', 'public.cfx_descuentos', 'public.cfx_errores', 'public.cfx_exentos', 'public.cfx_fallas', 'public.cfx_keys', 'public.cfx_legal', 'public.cfx_login_fallos', 'public.cfx_login_qr', 'public.cfx_mensajes', 'public.cfx_modulos_negocio', 'public.cfx_modulos_pruebas', 'public.cfx_pagos', 'public.cfx_pin', 'public.cfx_push_entrega', 'public.cfx_ref_codigos', 'public.cfx_referidos', 'public.cfx_registro', 'public.cfx_reportes', 'public.cfx_salud', 'public.cfx_secretos', 'public.cfx_sellos', 'public.cfx_sellos_cfg', 'public.cfx_socios', 'public.cfx_verificaciones', 'public.cfx_versiones', 'public.clientes', 'public.cola_push', 'public.comprobantes', 'public.conexion_movs', 'public.conexiones', 'public.cuotas', 'public.cupones', 'public.feriados', 'public.invitaciones', 'public.keys', 'public.miembros', 'public.movimientos', 'public.negocios', 'public.notificaciones', 'public.perfiles', 'public.productos', 'public.push_subs', 'public.recordatorios', 'public.sesiones_cliente', 'public.solicitudes_pago', 'public.soporte', 'public.uso_mensual', 'public.ventas_cuotas'] $$;
+create or replace function public.cfx_tablas() returns text[] language sql immutable as $$ select array['privado.archivos_por_borrar', 'privado.config', 'privado.fotos_pendientes', 'privado.limites', 'privado.pruebas_usadas', 'privado.secretos', 'privado.tareas_hechas', 'public.acuerdos', 'public.ajustes', 'public.auditoria', 'public.caja', 'public.categorias', 'public.cfx_analisis', 'public.cfx_anuncio_vistos', 'public.cfx_anuncios', 'public.cfx_bloqueos', 'public.cfx_boleta_cuentas', 'public.cfx_boletas', 'public.cfx_brechas', 'public.cfx_calificaciones', 'public.cfx_cargas', 'public.cfx_carritos', 'public.cfx_chat', 'public.cfx_clave_temporal', 'public.cfx_config', 'public.cfx_consent', 'public.cfx_consent_hist', 'public.cfx_cupones', 'public.cfx_derechos', 'public.cfx_descuentos', 'public.cfx_errores', 'public.cfx_exentos', 'public.cfx_fallas', 'public.cfx_keys', 'public.cfx_legal', 'public.cfx_login_fallos', 'public.cfx_login_qr', 'public.cfx_mensajes', 'public.cfx_modulos_negocio', 'public.cfx_modulos_pruebas', 'public.cfx_pagos', 'public.cfx_pin', 'public.cfx_push_entrega', 'public.cfx_ref_codigos', 'public.cfx_referidos', 'public.cfx_registro', 'public.cfx_reportes', 'public.cfx_salud', 'public.cfx_secretos', 'public.cfx_sellos', 'public.cfx_sellos_cfg', 'public.cfx_socios', 'public.cfx_verificaciones', 'public.cfx_versiones', 'public.clientes', 'public.cola_push', 'public.comprobantes', 'public.conexion_movs', 'public.conexiones', 'public.cuotas', 'public.cupones', 'public.feriados', 'public.gastos_fijos', 'public.invitaciones', 'public.keys', 'public.miembros', 'public.movimientos', 'public.negocios', 'public.notificaciones', 'public.perfiles', 'public.productos', 'public.push_subs', 'public.recordatorios', 'public.sesiones_cliente', 'public.solicitudes_pago', 'public.soporte', 'public.uso_mensual', 'public.ventas_cuotas'] $$;
 create or replace function public.cfx_inventario() returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare r record; n bigint; out jsonb := '[]'::jsonb;
@@ -5357,7 +5359,17 @@ language sql immutable as $$
          ('pasaporte', '🪪 Pasaporte de la bici', 'Sticker QR para el cuadro: historial de mantenciones, dueño y aviso de robo. Quien la escanea sabe si es robada.'),
          ('domicilio', '🚐 Mecánico a domicilio', 'El cliente reserva con su dirección (+ recargo de visita); armas la ruta del día y le avisas “Voy en camino”.'),
          ('garantias', '🛡️ Garantías', 'Garantía del trabajo, repuestos o bici usada, con vencimiento: el cliente la ve en su link y la usa en 1 toque.'),
-         ('plan_mant', '🔁 Plan de mantención', 'Tus clientes pagan al mes y tienen visitas incluidas y descuento: plata segura cada mes y vuelven siempre.')
+         ('plan_mant', '🔁 Plan de mantención', 'Tus clientes pagan al mes y tienen visitas incluidas y descuento: plata segura cada mes y vuelven siempre.'),
+         -- G94: módulos de cobranza (Billetera primero).
+         ('acuerdo', '📝 Acuerdo de pago firmado', 'Armas un plan de pago y el cliente lo acepta desde su link con su nombre: queda firmado, con fecha y calendario.'),
+         ('contador', '🧮 Link para el contador', 'Un link de solo lectura con ventas, gastos y cobros del mes y su planilla: sin mandar pantallazos.'),
+         ('escalonado', '📈 Cobranza escalonada', 'El mensaje de cobro sube de tono solo según los días de atraso: amable → neutral → firme, respetando la ley.'),
+         ('gastos_fijos', '🔁 Gastos fijos automáticos', 'Arriendo, luz o sueldos se anotan solos cada mes en tu caja, el día que elijas.'),
+         -- G94: módulos de estacionamientos (Estaciona primero).
+         ('destacar', '⭐ Destacado en el mapa', 'Tus estacionamientos salen primero y resaltados en el mapa y la lista: más reservas.'),
+         ('acceso', '🔑 Control de acceso con QR', 'Cada reserva trae su pase QR: lo escaneas al entrar y salir y ves si está vigente y su patente.'),
+         ('descuentos', '🏷️ Descuento por estadía larga', 'Premia a quien reserva más tiempo: un % menos desde las horas, días o meses que elijas.'),
+         ('ganancias', '📊 Ganancias y ocupación', 'Cuánto ganaste por mes, ocupación de cada lugar, mejores días y planilla para Excel.')
 $$;
 
 create or replace function public.cfx_venta() returns jsonb
@@ -7032,6 +7044,197 @@ end $$;
 revoke all on function public.cfx_anuncios_publicar(uuid, text, jsonb), public.cfx_anuncios_quitar(uuid), public.cfx_anuncios_admin(), public.cfx_anuncios_ver(), public.cfx_anuncio_marcar(uuid, text) from public, anon;
 grant execute on function public.cfx_anuncios_publicar(uuid, text, jsonb), public.cfx_anuncios_quitar(uuid), public.cfx_anuncios_admin(), public.cfx_anuncios_ver(), public.cfx_anuncio_marcar(uuid, text) to authenticated;
 -- <<< CFX núcleo
+
+-- =====================================================================
+-- G94 · 🧩 Billetera modular (va después del núcleo: usa cfx_modulo_mio). Lo Free/Pro que ya existía no cambia.
+-- Ganchos del núcleo: el negocio es la billetera (dueño o ayudante); Premium = Pro de la billetera.
+create or replace function public.cfx_negocio_de_cuenta(u uuid) returns uuid
+language sql stable security definer set search_path = public, pg_temp as $$
+  select m.negocio from public.miembros m join public.negocios n on n.id = m.negocio where m.usuario = u and m.activo and n.estado <> 'eliminado' limit 1
+$$;
+create or replace function public.cfx_es_premium(n uuid) returns boolean
+language sql stable security definer set search_path = public, pg_temp as $$ select privado.es_premium(n) $$;
+create or replace function public.cfx_modulos_app() returns text[]
+language sql immutable as $$ select array['acuerdo', 'contador', 'escalonado', 'gastos_fijos'] $$;
+revoke all on function public.cfx_negocio_de_cuenta(uuid), public.cfx_es_premium(uuid), public.cfx_modulos_app() from public, anon, authenticated;
+-- Packs propios de Billetera (solo si siguen los de fábrica del núcleo).
+update public.cfx_config set valor = jsonb_set(valor, '{packs}', jsonb_build_object(
+    'basico',   jsonb_build_object('nombre', '🌱 Cobrar mejor', 'detalle', 'Acuerdos firmados y cobranza que sube de tono sola', 'precio', 1490, 'modulos', jsonb_build_array('acuerdo', 'escalonado')),
+    'completo', jsonb_build_object('nombre', '💎 Completo', 'detalle', 'Todos los módulos, también los nuevos', 'precio', 2490, 'destacado', true, 'modulos', '*')))
+where clave = 'modulos_venta' and valor #>> '{packs,crecer,modulos,4}' = 'carrito';
+
+-- Lo que puede usar mi billetera: {"acuerdo": true, …}
+create or replace function public.mis_modulos() returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(jsonb_object_agg(k, public.cfx_modulo_mio(k)), '{}') from unnest(public.cfx_modulos_app()) k
+$$;
+create or replace function privado.modulo_o_error(p text) returns void language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  if privado.mi_negocio() is null then raise exception 'Sin billetera'; end if;
+  if not public.cfx_modulo_mio(p) then raise exception 'Este módulo no está activo: actívalo en Más → 🧩 Módulos'; end if;
+end $$;
+
+-- 📝 Acuerdo de pago firmado por link
+create table if not exists public.acuerdos (
+  id uuid primary key default gen_random_uuid(),
+  negocio uuid not null references public.negocios (id) on delete cascade,
+  cliente uuid not null references public.clientes (id) on delete cascade,
+  monto int not null check (monto between 1 and 99999999),
+  cuotas int not null check (cuotas between 1 and 24),
+  primera date not null,
+  cada text not null default 'mes' check (cada in ('semana', 'quincena', 'mes')),
+  nota text not null default '' check (char_length(nota) <= 300),
+  estado text not null default 'pendiente' check (estado in ('pendiente', 'firmado', 'rechazado', 'anulado')),
+  firma_nombre text check (firma_nombre is null or char_length(firma_nombre) <= 80),
+  firmado_at timestamptz,
+  creado timestamptz not null default now()
+);
+create index if not exists acuerdos_cli on public.acuerdos (cliente, creado desc);
+alter table public.acuerdos enable row level security;
+revoke all on public.acuerdos from anon, authenticated;
+create or replace function public.acuerdo_crear(p_cliente uuid, p_monto int, p_cuotas int, p_primera date, p_cada text, p_nota text) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare n uuid := privado.mi_negocio(); r public.acuerdos;
+begin
+  perform privado.modulo_o_error('acuerdo');
+  if not exists (select 1 from public.clientes c where c.id = p_cliente and c.negocio = n) then raise exception 'Cliente no encontrado'; end if;
+  if coalesce(p_monto, 0) < 1 or p_monto > 99999999 then raise exception 'Monto no válido'; end if;
+  if coalesce(p_cuotas, 0) not between 1 and 24 then raise exception 'Entre 1 y 24 cuotas'; end if;
+  if p_primera is null or p_primera < current_date - 1 or p_primera > current_date + 366 then raise exception 'Fecha de la primera cuota no válida'; end if;
+  update public.acuerdos set estado = 'anulado' where cliente = p_cliente and estado = 'pendiente';
+  insert into public.acuerdos (negocio, cliente, monto, cuotas, primera, cada, nota)
+  values (n, p_cliente, p_monto, p_cuotas, p_primera, case when p_cada in ('semana', 'quincena') then p_cada else 'mes' end, left(coalesce(p_nota, ''), 300)) returning * into r;
+  return to_jsonb(r);
+end $$;
+create or replace function public.acuerdos_de(p_cliente uuid) returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(jsonb_agg(to_jsonb(a) order by a.creado desc), '[]') from public.acuerdos a
+  where a.cliente = p_cliente and a.negocio = privado.mi_negocio()
+$$;
+create or replace function public.acuerdo_anular(p_id uuid) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  update public.acuerdos set estado = 'anulado' where id = p_id and negocio = privado.mi_negocio() and estado in ('pendiente', 'firmado');
+  if not found then raise exception 'Acuerdo no encontrado'; end if;
+end $$;
+-- Portal del cliente (link + PIN): ve su acuerdo y lo acepta escribiendo su nombre (o lo rechaza).
+create or replace function public.portal_acuerdo(p_sesion text) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_cli uuid := privado.sesion(p_sesion);
+begin
+  return (select to_jsonb(x) from (select id, monto, cuotas, primera, cada, nota, estado, firma_nombre, firmado_at from public.acuerdos
+          where cliente = v_cli and estado in ('pendiente', 'firmado') order by creado desc limit 1) x);
+end $$;
+create or replace function public.portal_acuerdo_firmar(p_sesion text, p_id uuid, p_nombre text, p_acepta boolean) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_cli uuid := privado.sesion(p_sesion); a public.acuerdos; nm text := btrim(coalesce(p_nombre, ''));
+begin
+  select * into a from public.acuerdos where id = p_id and cliente = v_cli and estado = 'pendiente' for update;
+  if a.id is null then raise exception 'El acuerdo ya no está pendiente'; end if;
+  if p_acepta and char_length(nm) < 3 then raise exception 'Escribe tu nombre completo para firmar'; end if;
+  update public.acuerdos set estado = case when p_acepta then 'firmado' else 'rechazado' end,
+    firma_nombre = case when p_acepta then left(nm, 80) end, firmado_at = now() where id = a.id returning * into a;
+  perform privado.avisar_usuario((select dueno from public.negocios where id = a.negocio),
+    case when p_acepta then '📝 Acuerdo firmado' else '📝 Acuerdo rechazado' end,
+    (select nombre from public.clientes where id = v_cli) || case when p_acepta then ' aceptó el acuerdo de pago' else ' no aceptó el acuerdo de pago' end, 'app/#cliente/' || v_cli, true);
+  return jsonb_build_object('estado', a.estado, 'firmado_at', a.firmado_at);
+end $$;
+
+-- 🧮 Link para el contador (solo lectura, sin nombres de clientes)
+alter table public.negocios add column if not exists contador_token text;
+create unique index if not exists negocios_contador on public.negocios (contador_token) where contador_token is not null;
+create or replace function public.contador_link(p_on boolean) returns text
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare n uuid := privado.mi_negocio(); t text;
+begin
+  perform privado.modulo_o_error('contador');
+  if privado.mi_rol() <> 'dueno' then raise exception 'Solo el dueño'; end if;
+  if not p_on then update public.negocios set contador_token = null where id = n; return null; end if;
+  select contador_token into t from public.negocios where id = n;
+  if t is null then t := replace(replace(encode(extensions.gen_random_bytes(18), 'base64'), '/', '_'), '+', '-'); update public.negocios set contador_token = t where id = n; end if;
+  return t;
+end $$;
+create or replace function public.contador_ver(p_token text, p_mes text) returns jsonb
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare n public.negocios; d date; h date;
+begin
+  if coalesce(p_token, '') !~ '^[A-Za-z0-9_=-]{20,40}$' then raise exception 'Link no válido'; end if;
+  select * into n from public.negocios where contador_token = p_token and estado = 'activo';
+  if n.id is null or not public.cfx_modulo_de('contador', n.id) then raise exception 'Este link ya no está activo'; end if;
+  d := case when coalesce(p_mes, '') ~ '^\d{4}-\d{2}$' then (p_mes || '-01')::date else date_trunc('month', now() at time zone 'America/Santiago')::date end;
+  h := (d + interval '1 month')::date;
+  return jsonb_build_object('negocio', n.nombre, 'mes', to_char(d, 'YYYY-MM'),
+    'caja', coalesce((select jsonb_agg(jsonb_build_object('tipo', tipo, 'categoria', categoria, 'total', t, 'n', k) order by tipo, t desc) from (
+        select tipo, categoria, sum(monto)::bigint t, count(*) k from public.caja where negocio = n.id and anulado_at is null
+          and (fecha at time zone 'America/Santiago')::date >= d and (fecha at time zone 'America/Santiago')::date < h group by tipo, categoria) x), '[]'),
+    'fiado', (select coalesce(sum(monto), 0) from public.movimientos where negocio = n.id and signo > 0 and anulado_at is null and (fecha at time zone 'America/Santiago')::date >= d and (fecha at time zone 'America/Santiago')::date < h),
+    'abonos', (select coalesce(sum(monto), 0) from public.movimientos where negocio = n.id and signo < 0 and anulado_at is null and (fecha at time zone 'America/Santiago')::date >= d and (fecha at time zone 'America/Santiago')::date < h),
+    'por_cobrar', (select coalesce(sum(saldo), 0) from public.clientes where negocio = n.id and saldo > 0 and estado <> 'archivado'),
+    'filas', coalesce((select jsonb_agg(jsonb_build_object('fecha', to_char(fecha at time zone 'America/Santiago', 'YYYY-MM-DD'), 'tipo', tipo, 'categoria', categoria, 'descripcion', coalesce(descripcion, ''), 'medio', medio, 'monto', monto) order by fecha)
+        from (select * from public.caja where negocio = n.id and anulado_at is null and (fecha at time zone 'America/Santiago')::date >= d and (fecha at time zone 'America/Santiago')::date < h order by fecha limit 3000) c), '[]'));
+end $$;
+
+-- 🔁 Gastos fijos automáticos (se anotan en la caja al abrir la app desde su día del mes)
+create table if not exists public.gastos_fijos (
+  id uuid primary key default gen_random_uuid(),
+  negocio uuid not null references public.negocios (id) on delete cascade,
+  categoria text not null check (char_length(categoria) between 2 and 24),
+  descripcion text not null default '' check (char_length(descripcion) <= 120),
+  monto int not null check (monto between 1 and 99999999),
+  dia int not null check (dia between 1 and 28),
+  activo boolean not null default true,
+  ultimo_mes text,
+  creado timestamptz not null default now()
+);
+alter table public.gastos_fijos enable row level security;
+revoke all on public.gastos_fijos from anon, authenticated;
+create or replace function public.gastos_fijos_lista() returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(jsonb_agg(to_jsonb(g) order by g.dia), '[]') from public.gastos_fijos g where g.negocio = privado.mi_negocio() and privado.mi_rol() = 'dueno'
+$$;
+create or replace function public.gasto_fijo_guardar(p_id uuid, p_categoria text, p_descripcion text, p_monto int, p_dia int, p_activo boolean) returns uuid
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare n uuid := privado.mi_negocio(); r uuid;
+begin
+  perform privado.modulo_o_error('gastos_fijos');
+  if privado.mi_rol() <> 'dueno' then raise exception 'Solo el dueño'; end if;
+  if char_length(btrim(coalesce(p_categoria, ''))) not between 2 and 24 then raise exception 'Categoría de 2 a 24 letras'; end if;
+  if coalesce(p_monto, 0) not between 1 and 99999999 then raise exception 'Monto no válido'; end if;
+  if coalesce(p_dia, 0) not between 1 and 28 then raise exception 'Día entre 1 y 28'; end if;
+  if p_id is null then
+    if (select count(*) from public.gastos_fijos where negocio = n) >= 30 then raise exception 'Máximo 30 gastos fijos'; end if;
+    insert into public.gastos_fijos (negocio, categoria, descripcion, monto, dia, activo) values (n, btrim(p_categoria), left(coalesce(p_descripcion, ''), 120), p_monto, p_dia, coalesce(p_activo, true)) returning id into r;
+  else
+    update public.gastos_fijos set categoria = btrim(p_categoria), descripcion = left(coalesce(p_descripcion, ''), 120), monto = p_monto, dia = p_dia, activo = coalesce(p_activo, true)
+    where id = p_id and negocio = n returning id into r;
+    if r is null then raise exception 'No encontrado'; end if;
+  end if;
+  return r;
+end $$;
+create or replace function public.gasto_fijo_borrar(p_id uuid) returns void
+language sql security definer set search_path = public, pg_temp as $$
+  delete from public.gastos_fijos where id = p_id and negocio = privado.mi_negocio() and privado.mi_rol() = 'dueno'
+$$;
+-- Anota los que ya llegaron a su día este mes (1 vez por mes cada uno). Devuelve cuántos anotó.
+create or replace function public.gastos_fijos_aplicar() returns int
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare n uuid := privado.mi_negocio(); g record; k int := 0; hoy date := (now() at time zone 'America/Santiago')::date; mes text := to_char(hoy, 'YYYY-MM');
+begin
+  if n is null or not public.cfx_modulo_mio('gastos_fijos') then return 0; end if;
+  for g in select * from public.gastos_fijos where negocio = n and activo and coalesce(ultimo_mes, '') <> mes and dia <= extract(day from hoy) for update loop
+    insert into public.caja (id, negocio, tipo, monto, categoria, descripcion, medio, fecha, creado_por)
+    values (gen_random_uuid(), n, 'gasto', g.monto, g.categoria, left('🔁 ' || coalesce(nullif(g.descripcion, ''), g.categoria), 120), 'transferencia',
+            ((mes || '-' || lpad(g.dia::text, 2, '0'))::date + time '12:00') at time zone 'America/Santiago', auth.uid());
+    update public.gastos_fijos set ultimo_mes = mes where id = g.id; k := k + 1;
+  end loop;
+  return k;
+end $$;
+revoke all on function public.mis_modulos(), privado.modulo_o_error(text), public.acuerdo_crear(uuid, int, int, date, text, text), public.acuerdos_de(uuid), public.acuerdo_anular(uuid),
+  public.portal_acuerdo(text), public.portal_acuerdo_firmar(text, uuid, text, boolean), public.contador_link(boolean), public.contador_ver(text, text),
+  public.gastos_fijos_lista(), public.gasto_fijo_guardar(uuid, text, text, int, int, boolean), public.gasto_fijo_borrar(uuid), public.gastos_fijos_aplicar() from public, anon, authenticated;
+grant execute on function public.mis_modulos(), privado.modulo_o_error(text), public.acuerdo_crear(uuid, int, int, date, text, text), public.acuerdos_de(uuid), public.acuerdo_anular(uuid),
+  public.contador_link(boolean), public.gastos_fijos_lista(), public.gasto_fijo_guardar(uuid, text, text, int, int, boolean), public.gasto_fijo_borrar(uuid), public.gastos_fijos_aplicar() to authenticated;
+grant execute on function public.portal_acuerdo(text), public.portal_acuerdo_firmar(text, uuid, text, boolean), public.contador_ver(text, text) to anon, authenticated;
 
 -- Al correr este SQL la versión de la app queda liberada al tiro: todos ven "Actualizar" (al publicar una versión nueva, sube este número).
 update public.ajustes set version_liberada = '1.10.0' where id = 1 and case when version_liberada ~ '^\d+(\.\d+)*$'

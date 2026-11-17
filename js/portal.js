@@ -70,11 +70,30 @@
 
   async function cargar() {
     D = await rpc('portal_ver', { p_sesion: sesion });
+    D.acuerdo = await rpc('portal_acuerdo', { p_sesion: sesion }).catch(() => null); // G94 📝 (base vieja: nada)
     marcaColor(D.negocio.color);
     document.title = 'Mi cuenta · ' + D.negocio.nombre;
     vista();
   }
 
+  // G94 📝 Acuerdo de pago: el cliente lo lee y lo acepta escribiendo su nombre (o lo rechaza).
+  function tarjetaAcuerdo() {
+    const a = D.acuerdo; if (!a) return null;
+    const cuota = Math.ceil(a.monto / a.cuotas), d = new Date(a.primera + 'T12:00:00'), filas = [];
+    for (let k = 0; k < a.cuotas; k++) { const f = new Date(d); if (a.cada === 'mes') f.setMonth(d.getMonth() + k); else f.setDate(d.getDate() + k * (a.cada === 'semana' ? 7 : 15));
+      filas.push(el('li', null, fechaCorta(f.toISOString().slice(0, 10)) + ' · ' + pesos(k === a.cuotas - 1 ? a.monto - cuota * (a.cuotas - 1) : cuota))); }
+    const nom = el('input', { id: 'acFirma', maxlength: 80, placeholder: 'Tu nombre completo', autocomplete: 'name' });
+    const firmar = async (si) => {
+      try { await conCarga(() => rpc('portal_acuerdo_firmar', { p_sesion: sesion, p_id: a.id, p_nombre: nom.value.trim(), p_acepta: si })); toast(si ? '✅ Acuerdo firmado' : 'Le avisamos al negocio'); await cargar(); }
+      catch (e) { toast(LC.traducir(e).message, { error: true }); }
+    };
+    return el('div', { class: 'tarjeta', id: 'acuerdo', style: 'border-color:var(--marca)' }, el('h2', null, '📝 Acuerdo de pago'),
+      el('p', null, pesos(a.monto) + ' en ' + a.cuotas + (a.cuotas === 1 ? ' pago' : ' cuotas')), el('ol', { class: 'sutil' }, filas), a.nota ? el('p', { class: 'sutil' }, a.nota) : null,
+      a.estado === 'firmado' ? el('p', null, el('strong', null, '✅ Firmado por ' + a.firma_nombre + ' el ' + fechaLarga(a.firmado_at)))
+        : el('div', null, el('p', { class: 'sutil' }, 'Si estás de acuerdo, escribe tu nombre y toca Acepto. Queda registrado con la fecha.'), nom,
+          el('div', { class: 'col mt' }, el('button', { class: 'btn primario', type: 'button', id: 'acSi', onclick: () => firmar(true) }, '✍️ Acepto el acuerdo'),
+            el('button', { class: 'btn', type: 'button', id: 'acNo', onclick: () => firmar(false) }, 'No estoy de acuerdo'))));
+  }
   function vista() {
     const n = D.negocio, c = D.cliente;
     const porConfirmar = D.movimientos.filter((m) => m.tipo === 'cargo' && m.confirmacion === 'pendiente' && !m.anulado);
@@ -97,6 +116,7 @@
         el('button', { class: 'btn' + (n.link_pago ? '' : ' primario'), type: 'button', onclick: pagar }, '💸 Pagar por transferencia'),
         el('button', { class: 'btn', type: 'button', onclick: subirComprobante }, '📤 Ya pagué: enviar comprobante')) : null,
       n.whatsapp ? el('button', { class: 'btn wsp ancho mb', type: 'button', onclick: () => abrir(wa(n.whatsapp, 'Hola ' + n.nombre + ', soy ' + c.nombre + '. ')) }, '💬 Escribir a ' + n.nombre) : null,
+      tarjetaAcuerdo(),
       porConfirmar.length ? el('div', { class: 'tarjeta', style: 'border-color:var(--aviso)' }, el('h2', null, '¿Reconoces estos cargos?'),
         el('p', { class: 'sutil' }, 'Confírmalos para que tu cuenta quede clara. Si alguno no es tuyo, avísale al negocio.'),
         porConfirmar.map((m) => el('div', { class: 'copiar-fila' }, el('div', { class: 'crece' }, el('div', { class: 'v' }, pesos(m.monto) + ' · ' + (m.descripcion || 'Fiado')), el('div', { class: 'k' }, fechaHora(m.fecha))),
