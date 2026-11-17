@@ -3,6 +3,7 @@
 (Mapa completo pendiente: G42j.)
 
 - G95 (1.21.82 · bd 56): la billetera parte FREE (crear_negocio sin prueba) · 🎁 Probar Pro (núcleo) → cfx_pro_prueba_app = prueba_hasta (estado 'prueba') · privado.pruebas_usadas → cfx_pruebas_usadas · 🐞 cfx_negocio_dueno_app (el dueño ya puede probar/comprar módulos) · landing: "Partes gratis". Prueba: SaaS/pruebas/g95.js.
+- G99 a (1.21.86 · bd 60 · enviar 1.4.1): ⚡ aviso instantáneo de Mercado Pago (núcleo): cfx_mp_aviso_url_app = privado.config url_proyecto + /functions/v1/enviar · enviar atiende ?cfx_mp=. Prueba: SaaS/pruebas/g99.js.
 
 ## 🧠 Del núcleo: falta aplicar aquí
 - G42e (núcleo 2.78): utilidades Bootstrap 5.3.8 ya usan los colores CodeFix (--bs-* → --cfx-*). Al revisar esta app: si quiere Bootstrap, enlazar vendor/bootstrap-utilities.min.css ANTES de su CSS (nunca el Bootstrap completo: choca con .btn/.card/.modal/.row/.toast).
