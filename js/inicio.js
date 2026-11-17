@@ -33,7 +33,7 @@
       const ul = vaciar($('#listaPro')); c.planes.pro.beneficios.forEach((t) => ul.append(el('li', null, String(t).replace(/^\S+\s/, (m) => /[A-Za-zÁÉÍÓÚáéíóúÑñ0-9]/.test(m) ? m : ''))));
     }
     $('#diasPrueba').textContent = c.dias_prueba;
-    $('#txtPrueba').textContent = '30 días de Pro con tu primer pago';
+    $('#txtPrueba').textContent = 'Prueba Pro gratis cuando quieras';  // G95: parte Free; la prueba es con el botón 🎁
     // Precios: los mismos de las 6 apps (núcleo, se editan en el Centro de Mando → Pagos).
     rpc('cfx_precios').then((x) => {
       const n = (x && x.negocio) || {}; if (!n.mensual) return;
@@ -41,7 +41,7 @@
       const ah = n.anual ? Math.round(100 - n.anual * 100 / (n.mensual * 12)) : 0;
       $('#precioAnual').textContent = n.anual ? 'o ' + LC.pesos(n.anual) + ' al año' + (ah > 0 ? ' (ahorras ' + ah + '%)' : '') : '';
       $('#precioActivacion').textContent = n.exigir_inicio ? 'Primer pago ' + LC.pesos(n.inicio) + ': ' + (n.inicio_dias || 30) + ' días de Pro' : '';
-      if (n.exigir_inicio) { $('#txtPrueba').textContent = 'Parte con ' + (n.inicio_dias || 30) + ' días de Pro por ' + LC.pesos(n.inicio); $('#diasPrueba').textContent = n.inicio_dias || 30; }
+      if (n.exigir_inicio) { $('#txtPrueba').textContent = 'Parte con ' + (n.inicio_dias || 30) + ' días de Pro por ' + LC.pesos(n.inicio); }
     }).catch(() => {});
     const l = c.lim_normal || {};
     const ul = vaciar($('#listaNormal'));

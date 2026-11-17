@@ -2,6 +2,8 @@
 
 (Mapa completo pendiente: G42j.)
 
+- G95 (1.21.82 · bd 56): la billetera parte FREE (crear_negocio sin prueba) · 🎁 Probar Pro (núcleo) → cfx_pro_prueba_app = prueba_hasta (estado 'prueba') · privado.pruebas_usadas → cfx_pruebas_usadas · 🐞 cfx_negocio_dueno_app (el dueño ya puede probar/comprar módulos) · landing: "Partes gratis". Prueba: SaaS/pruebas/g95.js.
+
 ## 🧠 Del núcleo: falta aplicar aquí
 - G42e (núcleo 2.78): utilidades Bootstrap 5.3.8 ya usan los colores CodeFix (--bs-* → --cfx-*). Al revisar esta app: si quiere Bootstrap, enlazar vendor/bootstrap-utilities.min.css ANTES de su CSS (nunca el Bootstrap completo: choca con .btn/.card/.modal/.row/.toast).
 - G48 (núcleo 2.77): revisar en el celular ✋ mover secciones desde el título y 🎨 Color y modo → Colores a tu gusto (fondo, texto, íconos y +); si la app pinta íconos o fondo con colores fijos, pasarlos a var(--cfx-icono)/var(--cfx-fondo).
