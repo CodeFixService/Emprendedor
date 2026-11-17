@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '49'),
+  ('version_bd', '50'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -3168,6 +3168,26 @@ create or replace function public.cfx_avisar(p_cuenta uuid, p_titulo text, p_cue
   $$ select privado.avisar_usuario(p_cuenta, p_titulo, p_cuerpo, 'app/#plan', true) $$;
 create or replace function public.cfx_avisar_admin(p_titulo text, p_cuerpo text) returns void language sql security definer set search_path = public, pg_temp as
   $$ select privado.avisar_usuario(privado.admin_id(), p_titulo, p_cuerpo, 'admin/', true) $$;
+
+-- G87 A · Lista de cuentas para el Centro de Mando → Control → Negocios (antes decía "aún no tiene la lista de negocios").
+-- Negocio = cada billetera (con el correo de su dueño). Los clientes entran por el portal con código, sin cuenta: esa lista va vacía.
+create or replace function public.cfx_cuentas_app(p_rol text, p_q text) returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+  select case when p_rol = 'cliente' then '[]'::jsonb else
+    (select coalesce(jsonb_agg(jsonb_build_object('id', n.dueno, 'email', coalesce(n.correo, ''), 'nombre', n.nombre, 'rol', 'negocio',
+        'premium_hasta', case when n.premium_hasta > now() then n.premium_hasta end, 'creado', n.creado, 'suspendido', n.estado = 'suspendido') order by n.creado desc), '[]'::jsonb)
+     from (select x.*, u.email::text as correo from public.negocios x left join auth.users u on u.id = x.dueno
+           where x.estado <> 'eliminado' and (coalesce(p_q, '') = '' or x.nombre ilike '%' || p_q || '%' or coalesce(u.email::text, '') ilike '%' || p_q || '%')
+           order by x.creado desc limit 300) n) end
+$$;
+create or replace function public.cfx_quitar_premium(p_cuenta uuid) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare v uuid;
+begin
+  update public.negocios set premium_hasta = null where dueno = p_cuenta and estado <> 'eliminado' returning id into v;
+  if v is not null then perform privado.aplicar_plan(v); end if;
+end $$;
+revoke all on function public.cfx_cuentas_app(text, text), public.cfx_quitar_premium(uuid) from public, anon, authenticated;
 
 -- Ganchos de administración para el núcleo (planes, textos, a quién avisar y verificación).
 create or replace function public.cfx_planes_app() returns jsonb language sql stable security definer set search_path = public, pg_temp as $$
