@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '50'),
+  ('version_bd', '51'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -2320,8 +2320,8 @@ begin
     'en_prueba', (select count(*) from public.negocios n where estado <> 'eliminado' and privado.estado_plan(n.id) = 'prueba'),
     'free', (select count(*) from public.negocios n where estado <> 'eliminado' and privado.estado_plan(n.id) = 'free'),
     'suspendidos', (select count(*) from public.negocios where estado = 'suspendido'),
-    'ingresos_mes', (select coalesce(sum(monto), 0) from public.solicitudes_pago where estado = 'aprobada' and revisado_at >= m0)
-      + (select coalesce(sum(precio), 0) from public.keys where usada_at >= m0),
+    'ingresos_mes', (select coalesce(sum(monto), 0) from public.solicitudes_pago where estado = 'aprobada' and revisado_at >= greatest(m0, public.cfx_ingresos_desde()))
+      + (select coalesce(sum(precio), 0) from public.keys where usada_at >= greatest(m0, public.cfx_ingresos_desde())),
     'pagos_pendientes', (select count(*) from public.solicitudes_pago where estado = 'pendiente'),
     'quieren_pro', (select count(*) from public.negocios n where estado = 'activo' and quiere_pro_at > now() - interval '30 days' and privado.estado_plan(n.id) <> 'pro'),
     'nuevos_7d', (select count(*) from public.negocios where creado > now() - interval '7 days'),
@@ -3701,10 +3701,34 @@ grant execute on function public.cfx_mp_pagar(text, int, text, text, text), publ
 do $$
 begin
   perform cron.unschedule(jobid) from cron.job where jobname = 'cfx-mp';
-  perform cron.schedule('cfx-mp', '*/2 * * * *', 'select public.cfx_mp_revisar_pendientes()');
+  perform cron.schedule('cfx-mp', '* * * * *', 'select public.cfx_mp_revisar_pendientes()');
 exception when others then
   raise notice 'Revisión de Mercado Pago no programada (%).', sqlerrm;
 end $$;
+
+-- G87 E · ↺ Volver a cero los ingresos (solo admin, con registro). NO borra pagos: los ingresos de los resúmenes se cuentan
+-- desde esta fecha (los de prueba quedan en el historial). "Contar todo" lo deshace.
+create or replace function public.cfx_ingresos_desde() returns timestamptz
+language sql stable security definer set search_path = '' as $$
+  select coalesce((select (valor ->> 'desde')::timestamptz from public.cfx_config where clave = 'ingresos_cero'), '-infinity'::timestamptz)
+$$;
+create or replace function public.cfx_ingresos_cero(p_cero boolean default null) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform privado.solo_admin();
+  if p_cero is true then
+    insert into public.cfx_config (clave, valor) values ('ingresos_cero', jsonb_build_object('desde', now()))
+      on conflict (clave) do update set valor = excluded.valor;
+    perform public.cfx_anotar('ingresos a cero', 'Los resúmenes cuentan desde ' || to_char(now() at time zone 'America/Santiago', 'DD-MM-YYYY HH24:MI'));
+  elsif p_cero is false then
+    delete from public.cfx_config where clave = 'ingresos_cero';
+    perform public.cfx_anotar('ingresos a cero', 'Deshecho: vuelve a contar todo el historial');
+  end if;
+  return jsonb_build_object('desde', nullif(public.cfx_ingresos_desde(), '-infinity'::timestamptz));
+end $$;
+revoke all on function public.cfx_ingresos_cero(boolean) from public, anon;
+grant execute on function public.cfx_ingresos_desde() to anon, authenticated;
+grant execute on function public.cfx_ingresos_cero(boolean) to authenticated;
 -- ---------------------------------------------------------------------
 -- CodeFix · Administración común (igual en las 6 apps; se maneja desde el Centro de Mando → Control).
 --   Planes (interruptores sí/no y límites), textos, aviso a todos, keys de Premium, cupones de descuento,
@@ -4094,8 +4118,8 @@ begin
   perform privado.solo_admin();
   return (select jsonb_agg(jsonb_build_object('mes', to_char(m, 'YYYY-MM'),
       'cuentas', (select count(*) from auth.users u where u.created_at >= m and u.created_at < m + interval '1 month'),
-      'pagos', (select count(*) from public.cfx_pagos p where p.estado = 'aprobado' and p.creado >= m and p.creado < m + interval '1 month'),
-      'ingresos', (select coalesce(sum(p.monto), 0) from public.cfx_pagos p where p.estado = 'aprobado' and p.creado >= m and p.creado < m + interval '1 month')) order by m)
+      'pagos', (select count(*) from public.cfx_pagos p where p.estado = 'aprobado' and p.creado >= m and p.creado < m + interval '1 month' and p.creado >= public.cfx_ingresos_desde()),
+      'ingresos', (select coalesce(sum(p.monto), 0) from public.cfx_pagos p where p.estado = 'aprobado' and p.creado >= m and p.creado < m + interval '1 month' and p.creado >= public.cfx_ingresos_desde())) order by m)
     from generate_series(date_trunc('month', now()) - make_interval(months => n - 1), date_trunc('month', now()), interval '1 month') m);
 end $$;
 revoke all on function public.cfx_series(int) from public, anon;
@@ -4922,7 +4946,7 @@ grant execute on function public.cfx_es_socio(), public.cfx_socios_lista(), publ
 --   Nada se borra solo: las vacías se borran con un toque; las que tienen datos piden descargar el respaldo y escribir "sí".
 --   cfx_tablas() = las tablas que crea este archivo (la revisa pruebas/inventario.py --verificar).
 -- ---------------------------------------------------------------------
-create or replace function public.cfx_tablas() returns text[] language sql immutable as $$ select array['privado.archivos_por_borrar', 'privado.config', 'privado.fotos_pendientes', 'privado.limites', 'privado.pruebas_usadas', 'privado.secretos', 'privado.tareas_hechas', 'public.ajustes', 'public.auditoria', 'public.caja', 'public.categorias', 'public.cfx_analisis', 'public.cfx_bloqueos', 'public.cfx_brechas', 'public.cfx_calificaciones', 'public.cfx_cargas', 'public.cfx_carritos', 'public.cfx_chat', 'public.cfx_config', 'public.cfx_consent', 'public.cfx_consent_hist', 'public.cfx_cupones', 'public.cfx_derechos', 'public.cfx_descuentos', 'public.cfx_errores', 'public.cfx_exentos', 'public.cfx_fallas', 'public.cfx_keys', 'public.cfx_legal', 'public.cfx_login_fallos', 'public.cfx_login_qr', 'public.cfx_mensajes', 'public.cfx_modulos_negocio', 'public.cfx_modulos_pruebas', 'public.cfx_pagos', 'public.cfx_pin', 'public.cfx_push_entrega', 'public.cfx_ref_codigos', 'public.cfx_referidos', 'public.cfx_registro', 'public.cfx_reportes', 'public.cfx_salud', 'public.cfx_secretos', 'public.cfx_sellos', 'public.cfx_sellos_cfg', 'public.cfx_socios', 'public.cfx_verificaciones', 'public.cfx_versiones', 'public.clientes', 'public.cola_push', 'public.comprobantes', 'public.conexion_movs', 'public.conexiones', 'public.cuotas', 'public.cupones', 'public.feriados', 'public.invitaciones', 'public.keys', 'public.miembros', 'public.movimientos', 'public.negocios', 'public.notificaciones', 'public.perfiles', 'public.productos', 'public.push_subs', 'public.recordatorios', 'public.sesiones_cliente', 'public.solicitudes_pago', 'public.soporte', 'public.uso_mensual', 'public.ventas_cuotas'] $$;
+create or replace function public.cfx_tablas() returns text[] language sql immutable as $$ select array['privado.archivos_por_borrar', 'privado.config', 'privado.fotos_pendientes', 'privado.limites', 'privado.pruebas_usadas', 'privado.secretos', 'privado.tareas_hechas', 'public.ajustes', 'public.auditoria', 'public.caja', 'public.categorias', 'public.cfx_analisis', 'public.cfx_bloqueos', 'public.cfx_brechas', 'public.cfx_calificaciones', 'public.cfx_cargas', 'public.cfx_carritos', 'public.cfx_chat', 'public.cfx_clave_temporal', 'public.cfx_config', 'public.cfx_consent', 'public.cfx_consent_hist', 'public.cfx_cupones', 'public.cfx_derechos', 'public.cfx_descuentos', 'public.cfx_errores', 'public.cfx_exentos', 'public.cfx_fallas', 'public.cfx_keys', 'public.cfx_legal', 'public.cfx_login_fallos', 'public.cfx_login_qr', 'public.cfx_mensajes', 'public.cfx_modulos_negocio', 'public.cfx_modulos_pruebas', 'public.cfx_pagos', 'public.cfx_pin', 'public.cfx_push_entrega', 'public.cfx_ref_codigos', 'public.cfx_referidos', 'public.cfx_registro', 'public.cfx_reportes', 'public.cfx_salud', 'public.cfx_secretos', 'public.cfx_sellos', 'public.cfx_sellos_cfg', 'public.cfx_socios', 'public.cfx_verificaciones', 'public.cfx_versiones', 'public.clientes', 'public.cola_push', 'public.comprobantes', 'public.conexion_movs', 'public.conexiones', 'public.cuotas', 'public.cupones', 'public.feriados', 'public.invitaciones', 'public.keys', 'public.miembros', 'public.movimientos', 'public.negocios', 'public.notificaciones', 'public.perfiles', 'public.productos', 'public.push_subs', 'public.recordatorios', 'public.sesiones_cliente', 'public.solicitudes_pago', 'public.soporte', 'public.uso_mensual', 'public.ventas_cuotas'] $$;
 create or replace function public.cfx_inventario() returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare r record; n bigint; out jsonb := '[]'::jsonb;
@@ -6239,7 +6263,7 @@ begin
           where created_at > now() - interval '61 days' and deleted_at is null group by 1) x), '{}'))
       from auth.users where deleted_at is null),
     'ingresos', coalesce((select jsonb_object_agg(x.f, x.m) from (select (coalesce(resuelto, creado) at time zone 'America/Santiago')::date f, sum(monto) m
-      from public.cfx_pagos where estado = 'aprobado' and coalesce(resuelto, creado) > now() - interval '61 days' group by 1) x), '{}'),
+      from public.cfx_pagos where estado = 'aprobado' and coalesce(resuelto, creado) > now() - interval '61 days' and coalesce(resuelto, creado) >= public.cfx_ingresos_desde() group by 1) x), '{}'),
     'premium', (select count(distinct cuenta) from public.cfx_pagos where estado = 'aprobado' and coalesce(resuelto, creado) > now() - interval '30 days'),
     'previo', coalesce((select jsonb_object_agg(clave, datos -> 'mov') from public.cfx_analisis where clave <> 'app' and datos ? 'mov'), '{}'),
     'app', a);
@@ -6479,6 +6503,30 @@ begin
 end $$;
 revoke all on function public.cfx_seguridad() from public, anon;
 grant execute on function public.cfx_seguridad() to authenticated;
+
+-- G87 C · 🔑 Clave temporal: la cuenta que crea el admin (o a la que le restablece la clave) debe crear su clave al entrar.
+-- Solo guarda el correo (nunca la clave). El admin la marca; la persona la borra al guardar su clave nueva.
+create table if not exists public.cfx_clave_temporal (email text primary key, creado timestamptz not null default now());
+alter table public.cfx_clave_temporal enable row level security;
+revoke all on public.cfx_clave_temporal from anon, authenticated;
+create or replace function public.cfx_clave_temporal_marcar(p_email text) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform privado.solo_admin();
+  if coalesce(p_email, '') !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then raise exception 'Correo no válido'; end if;
+  insert into public.cfx_clave_temporal (email) values (lower(trim(p_email))) on conflict (email) do update set creado = now();
+  perform public.cfx_anotar('clave temporal', lower(trim(p_email)));
+end $$;
+create or replace function public.cfx_clave_debo() returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from public.cfx_clave_temporal t join auth.users u on lower(u.email) = t.email where u.id = auth.uid())
+$$;
+create or replace function public.cfx_clave_cambiada() returns void
+language sql security definer set search_path = '' as $$
+  delete from public.cfx_clave_temporal where email = (select lower(email) from auth.users where id = auth.uid())
+$$;
+revoke all on function public.cfx_clave_temporal_marcar(text), public.cfx_clave_debo(), public.cfx_clave_cambiada() from public, anon;
+grant execute on function public.cfx_clave_temporal_marcar(text), public.cfx_clave_debo(), public.cfx_clave_cambiada() to authenticated;
 -- ---------- G33 🌐 Dominio de CodeFix (núcleo 2.69, se puede volver a correr) ----------
 -- El CM (Control → 🌐 Dominio) arma los dominios en Cloudflare y le guarda a cada app su dirección: ej. https://despega.codefix.cl/
 -- "activo" = Cloudflare ya lo sirve. Mientras no esté activo (o vacío) todo sigue en workers.dev como hoy.
