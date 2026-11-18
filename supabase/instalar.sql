@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '63'),
+  ('version_bd', '64'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -5337,7 +5337,7 @@ grant execute on function public.cfx_es_socio(), public.cfx_socios_lista(), publ
 --   Nada se borra solo: las vacías se borran con un toque; las que tienen datos piden descargar el respaldo y escribir "sí".
 --   cfx_tablas() = las tablas que crea este archivo (la revisa pruebas/inventario.py --verificar).
 -- ---------------------------------------------------------------------
-create or replace function public.cfx_tablas() returns text[] language sql immutable as $$ select array['privado.archivos_por_borrar', 'privado.config', 'privado.fotos_pendientes', 'privado.limites', 'privado.pruebas_usadas', 'privado.secretos', 'privado.tareas_hechas', 'public.acuerdos', 'public.ajustes', 'public.auditoria', 'public.caja', 'public.categorias', 'public.cfx_analisis', 'public.cfx_anuncio_vistos', 'public.cfx_anuncios', 'public.cfx_bloqueos', 'public.cfx_boleta_cuentas', 'public.cfx_boletas', 'public.cfx_brechas', 'public.cfx_calificaciones', 'public.cfx_cargas', 'public.cfx_carritos', 'public.cfx_chat', 'public.cfx_clave_temporal', 'public.cfx_config', 'public.cfx_consent', 'public.cfx_consent_hist', 'public.cfx_cupones', 'public.cfx_derechos', 'public.cfx_descuentos', 'public.cfx_errores', 'public.cfx_exentos', 'public.cfx_fallas', 'public.cfx_keys', 'public.cfx_legal', 'public.cfx_login_fallos', 'public.cfx_login_qr', 'public.cfx_mensajes', 'public.cfx_modulos_negocio', 'public.cfx_modulos_pruebas', 'public.cfx_mp_avisos', 'public.cfx_mp_neg_cobros', 'public.cfx_mp_negocio', 'public.cfx_pagos', 'public.cfx_pin', 'public.cfx_pruebas_usadas', 'public.cfx_push_entrega', 'public.cfx_ref_codigos', 'public.cfx_referidos', 'public.cfx_registro', 'public.cfx_reportes', 'public.cfx_salud', 'public.cfx_secretos', 'public.cfx_sellos', 'public.cfx_sellos_cfg', 'public.cfx_socios', 'public.cfx_verificaciones', 'public.cfx_versiones', 'public.clientes', 'public.cola_push', 'public.comprobantes', 'public.conexion_movs', 'public.conexiones', 'public.cuotas', 'public.cupones', 'public.feriados', 'public.gastos_fijos', 'public.invitaciones', 'public.keys', 'public.miembros', 'public.movimientos', 'public.negocios', 'public.notificaciones', 'public.perfiles', 'public.productos', 'public.push_subs', 'public.recordatorios', 'public.sesiones_cliente', 'public.solicitudes_pago', 'public.soporte', 'public.uso_mensual', 'public.ventas_cuotas'] $$;
+create or replace function public.cfx_tablas() returns text[] language sql immutable as $$ select array['privado.archivos_por_borrar', 'privado.config', 'privado.fotos_pendientes', 'privado.limites', 'privado.pruebas_usadas', 'privado.secretos', 'privado.tareas_hechas', 'public.acuerdos', 'public.ajustes', 'public.auditoria', 'public.caja', 'public.categorias', 'public.cfx_analisis', 'public.cfx_anuncio_vistos', 'public.cfx_anuncios', 'public.cfx_bloqueos', 'public.cfx_boleta_cuentas', 'public.cfx_boletas', 'public.cfx_brechas', 'public.cfx_calificaciones', 'public.cfx_cargas', 'public.cfx_carritos', 'public.cfx_chat', 'public.cfx_clave_temporal', 'public.cfx_config', 'public.cfx_consent', 'public.cfx_consent_hist', 'public.cfx_cupones', 'public.cfx_derechos', 'public.cfx_descuentos', 'public.cfx_errores', 'public.cfx_exentos', 'public.cfx_fallas', 'public.cfx_keys', 'public.cfx_legal', 'public.cfx_login_fallos', 'public.cfx_login_qr', 'public.cfx_mensajes', 'public.cfx_modulos_negocio', 'public.cfx_modulos_pruebas', 'public.cfx_mp_avisos', 'public.cfx_mp_neg_cobros', 'public.cfx_mp_negocio', 'public.cfx_pagos', 'public.cfx_pin', 'public.cfx_pruebas_usadas', 'public.cfx_push_entrega', 'public.cfx_ref_codigos', 'public.cfx_referidos', 'public.cfx_registro', 'public.cfx_reportes', 'public.cfx_salud', 'public.cfx_secretos', 'public.cfx_sellos', 'public.cfx_sellos_cfg', 'public.cfx_socios', 'public.cfx_verificaciones', 'public.cfx_versiones', 'public.cierres_caja', 'public.clientes', 'public.cola_push', 'public.comprobantes', 'public.conexion_movs', 'public.conexiones', 'public.cuentas_pagar', 'public.cuotas', 'public.cupones', 'public.feriados', 'public.gastos_fijos', 'public.invitaciones', 'public.keys', 'public.miembros', 'public.movimientos', 'public.negocios', 'public.notificaciones', 'public.perfiles', 'public.productos', 'public.push_subs', 'public.recordatorios', 'public.sesiones_cliente', 'public.solicitudes_pago', 'public.soporte', 'public.uso_mensual', 'public.ventas_cuotas'] $$;
 create or replace function public.cfx_inventario() returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare r record; n bigint; out jsonb := '[]'::jsonb;
@@ -5662,7 +5662,16 @@ language sql immutable as $$
          -- G101: 🛒 Mercado Libre (Despega).
          ('mercadolibre', '🛒 Mercado Libre', 'Une tus productos con tus publicaciones de Mercado Libre: vendes allá y se descuenta aquí; cambias el stock aquí y se actualiza allá.'),
          -- G102: 🚚 Courier Chilexpress (Despega).
-         ('courier', '🚚 Courier Chilexpress', 'Cotiza el envío y saca la etiqueta de Chilexpress desde el pedido: el código de seguimiento le llega solo a tu cliente.')
+         ('courier', '🚚 Courier Chilexpress', 'Cotiza el envío y saca la etiqueta de Chilexpress desde el pedido: el código de seguimiento le llega solo a tu cliente.'),
+         -- G104: más módulos de cobranza (Billetera).
+         ('cuentas_pagar', '📤 Cuentas por pagar', 'Lo que debes a tus proveedores con su vencimiento: te avisamos antes y al pagar queda como gasto en tu caja.'),
+         ('cierre_caja', '💵 Cierre de caja', 'Al cerrar cuentas el efectivo y ves al tiro si cuadra, sobra o falta. Queda el historial de cada día.'),
+         ('aviso_vence', '🔔 Aviso de vencimiento automático', 'El día antes y el día que vence, a tu cliente le llega el aviso en su celular con su saldo y link para pagar. Solo, respetando la ley.'),
+         -- G104: más módulos de estacionamientos (Estaciona).
+         ('tarifas', '🌙 Tarifa fin de semana y noche', 'Cobra distinto el sábado, domingo y de noche: un % más (o menos) que se calcula solo al reservar.'),
+         ('frecuentes', '🔁 Clientes frecuentes', 'Ve quién te arrienda más y prémialo solo: un % menos desde su reserva número N. Vuelven siempre.'),
+         ('calendario', '📅 Cerrar fechas', 'Cierra días por vacaciones o uso propio: nadie puede reservar esas fechas y la ficha lo muestra.'),
+         ('avisame', '🔔 Lista de espera', 'Si tu lugar está ocupado, la gente se anota y le avisamos apenas lo marques disponible: no pierdes al próximo cliente.')
 $$;
 
 create or replace function public.cfx_venta() returns jsonb
@@ -7655,7 +7664,7 @@ $$;
 create or replace function public.cfx_es_premium(n uuid) returns boolean
 language sql stable security definer set search_path = public, pg_temp as $$ select privado.es_premium(n) $$;
 create or replace function public.cfx_modulos_app() returns text[]
-language sql immutable as $$ select array['acuerdo', 'contador', 'escalonado', 'gastos_fijos'] $$;
+language sql immutable as $$ select array['acuerdo', 'contador', 'escalonado', 'gastos_fijos', 'cuentas_pagar', 'cierre_caja', 'aviso_vence'] $$;
 revoke all on function public.cfx_negocio_de_cuenta(uuid), public.cfx_es_premium(uuid), public.cfx_modulos_app() from public, anon, authenticated;
 -- Packs propios de Billetera (solo si siguen los de fábrica del núcleo).
 update public.cfx_config set valor = jsonb_set(valor, '{packs}', jsonb_build_object(
@@ -7835,6 +7844,189 @@ revoke all on function public.mis_modulos(), privado.modulo_o_error(text), publi
 grant execute on function public.mis_modulos(), privado.modulo_o_error(text), public.acuerdo_crear(uuid, int, int, date, text, text), public.acuerdos_de(uuid), public.acuerdo_anular(uuid),
   public.contador_link(boolean), public.gastos_fijos_lista(), public.gasto_fijo_guardar(uuid, text, text, int, int, boolean), public.gasto_fijo_borrar(uuid), public.gastos_fijos_aplicar() to authenticated;
 grant execute on function public.portal_acuerdo(text), public.portal_acuerdo_firmar(text, uuid, text, boolean), public.contador_ver(text, text) to anon, authenticated;
+
+-- =====================================================================
+-- G104 · 🧩 3 módulos más: 📤 cuentas_pagar · 🧮 cierre_caja · 🔔 aviso_vence (todo se valida aquí).
+-- 📤 Lo que debo a proveedores: vencimiento, aviso y "Pagar" → queda como gasto en la caja.
+create table if not exists public.cuentas_pagar (
+  id uuid primary key default gen_random_uuid(),
+  negocio uuid not null references public.negocios (id) on delete cascade,
+  proveedor text not null check (char_length(proveedor) between 2 and 60),
+  detalle text not null default '' check (char_length(detalle) <= 120),
+  monto int not null check (monto between 1 and 99999999),
+  vence date not null,
+  estado text not null default 'pendiente' check (estado in ('pendiente', 'pagada')),
+  pagada_at timestamptz,
+  caja uuid,
+  avisada date,
+  creado timestamptz not null default now()
+);
+create index if not exists cuentas_pagar_neg on public.cuentas_pagar (negocio, estado, vence);
+alter table public.cuentas_pagar enable row level security;
+revoke all on public.cuentas_pagar from anon, authenticated;
+create or replace function public.cpp_lista() returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+  select coalesce(jsonb_agg(to_jsonb(c) order by c.estado, case when c.estado = 'pendiente' then c.vence end, c.pagada_at desc), '[]') from (
+    select * from public.cuentas_pagar where negocio = privado.mi_negocio() and privado.mi_rol() = 'dueno'
+      and (estado = 'pendiente' or pagada_at > now() - interval '60 days') order by estado, vence limit 300) c
+$$;
+create or replace function public.cpp_guardar(p_id uuid, p_proveedor text, p_detalle text, p_monto int, p_vence date) returns uuid
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare n uuid := privado.exigir(true); r uuid; pv text := btrim(coalesce(p_proveedor, ''));
+begin
+  perform privado.modulo_o_error('cuentas_pagar');
+  if char_length(pv) not between 2 and 60 then raise exception 'Escribe el proveedor (2 a 60 letras)'; end if;
+  if coalesce(p_monto, 0) not between 1 and 99999999 then raise exception 'Monto no válido'; end if;
+  if p_vence is null or p_vence < current_date - 365 or p_vence > current_date + 730 then raise exception 'Fecha de vencimiento no válida'; end if;
+  if p_id is null then
+    if (select count(*) from public.cuentas_pagar where negocio = n and estado = 'pendiente') >= 200 then raise exception 'Máximo 200 cuentas por pagar pendientes'; end if;
+    insert into public.cuentas_pagar (negocio, proveedor, detalle, monto, vence) values (n, pv, left(coalesce(p_detalle, ''), 120), p_monto, p_vence) returning id into r;
+  else
+    update public.cuentas_pagar set proveedor = pv, detalle = left(coalesce(p_detalle, ''), 120), monto = p_monto, vence = p_vence, avisada = null
+    where id = p_id and negocio = n and estado = 'pendiente' returning id into r;
+    if r is null then raise exception 'No encontrada o ya pagada'; end if;
+  end if;
+  return r;
+end $$;
+create or replace function public.cpp_borrar(p_id uuid) returns void
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  delete from public.cuentas_pagar where id = p_id and negocio = privado.exigir(true) and estado = 'pendiente';
+  if not found then raise exception 'No encontrada o ya pagada'; end if;
+end $$;
+-- Pagar: queda pagada y se anota como gasto en la caja (categoría "Proveedores"), con el monto de la base.
+create or replace function public.cpp_pagar(p_id uuid, p_medio text) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare n uuid := privado.exigir(true); c public.cuentas_pagar; k uuid := gen_random_uuid();
+begin
+  perform privado.modulo_o_error('cuentas_pagar');
+  select * into c from public.cuentas_pagar where id = p_id and negocio = n for update;
+  if c.id is null then raise exception 'No encontrada'; end if;
+  if c.estado <> 'pendiente' then raise exception 'Esta cuenta ya está pagada'; end if;
+  insert into public.caja (id, negocio, tipo, monto, categoria, descripcion, medio, fecha, creado_por)
+  values (k, n, 'gasto', c.monto, 'Proveedores', left('📤 ' || c.proveedor || coalesce(nullif(' · ' || c.detalle, ' · '), ''), 120),
+          case when p_medio in ('efectivo', 'transferencia', 'tarjeta', 'otro') then p_medio else 'transferencia' end, now(), auth.uid());
+  update public.cuentas_pagar set estado = 'pagada', pagada_at = now(), caja = k where id = c.id;
+  return jsonb_build_object('ok', true, 'caja', k);
+end $$;
+-- Resumen para el inicio: vencidas y las que vencen en 3 días.
+create or replace function public.cpp_pronto() returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+  select jsonb_build_object('n', count(*), 'total', coalesce(sum(monto), 0), 'vencidas', count(*) filter (where vence < privado.hoy()))
+  from public.cuentas_pagar where negocio = privado.mi_negocio() and privado.mi_rol() = 'dueno' and estado = 'pendiente'
+    and vence <= privado.hoy() + 3 and public.cfx_modulo_mio('cuentas_pagar')
+$$;
+
+-- 🧮 Cierre de caja del día: efectivo esperado (inicial + entradas − salidas en efectivo) vs lo contado.
+create table if not exists public.cierres_caja (
+  id uuid primary key default gen_random_uuid(),
+  negocio uuid not null references public.negocios (id) on delete cascade,
+  dia date not null,
+  inicial int not null default 0 check (inicial between 0 and 99999999),
+  esperado int not null,
+  contado int not null check (contado between 0 and 99999999),
+  diferencia int not null,
+  nota text not null default '' check (char_length(nota) <= 200),
+  creado_por uuid,
+  creado timestamptz not null default now(),
+  unique (negocio, dia)
+);
+alter table public.cierres_caja enable row level security;
+revoke all on public.cierres_caja from anon, authenticated;
+-- Lo que entró y salió en efectivo ese día (los montos salen de la base, no de la pantalla).
+create or replace function privado.efectivo_dia(p_neg uuid, p_dia date) returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+  select jsonb_build_object(
+    'ventas', (select coalesce(sum(monto), 0) from public.caja where negocio = p_neg and tipo = 'ingreso' and medio = 'efectivo' and anulado_at is null and (fecha at time zone 'America/Santiago')::date = p_dia),
+    'abonos', (select coalesce(sum(monto), 0) from public.movimientos where negocio = p_neg and tipo = 'abono' and medio = 'efectivo' and anulado_at is null and (fecha at time zone 'America/Santiago')::date = p_dia),
+    'gastos', (select coalesce(sum(monto), 0) from public.caja where negocio = p_neg and tipo = 'gasto' and medio = 'efectivo' and anulado_at is null and (fecha at time zone 'America/Santiago')::date = p_dia),
+    'otros', (select coalesce(sum(monto), 0) from public.caja where negocio = p_neg and tipo = 'ingreso' and medio <> 'efectivo' and anulado_at is null and (fecha at time zone 'America/Santiago')::date = p_dia))
+$$;
+create or replace function public.cierre_ver(p_dia date) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare n uuid := privado.exigir(); d date := coalesce(p_dia, privado.hoy()); e jsonb; ant int;
+begin
+  perform privado.modulo_o_error('cierre_caja');
+  if d > privado.hoy() or d < privado.hoy() - 62 then raise exception 'Elige un día de los últimos 2 meses'; end if;
+  e := privado.efectivo_dia(n, d);
+  select contado into ant from public.cierres_caja where negocio = n and dia < d order by dia desc limit 1;
+  return e || jsonb_build_object('dia', d, 'inicial_sugerido', coalesce(ant, 0),
+    'cierre', (select to_jsonb(c) from public.cierres_caja c where c.negocio = n and c.dia = d),
+    'historial', coalesce((select jsonb_agg(jsonb_build_object('dia', dia, 'esperado', esperado, 'contado', contado, 'diferencia', diferencia, 'nota', nota) order by dia desc)
+      from (select * from public.cierres_caja where negocio = n order by dia desc limit 30) h), '[]'));
+end $$;
+create or replace function public.cierre_guardar(p_dia date, p_inicial int, p_contado int, p_nota text) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare n uuid := privado.exigir(); d date := coalesce(p_dia, privado.hoy()); e jsonb; esp int; r public.cierres_caja;
+begin
+  perform privado.modulo_o_error('cierre_caja');
+  if d > privado.hoy() or d < privado.hoy() - 62 then raise exception 'Elige un día de los últimos 2 meses'; end if;
+  if coalesce(p_inicial, -1) not between 0 and 99999999 then raise exception 'Efectivo inicial no válido'; end if;
+  if coalesce(p_contado, -1) not between 0 and 99999999 then raise exception 'Escribe cuánto efectivo contaste'; end if;
+  e := privado.efectivo_dia(n, d);
+  esp := p_inicial + (e ->> 'ventas')::int + (e ->> 'abonos')::int - (e ->> 'gastos')::int;
+  insert into public.cierres_caja (negocio, dia, inicial, esperado, contado, diferencia, nota, creado_por)
+  values (n, d, p_inicial, esp, p_contado, p_contado - esp, left(coalesce(p_nota, ''), 200), auth.uid())
+  on conflict (negocio, dia) do update set inicial = excluded.inicial, esperado = excluded.esperado, contado = excluded.contado,
+    diferencia = excluded.diferencia, nota = excluded.nota, creado_por = excluded.creado_por, creado = now()
+  returning * into r;
+  if r.diferencia <> 0 and privado.mi_rol() <> 'dueno' then
+    perform privado.avisar_usuario((select dueno from public.negocios where id = n), '🧮 Cierre de caja con diferencia',
+      to_char(d, 'DD/MM') || ': ' || case when r.diferencia > 0 then 'sobran ' else 'faltan ' end || privado.pesos(abs(r.diferencia)), 'app/#cierre', true);
+  end if;
+  return to_jsonb(r);
+end $$;
+
+-- 🔔 Aviso de vencimiento automático: 1 día antes y el día que vence, aviso al celular del cliente (si activó avisos en su link)
+-- respetando la ley de cobranza (cuenta como recordatorio: máx. 2 por semana, lunes a sábado 08–20). Al dueño: resumen del día.
+alter table public.clientes add column if not exists aviso_auto date;
+create or replace function privado.avisar_vencimientos() returns int
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare c record; r record; k int := 0; hoy date := privado.hoy(); ng record;
+begin
+  for c in select cl.*, n.nombre neg_nombre from public.clientes cl join public.negocios n on n.id = cl.negocio
+    where n.estado = 'activo' and cl.estado not in ('borrado', 'archivado') and cl.saldo > 0 and cl.prox_venc between hoy and hoy + 1
+      and coalesce(cl.aviso_auto, date '2000-01-01') < hoy and public.cfx_modulo_de('aviso_vence', cl.negocio)
+      and exists (select 1 from public.push_subs s where s.cliente = cl.id) limit 2000 loop
+    select * into r from privado.cobro_permitido(c.id);
+    if not r.ok then continue; end if;
+    insert into public.recordatorios (negocio, cliente, canal, tono, enviado_por) values (c.negocio, c.id, 'push', 'auto', null);
+    update public.clientes set aviso_auto = hoy where id = c.id;
+    perform privado.push(null, null, c.id, '🔔 ' || c.neg_nombre || ': ' || case when c.prox_venc = hoy then 'tu pago vence hoy' else 'tu pago vence mañana' end,
+      'Tu saldo es ' || privado.pesos(c.saldo) || '. Puedes pagar o subir tu comprobante desde tu link.', 'c/');
+    k := k + 1;
+  end loop;
+  -- Resumen al dueño (1 vez al día): quiénes vencen hoy, para cobrarles con un toque.
+  for ng in select n.id, n.dueno, count(*) q, sum(cl.saldo) t from public.negocios n join public.clientes cl on cl.negocio = n.id
+    where n.estado = 'activo' and cl.estado not in ('borrado', 'archivado') and cl.saldo > 0 and cl.prox_venc = hoy and public.cfx_modulo_de('aviso_vence', n.id)
+      and coalesce(n.aviso_vence_at, date '2000-01-01') < hoy group by n.id, n.dueno loop
+    update public.negocios set aviso_vence_at = hoy where id = ng.id;
+    perform privado.avisar_usuario(ng.dueno, '🔔 Hoy vencen ' || ng.q || case when ng.q = 1 then ' cuenta' else ' cuentas' end,
+      'Total ' || privado.pesos(ng.t::int) || ': cóbrales con un toque', 'app/#cobranza', true);
+  end loop;
+  return k;
+exception when others then return k;   -- un aviso nunca debe romper el cron
+end $$;
+alter table public.negocios add column if not exists aviso_vence_at date;
+-- Lo que la pantalla muestra: cuántos tienen avisos activos y cuántos avisos salieron en 30 días.
+create or replace function public.aviso_vence_estado() returns jsonb
+language sql stable security definer set search_path = public, pg_temp as $$
+  select jsonb_build_object(
+    'con_avisos', (select count(distinct s.cliente) from public.push_subs s join public.clientes c on c.id = s.cliente where c.negocio = privado.mi_negocio() and c.estado <> 'borrado'),
+    'clientes', (select count(*) from public.clientes where negocio = privado.mi_negocio() and estado not in ('borrado', 'archivado')),
+    'enviados', (select count(*) from public.recordatorios where negocio = privado.mi_negocio() and tono = 'auto' and at > now() - interval '30 days'),
+    'proximos', (select count(*) from public.clientes where negocio = privado.mi_negocio() and saldo > 0 and estado not in ('borrado', 'archivado') and prox_venc between privado.hoy() and privado.hoy() + 7))
+$$;
+do $$ begin
+  perform cron.unschedule(jobid) from cron.job where jobname = 'lc-vence';
+  perform cron.schedule('lc-vence', '7 13,17,21 * * *', 'select privado.avisar_vencimientos()');
+exception when others then raise notice 'cron: %', sqlerrm;
+end $$;
+
+revoke all on function public.cpp_lista(), public.cpp_guardar(uuid, text, text, int, date), public.cpp_borrar(uuid), public.cpp_pagar(uuid, text), public.cpp_pronto(),
+  privado.efectivo_dia(uuid, date), public.cierre_ver(date), public.cierre_guardar(date, int, int, text), privado.avisar_vencimientos(), public.aviso_vence_estado() from public, anon, authenticated;
+grant execute on function public.cpp_lista(), public.cpp_guardar(uuid, text, text, int, date), public.cpp_borrar(uuid), public.cpp_pagar(uuid, text), public.cpp_pronto(),
+  public.cierre_ver(date), public.cierre_guardar(date, int, int, text), public.aviso_vence_estado() to authenticated;
 
 -- Al correr este SQL la versión de la app queda liberada al tiro: todos ven "Actualizar" (al publicar una versión nueva, sube este número).
 update public.ajustes set version_liberada = '1.10.0' where id = 1 and case when version_liberada ~ '^\d+(\.\d+)*$'

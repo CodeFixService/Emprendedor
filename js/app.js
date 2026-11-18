@@ -205,10 +205,10 @@
     const [v, a, b] = h.split('/');
     S.vista = v;
     document.querySelectorAll('#nav a').forEach((x) => x.classList.toggle('activo', x.dataset.v === v || (v === 'cliente' && x.dataset.v === 'clientes') ||
-      (['comprobantes', 'reportes', 'productos', 'ajustes', 'plan', 'cuenta', 'ayuda', 'pendientes', 'soporte', 'apariencia', 'cobranza', 'conexiones', 'conexion', 'invita', 'avisos', 'modulos', 'contador', 'fijos'].includes(v) && x.dataset.v === 'mas')));
+      (['comprobantes', 'reportes', 'productos', 'ajustes', 'plan', 'cuenta', 'ayuda', 'pendientes', 'soporte', 'apariencia', 'cobranza', 'conexiones', 'conexion', 'invita', 'avisos', 'modulos', 'contador', 'fijos', 'pagar', 'cierre', 'avisovence'].includes(v) && x.dataset.v === 'mas')));
     const vistas = { inicio: vInicio, caja: vCaja, clientes: vClientes, cliente: vCliente, anotar: vAnotar, mas: vMas, comprobantes: vComprobantes, reportes: vReportes,
       productos: vProductos, ayudantes: vMas, ajustes: vAjustes, plan: vPlan, avisos: vAvisos, cuenta: vCuenta, ayuda: vAyuda, pendientes: vPendientes, soporte: vSoporte,
-      apariencia: vApariencia, cobranza: vCobranza, conexiones: vConexiones, conexion: vConexion, invita: vInvita, modulos: vModulos, contador: vContador, fijos: vFijos };
+      apariencia: vApariencia, cobranza: vCobranza, conexiones: vConexiones, conexion: vConexion, invita: vInvita, modulos: vModulos, contador: vContador, fijos: vFijos, pagar: vPagar, cierre: vCierre, avisovence: vAvisoVence };
     const fn = vistas[v] || vInicio;
     if (!silencioso) window.scrollTo(0, 0);
     Promise.resolve(fn(a, b)).catch(error);
@@ -266,6 +266,9 @@
           el('div', null, el('div', { class: 'sutil' }, 'Balance'), el('strong', { class: bal >= 0 ? 'verde' : 'rojo' }, pesos(bal))))));
     }
     const p = S.st.pendientes || {};
+    // G104 📤 cuentas por pagar que vencen en 3 días (o ya vencidas)
+    if (mod('cuentas_pagar') && esDueno()) { const cp = await rpc('cpp_pronto').catch(() => null);
+      if (cp && cp.n) nodos.push(el('a', { class: 'banda ' + (cp.vencidas ? 'error' : 'info'), href: '#pagar', style: 'text-decoration:none' }, '📤 ' + cp.n + (cp.n === 1 ? ' cuenta por pagar' : ' cuentas por pagar') + (cp.vencidas ? ' (' + cp.vencidas + ' vencida' + (cp.vencidas > 1 ? 's' : '') + ')' : ' vence pronto') + ' · ' + pesos(cp.total), el('span', { class: 'btn chico' }, 'Ver'))); }
     if (p.soporte) nodos.push(el('a', { class: 'banda info', href: '#soporte', style: 'text-decoration:none' }, '💬 Soporte te respondió', el('span', { class: 'btn chico' }, 'Ver')));
     if (p.comprobantes) nodos.push(el('a', { class: 'banda info', href: '#comprobantes', style: 'text-decoration:none' }, '🧾 ' + p.comprobantes + ' comprobante' + (p.comprobantes > 1 ? 's' : '') + ' por revisar', el('span', { class: 'btn chico' }, 'Revisar')));
     if (p.reclamos && esDueno()) nodos.push(el('a', { class: 'banda error', href: '#clientes/reclamos', style: 'text-decoration:none' }, '⚠️ ' + p.reclamos + ' cargo' + (p.reclamos > 1 ? 's' : '') + ' reclamado' + (p.reclamos > 1 ? 's' : ''), el('span', { class: 'btn chico' }, 'Ver')));
@@ -900,7 +903,7 @@
     }
     let tono = 'amable';
     // G94 📈 Cobranza escalonada: el tono sube solo según los días de atraso (≤ 7 amable · ≤ 20 neutral · más firme).
-    const atraso = c.saldo > 0 && c.prox_venc ? Math.max(0, Math.floor((Date.now() - new Date(String(c.prox_venc).slice(0, 10) + 'T12:00:00')) / 86400000)) : 0;
+    const atraso = c.saldo > 0 && c.prox_venc ? Math.max(0, Math.round((new Date(hoyISO() + 'T12:00:00') - new Date(String(c.prox_venc).slice(0, 10) + 'T12:00:00')) / 86400000)) : 0;
     const escal = mod('escalonado');
     if (escal) tono = atraso > 20 ? 'firme' : atraso > 7 ? 'neutral' : 'amable';
     const info = { cuota: (await proximasCuotas(id).catch(() => ({})))[id], cuenta: incluirCuenta() };
@@ -1090,7 +1093,10 @@
       d && { k: 'productos', ico: icoH('etiqueta', 20), t: 'Productos frecuentes', grupo: g, ir: '#productos' },
       d && { k: 'fijos', ico: '🔁', t: 'Gastos fijos', d: 'Se anotan solos cada mes', dato: mod('gastos_fijos') ? '' : '🧩', grupo: g, ir: '#fijos' },
       d && { k: 'contador', ico: '🧮', t: 'Link para el contador', dato: mod('contador') ? '' : '🧩', grupo: g, ir: '#contador' },
-      d && { k: 'modulos', ico: '🧩', t: 'Módulos', d: 'Acuerdos, contador, cobranza escalonada…', grupo: 'Tu plan', ir: '#modulos' },
+      d && { k: 'pagar', ico: '📤', t: 'Cuentas por pagar', d: 'Lo que debes a proveedores', dato: mod('cuentas_pagar') ? '' : '🧩', grupo: g, ir: '#pagar' },
+      { k: 'cierre', ico: '💵', t: 'Cierre de caja', d: 'Cuadra el efectivo del día', dato: mod('cierre_caja') ? '' : '🧩', grupo: g, ir: '#cierre' },
+      d && { k: 'avisovence', ico: '🔔', t: 'Aviso de vencimiento', d: 'Le avisamos solo al cliente', dato: mod('aviso_vence') ? '' : '🧩', grupo: g, ir: '#avisovence' },
+      d && { k: 'modulos', ico: '🧩', t: 'Módulos', d: 'Acuerdos, cuentas por pagar, cierre de caja…', grupo: 'Tu plan', ir: '#modulos' },
       cola().length && { k: 'pendientes', ico: icoH('reloj', 20), t: 'Por subir', dato: cola().length, grupo: g, ir: '#pendientes' },
       d && { k: 'premium', ico: icoH('estrella', 20), t: pagar ? (pl.estado === 'pro' ? 'Pagar mi Pro' : 'Pasar a Pro') : 'Mi plan', d: (pl.pago_pendiente ? '⏳ Pago en revisión · ' : '') + sub.replace(/^[^\wÁÉÍÓÚáéíóú¡¿]+/, '') + (uso ? ' · ' + uso : ''),
         dato: planTxt(), grupo: 'Tu plan', accion: pagar ? () => pasarPro() : () => { location.hash = 'plan'; } },
@@ -2056,6 +2062,89 @@
         const n = await rpc('gastos_fijos_aplicar').catch(() => 0); toast(n > 0 ? '💾 Guardado · ' + n + ' anotado en la caja de este mes' : '💾 Guardado'); }
       vFijos();
     } catch (e) { error(e); }
+  }
+  // ================= G104 · 📤 CUENTAS POR PAGAR =================
+  async function vPagar() {
+    if (soloDueno()) return;
+    if (!mod('cuentas_pagar')) return sinModulo('cuentas_pagar', '📤 Cuentas por pagar');
+    const L = await conCarga(() => rpc('cpp_lista')).catch((e) => { error(e); return []; });
+    const hoy = hoyISO(), pend = L.filter((c) => c.estado === 'pendiente'), pag = L.filter((c) => c.estado === 'pagada');
+    const tot = pend.reduce((a, c) => a + c.monto, 0);
+    const fila = (c) => el('div', { class: 'item' }, el('button', { type: 'button', class: 'crece', style: 'all:unset;cursor:pointer;flex:1;min-width:0', onclick: () => editarPagar(c) },
+        el('div', { class: 'nom' }, c.proveedor), el('div', { class: 'sub', style: 'white-space:normal' }, el('strong', null, pesos(c.monto)), ' · ', el('span', { class: c.vence < hoy ? 'rojo' : c.vence === hoy ? 'naranjo' : '' }, (c.vence < hoy ? '⚠️ Venció ' : c.vence === hoy ? 'Vence hoy' : 'Vence ') + (c.vence === hoy ? '' : fechaCorta(c.vence))),
+          c.detalle ? ' · ' + c.detalle : '')),
+      el('button', { class: 'btn chico primario', type: 'button', style: 'flex:none', onclick: () => pagarCuenta(c) }, '✅ Pagar'));
+    pintar(el('h2', null, '📤 Cuentas por pagar'), el('p', { class: 'sutil' }, 'Lo que le debes a tus proveedores. Te avisamos antes de que venza y al pagar queda como gasto en tu caja.'),
+      el('div', { class: 'kpi mb' }, el('div', { class: 't' }, 'Debes en total'), el('div', { class: 'v rojo', id: 'cpTotal' }, pesos(tot)), el('div', { class: 't' }, pend.length + ' pendiente' + (pend.length === 1 ? '' : 's'))),
+      el('button', { class: 'btn primario', type: 'button', id: 'cpNuevo', onclick: () => editarPagar() }, '＋ Nueva cuenta por pagar'),
+      pend.length ? el('div', { class: 'lista mt' }, pend.map(fila)) : el('div', { class: 'vacio' }, 'Ej.: factura de la distribuidora, $120.000, vence el 30.'),
+      pag.length ? el('details', { class: 'mt' }, el('summary', null, '✅ Pagadas (últimos 60 días): ' + pag.length), el('div', { class: 'lista' }, pag.map((c) => el('div', { class: 'item' },
+        el('div', { class: 'crece' }, el('div', { class: 'nom' }, c.proveedor), el('div', { class: 'sub' }, 'Pagada ' + fechaCorta(c.pagada_at))), el('div', { class: 'monto' }, pesos(c.monto)))))) : null);
+  }
+  async function editarPagar(c) {
+    c = c || { proveedor: '', detalle: '', monto: '', vence: hoyISO() };
+    const pv = el('input', { id: 'cpProv', maxlength: 60, value: c.proveedor, placeholder: 'Ej: Distribuidora Sur' }), de = el('input', { id: 'cpDet', maxlength: 120, value: c.detalle || '', placeholder: 'Ej: Factura 1234' });
+    const mo = el('input', { id: 'cpMonto', type: 'number', inputmode: 'numeric', value: c.monto }), ve = el('input', { id: 'cpVence', type: 'date', value: c.vence });
+    const cmp = (t, i) => el('div', { class: 'campo' }, el('label', { for: i.id }, t), i);
+    const r = await dialogo(c.id ? 'Editar cuenta' : 'Nueva cuenta por pagar', el('div', null, cmp('Proveedor', pv), cmp('Detalle (opcional)', de), cmp('Monto', mo), cmp('Vence el', ve)),
+      [{ texto: 'Cancelar', valor: null }].concat(c.id ? [{ texto: '🗑️ Borrar', valor: 'b' }] : [], [{ texto: 'Guardar', clase: 'primario', valor: 1 }]));
+    if (!r) return;
+    try {
+      if (r === 'b') { if (!(await confirmar('¿Borrar esta cuenta por pagar?'))) return; await conCarga(() => rpc('cpp_borrar', { p_id: c.id })); toast('🗑️ Borrada'); }
+      else { await conCarga(() => rpc('cpp_guardar', { p_id: c.id || null, p_proveedor: pv.value.trim(), p_detalle: de.value.trim(), p_monto: Math.round(+mo.value), p_vence: ve.value || null })); toast('💾 Guardada'); }
+      vPagar();
+    } catch (e) { error(e); }
+  }
+  async function pagarCuenta(c) {
+    const r = await dialogo('✅ Pagar a ' + c.proveedor, el('p', null, pesos(c.monto) + ' quedará como gasto en tu caja (categoría Proveedores). ¿Cómo pagaste?'),
+      [{ texto: 'Cancelar', valor: null }, { texto: '💵 Efectivo', valor: 'efectivo' }, { texto: '🏦 Transferencia', clase: 'primario', valor: 'transferencia' }]);
+    if (!r) return;
+    try { await conCarga(() => rpc('cpp_pagar', { p_id: c.id, p_medio: r })); toast('✅ Pagada y anotada en tu caja'); vPagar(); } catch (e) { error(e); }
+  }
+  // ================= G104 · 💵 CIERRE DE CAJA =================
+  async function vCierre(dia) {
+    if (!mod('cierre_caja')) return sinModulo('cierre_caja', '💵 Cierre de caja');
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(dia || '') ? dia : hoyISO();
+    const x = await conCarga(() => rpc('cierre_ver', { p_dia: d })).catch((e) => { error(e); return null; }); if (!x) return;
+    const c = x.cierre;
+    const ini = el('input', { id: 'ccIni', type: 'number', inputmode: 'numeric', min: 0, value: c ? c.inicial : x.inicial_sugerido });
+    const con = el('input', { id: 'ccCont', type: 'number', inputmode: 'numeric', min: 0, value: c ? c.contado : '', placeholder: 'Lo que hay en la caja' });
+    const nota = el('input', { id: 'ccNota', maxlength: 200, value: c ? c.nota : '', placeholder: 'Ej: faltó cambio' });
+    const esp = el('strong', { id: 'ccEsp', style: 'white-space:nowrap' }), dif = el('div', { id: 'ccDif', class: 'mt' });
+    const calc = () => { const e = (Math.round(+ini.value) || 0) + x.ventas + x.abonos - x.gastos; esp.textContent = pesos(e);
+      if (con.value === '') { vaciar(dif); return; } const df = Math.round(+con.value) - e;
+      vaciar(dif).append(el('div', { class: 'banda ' + (df === 0 ? 'info' : 'error') }, df === 0 ? '✅ Cuadra perfecto' : (df > 0 ? '⬆️ Sobran ' : '⬇️ Faltan ') + pesos(Math.abs(df)))); };
+    ini.oninput = calc; con.oninput = calc;
+    const fecha = el('input', { id: 'ccDia', type: 'date', value: d, max: hoyISO(), onchange: (e) => { if (e.target.value) location.hash = 'cierre/' + e.target.value; } });
+    const lin = (t, v, cl) => el('div', { class: 'fila entre', style: 'gap:8px' }, el('span', null, t), el('strong', { class: cl || '', style: 'white-space:nowrap' }, v));
+    const cmp = (t, i) => el('div', { class: 'campo' }, el('label', { for: i.id }, t), i);
+    pintar(el('h2', null, '💵 Cierre de caja'), el('p', { class: 'sutil' }, 'Cuenta el efectivo al cerrar y ve al tiro si cuadra.'), cmp('Día', fecha),
+      el('div', { class: 'tarjeta' }, cmp('💵 Efectivo con que partiste', ini), lin('➕ Ventas en efectivo', pesos(x.ventas), 'verde'), lin('➕ Abonos en efectivo', pesos(x.abonos), 'verde'),
+        lin('➖ Gastos en efectivo', pesos(x.gastos), 'rojo'), el('hr'), el('div', { class: 'fila entre', style: 'gap:8px' }, el('span', null, 'Debería haber'), esp),
+        x.otros ? el('div', { class: 'sutil' }, '(+ ' + pesos(x.otros) + ' que entró por transferencia o tarjeta, no está en la caja)') : null),
+      el('div', { class: 'tarjeta' }, cmp('🧮 Efectivo que contaste', con), cmp('Nota (opcional)', nota), dif,
+        el('button', { class: 'btn primario mt', type: 'button', id: 'ccGuardar', style: 'width:100%', onclick: async () => {
+          if (con.value === '') { toast('Escribe cuánto efectivo contaste', { error: true }); return; }
+          try { const r = await conCarga(() => rpc('cierre_guardar', { p_dia: d, p_inicial: Math.round(+ini.value) || 0, p_contado: Math.round(+con.value), p_nota: nota.value.trim() }));
+            toast(r.diferencia === 0 ? '✅ Caja cerrada: cuadra' : '💾 Cierre guardado con diferencia de ' + pesos(Math.abs(r.diferencia))); vCierre(d); } catch (e) { error(e); } } }, c ? '💾 Volver a cerrar' : '🔒 Cerrar caja')),
+      x.historial.length ? el('details', { class: 'mt' }, el('summary', null, '📅 Cierres anteriores (' + x.historial.length + ')'), el('div', { class: 'lista' }, x.historial.map((h) => el('a', { class: 'item', href: '#cierre/' + h.dia },
+        el('div', { class: 'crece' }, el('div', { class: 'nom' }, fechaLarga(h.dia)), el('div', { class: 'sub' }, 'Contado ' + pesos(h.contado) + (h.nota ? ' · ' + h.nota : ''))),
+        el('span', { class: 'tag ' + (h.diferencia === 0 ? 'verde' : 'rojo') }, h.diferencia === 0 ? '✓' : (h.diferencia > 0 ? '+' : '−') + pesos(Math.abs(h.diferencia))))))) : null);
+    calc();
+  }
+  // ================= G104 · 🔔 AVISO DE VENCIMIENTO AUTOMÁTICO =================
+  async function vAvisoVence() {
+    if (soloDueno()) return;
+    if (!mod('aviso_vence')) return sinModulo('aviso_vence', '🔔 Aviso de vencimiento');
+    const x = await conCarga(() => rpc('aviso_vence_estado')).catch((e) => { error(e); return null; }); if (!x) return;
+    pintar(el('h2', null, '🔔 Aviso de vencimiento'), el('div', { class: 'banda info' }, '✅ Activo: funciona solo, no tienes que hacer nada.'),
+      el('div', { class: 'tarjeta' }, el('p', null, '📅 El día antes y el día que vence, al cliente le llega un aviso en su celular con su saldo y su link para pagar.'),
+        el('p', null, '⚖️ Respeta la ley de cobranza: cuenta como recordatorio (máx. 2 por semana, lunes a sábado de 08:00 a 20:00).'),
+        el('p', null, '🔔 A ti te llega un resumen el día que vencen, para cobrar con un toque.')),
+      el('div', { class: 'grid3 mb' }, el('div', { class: 'kpi' }, el('div', { class: 't' }, 'Con avisos'), el('div', { class: 'v', id: 'avCon' }, x.con_avisos + '/' + x.clientes)),
+        el('div', { class: 'kpi' }, el('div', { class: 't' }, 'Vencen en 7 días'), el('div', { class: 'v naranjo' }, String(x.proximos))),
+        el('div', { class: 'kpi' }, el('div', { class: 't' }, 'Avisos en 30 días'), el('div', { class: 'v verde' }, String(x.enviados)))),
+      el('p', { class: 'sutil' }, '💡 Solo reciben el aviso los clientes que activaron las notificaciones en su link. Mándales su link y pídeles tocar “🔔 Avisarme de mis pagos y cuotas”.'));
   }
   async function vSoporte() { location.hash = 'mas'; if (window.CFX_AYUDA) window.CFX_AYUDA.chat(); }
 
