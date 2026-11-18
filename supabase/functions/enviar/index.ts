@@ -35,7 +35,7 @@ async function reintentarPush(s: Rpc, preparar: () => Promise<boolean>) {
   return n;
 }
 
-const VERSION = '1.4.1';
+const VERSION = '1.4.2';
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -169,7 +169,7 @@ async function qrEntrar(b: { token?: string; secreto?: string }) {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   // G99 a ⚡ Aviso de Mercado Pago (webhook): no se confía en lo que llega; la base vuelve a preguntarle a MP por esa referencia.
-  { const ref = new URL(req.url).searchParams.get('cfx_mp'); if (ref) { try { await db().rpc('cfx_mp_aviso', { p_ref: ref.slice(0, 80) }); } catch { /* el cron revisa igual */ } return new Response('ok', { headers: CORS }); } }
+  { const ref = new URL(req.url).searchParams.get('cfx_mp'); if (ref) { try { await db().rpc('cfx_mp_aviso', { p_ref: ref.slice(0, 80) }); } catch { /* el cron revisa igual */ } if (new URL(req.url).searchParams.get('cfx_volver')) { try { const { data: v } = await db().rpc('cfx_pago_volver', { p_ref: ref.slice(0, 80) }); if (typeof v === 'string' && /^https:\/\/[^\s"<>]+$/.test(v)) return new Response(null, { status: 303, headers: { ...CORS, Location: v } }); } catch { /* sin regreso */ } } return new Response('ok', { headers: CORS }); } }
   try {
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : {};
     if (body?.accion === 'ping') return json({ ok: true, version: VERSION, servicio: !!Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') });
