@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '68'),
+  ('version_bd', '69'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -8207,6 +8207,11 @@ update public.cfx_config set valor = jsonb_set(valor, '{packs}', jsonb_build_obj
     'basico',   jsonb_build_object('nombre', '🌱 Cobrar mejor', 'detalle', 'Acuerdos firmados y cobranza que sube de tono sola', 'precio', 1490, 'modulos', jsonb_build_array('acuerdo', 'escalonado')),
     'completo', jsonb_build_object('nombre', '💎 Completo', 'detalle', 'Todos los módulos, también los nuevos', 'precio', 2490, 'destacado', true, 'modulos', '*')))
 where clave = 'modulos_venta' and valor #>> '{packs,crecer,modulos,4}' = 'carrito';
+-- G112 b: 3 packs iguales en todas las apps (🌱 Básico · ⭐ Normal · 💎 Completo). Solo si siguen los de fábrica.
+update public.cfx_config set valor = jsonb_set(jsonb_set(jsonb_set(valor, '{packs,basico,nombre}', '"🌱 Básico"'), '{packs,completo,destacado}', 'false'), '{packs,crecer}',
+    jsonb_build_object('nombre', '⭐ Normal', 'detalle', 'Cobra a tiempo y ordena tu caja', 'precio', 1990, 'destacado', true,
+                       'modulos', jsonb_build_array('acuerdo', 'escalonado', 'aviso_vence', 'gastos_fijos', 'cierre_caja')))
+where clave = 'modulos_venta' and valor #> '{packs,crecer}' is null and valor #>> '{packs,basico,nombre}' = '🌱 Cobrar mejor';
 
 -- Lo que puede usar mi billetera: {"acuerdo": true, …}
 create or replace function public.mis_modulos() returns jsonb
