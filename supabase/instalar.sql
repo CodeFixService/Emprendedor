@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '73'),
+  ('version_bd', '74'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -8545,6 +8545,42 @@ language sql immutable set search_path = '' as $$
   select coalesce(t, '') = '' or (t ~ '^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$' and length(t) <= maxlen) or public.cfx_foto_nube(t)
 $$;
 grant execute on function public.cfx_foto_nube(text, uuid), public.cfx_foto_ok(text, int) to authenticated, anon;
+
+-- G122 b 🧹 Fotos huérfanas: de una lista de MIS archivos (<uuid>.webp de mi carpeta), ¿cuáles NO aparecen en ninguna tabla?
+-- Busca en TODAS las columnas de texto/json/arreglo de la app (también respaldos), así nunca se borra una foto en uso.
+-- Ante cualquier duda (nombre raro, error al leer una tabla) devuelve vacío: no se borra nada.
+create or replace function public.cfx_fotos_libres(p_nombres text[]) returns text[]
+language plpgsql security definer set search_path = '' as $$
+declare u uuid := auth.uid(); pat text; r record; txt text; n text; usados text[] := '{}'; libres text[] := '{}';
+begin
+  if u is null or coalesce(array_length(p_nombres, 1), 0) = 0 or array_length(p_nombres, 1) > 1000 then return '{}'; end if;
+  foreach n in array p_nombres loop
+    if n is null or n !~ '^[0-9a-f-]{36}\.(webp|jpg|png)$' then return '{}'; end if;
+  end loop;
+  pat := '%/vitrina/' || u::text || '/%';
+  for r in select c.table_schema s, c.table_name t, c.column_name col
+      from information_schema.columns c join information_schema.tables tb on tb.table_schema = c.table_schema and tb.table_name = c.table_name
+      where tb.table_type = 'BASE TABLE' and c.data_type in ('text', 'character varying', 'jsonb', 'json', 'ARRAY')
+        and c.table_schema not in ('storage', 'auth', 'information_schema', 'vault', 'pgsodium', 'pgsodium_masks', 'realtime', '_realtime',
+          'supabase_functions', 'supabase_migrations', 'extensions', 'graphql', 'graphql_public', 'net', 'cron', 'pgbouncer', '_analytics')
+        and c.table_schema !~ '^pg_' loop
+    begin
+      execute format('select string_agg(%I::text, '' '') from %I.%I where %I::text like $1', r.col, r.s, r.t, r.col) into txt using pat;
+    exception when others then return '{}';
+    end;
+    if txt is not null then
+      foreach n in array p_nombres loop
+        if position(u::text || '/' || n in txt) > 0 then usados := usados || n; end if;
+      end loop;
+    end if;
+  end loop;
+  foreach n in array p_nombres loop
+    if not (n = any(usados)) then libres := libres || n; end if;
+  end loop;
+  return libres;
+end $$;
+revoke all on function public.cfx_fotos_libres(text[]) from public, anon;
+grant execute on function public.cfx_fotos_libres(text[]) to authenticated;
 -- <<< CFX núcleo
 
 -- G95 🎁 Prueba Pro por botón (núcleo cfx_pro_probar): en Billetera la prueba es prueba_hasta (estado 'prueba'), no un pago.
