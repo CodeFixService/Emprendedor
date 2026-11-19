@@ -205,10 +205,10 @@
     const [v, a, b] = h.split('/');
     S.vista = v;
     document.querySelectorAll('#nav a').forEach((x) => x.classList.toggle('activo', x.dataset.v === v || (v === 'cliente' && x.dataset.v === 'clientes') ||
-      (['comprobantes', 'reportes', 'productos', 'ajustes', 'plan', 'cuenta', 'ayuda', 'pendientes', 'soporte', 'apariencia', 'cobranza', 'conexiones', 'conexion', 'invita', 'avisos', 'modulos', 'contador', 'fijos', 'pagar', 'cierre', 'avisovence'].includes(v) && x.dataset.v === 'mas')));
+      (['comprobantes', 'reportes', 'productos', 'ajustes', 'plan', 'cuenta', 'ayuda', 'pendientes', 'soporte', 'apariencia', 'cobranza', 'conexiones', 'conexion', 'invita', 'avisos', 'modulos', 'estudio', 'contador', 'fijos', 'pagar', 'cierre', 'avisovence'].includes(v) && x.dataset.v === 'mas')));
     const vistas = { inicio: vInicio, caja: vCaja, clientes: vClientes, cliente: vCliente, anotar: vAnotar, mas: vMas, comprobantes: vComprobantes, reportes: vReportes,
       productos: vProductos, ayudantes: vMas, ajustes: vAjustes, plan: vPlan, avisos: vAvisos, cuenta: vCuenta, ayuda: vAyuda, pendientes: vPendientes, soporte: vSoporte,
-      apariencia: vApariencia, cobranza: vCobranza, conexiones: vConexiones, conexion: vConexion, invita: vInvita, modulos: vModulos, contador: vContador, fijos: vFijos, pagar: vPagar, cierre: vCierre, avisovence: vAvisoVence };
+      apariencia: vApariencia, cobranza: vCobranza, conexiones: vConexiones, conexion: vConexion, invita: vInvita, modulos: vModulos, contador: vContador, fijos: vFijos, estudio: vEstudio, pagar: vPagar, cierre: vCierre, avisovence: vAvisoVence };
     const fn = vistas[v] || vInicio;
     if (!silencioso) window.scrollTo(0, 0);
     Promise.resolve(fn(a, b)).catch(error);
@@ -1096,6 +1096,7 @@
       d && { k: 'pagar', ico: '📤', t: 'Cuentas por pagar', d: 'Lo que debes a proveedores', dato: mod('cuentas_pagar') ? '' : '🧩', grupo: g, ir: '#pagar' },
       { k: 'cierre', ico: '💵', t: 'Cierre de caja', d: 'Cuadra el efectivo del día', dato: mod('cierre_caja') ? '' : '🧩', grupo: g, ir: '#cierre' },
       d && { k: 'avisovence', ico: '🔔', t: 'Aviso de vencimiento', d: 'Le avisamos solo al cliente', dato: mod('aviso_vence') ? '' : '🧩', grupo: g, ir: '#avisovence' },
+      d && { k: 'estudio', ico: '🎬', t: 'Estudio de contenido', d: 'Ideas para tus redes listas para copiar', dato: mod('estudio') ? '' : '🧩', grupo: g, ir: '#estudio' },  // G112 d (núcleo)
       d && { k: 'modulos', ico: '🧩', t: 'Módulos', d: 'Acuerdos, cuentas por pagar, cierre de caja…', grupo: 'Tu plan', ir: '#modulos' },
       cola().length && { k: 'pendientes', ico: icoH('reloj', 20), t: 'Por subir', dato: cola().length, grupo: g, ir: '#pendientes' },
       d && { k: 'premium', ico: icoH('estrella', 20), t: pagar ? (pl.estado === 'pro' ? 'Pagar mi Pro' : 'Pasar a Pro') : 'Mi plan', d: (pl.pago_pendiente ? '⏳ Pago en revisión · ' : '') + sub.replace(/^[^\wÁÉÍÓÚáéíóú¡¿]+/, '') + (uso ? ' · ' + uso : ''),
@@ -2037,6 +2038,14 @@
     pint(S.neg.contador_token || null);
   }
   // 🔁 Gastos fijos automáticos
+  // G112 d 🎬 Estudio de contenido (núcleo estudio.js): sin el módulo, el núcleo muestra qué hace + ▶️ Probar; sus ideas siguen a la vista.
+  function vEstudio() {
+    if (soloDueno()) return;
+    const z = el('div');
+    pintar(el('h2', null, '🎬 Estudio de contenido'), z);
+    if (!window.CFX_ESTUDIO) return z.append(el('p', { class: 'sutil' }, 'Actualiza la app'));
+    CFX_ESTUDIO.montar(z, { rpc, nombre: (S.neg || {}).nombre || '', probar: (k) => window.CFX_MODULOS_TIENDA && CFX_MODULOS_TIENDA.probar(k, { rpc, alCambiar: () => setTimeout(() => location.reload(), 1500) }) });
+  }
   async function vFijos() {
     if (soloDueno()) return;
     if (!mod('gastos_fijos')) return sinModulo('gastos_fijos', '🔁 Gastos fijos');

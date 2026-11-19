@@ -15,3 +15,4 @@
 - G43: revisar la tarjeta "🚀 Termina de armar tu negocio" (núcleo) en app/ (o marcar data-cfx-guia); afinar guiaPasos (whatsapp, cobro, logo → campo exacto en Ajustes); quitar avisos propios de instalar/notificaciones si se repiten.
 
 - 🧩 G112 b · Packs 🌱 Básico · ⭐ Normal (clave `crecer`, destacado) · 💎 Completo, iguales en las 6; precios y módulos: SaaS/LANZAMIENTO.md (Módulos, paso 3). Solo cambian si siguen de fábrica.
+- 🎬 G112 d · Estudio de contenido = 🧩 módulo 'estudio' (núcleo estudio.sql/estudio.js; ayuda.js lo carga al abrir: CFX_ESTUDIO.montar(zona, { rpc, probar, nombre })). Datos en cfx_estudio (solo el dueño por funciones). Entra en ⭐ Normal (si sigue de fábrica) y 💎 Completo. Dónde: Más → 🎬 Estudio (/app/#estudio, vEstudio).
