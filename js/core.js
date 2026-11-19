@@ -1,7 +1,7 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.21.105';
+  const VERSION = '1.21.106';
   const BD = 71; // versión de la base de datos que necesita esta versión de la app
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
@@ -173,6 +173,7 @@
     if (/permission denied/i.test(m)) return new ErrorApp('No tienes permiso para esto.');
     if (/Invalid login credentials/i.test(m)) return new ErrorApp('Correo o contraseña incorrectos.');
     if (/User already registered|already been registered/i.test(m)) return new ErrorApp('Ese correo ya tiene cuenta. Ingresa o recupera tu contraseña.');
+    if (/sending (confirmation|recovery|magic link|invite)? ?e?mail|smtp/i.test(m)) return new ErrorApp('No pudimos enviar el correo de confirmación. Prueba de nuevo en unos minutos o escríbenos por 🛟 Soporte.');  // G127
     if (/rate limit|too many/i.test(m)) return new ErrorApp('Demasiados intentos. Espera un minuto y vuelve a probar.');
     if (/Email not confirmed/i.test(m)) return new ErrorApp('Confirma tu correo con el link que te enviamos.');
     if (/Password should be/i.test(m)) return new ErrorApp('La contraseña es muy débil: usa al menos 8 caracteres con letras y números.');
