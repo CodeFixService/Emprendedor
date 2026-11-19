@@ -353,8 +353,41 @@
       busc,
       el('div', { class: 'chips mt' }, FILTROS.filter((f) => f[0] !== 'fuera' || S.st.uso.fuera_de_plan).map(([v, t]) => el('button', { class: 'chip' + (filtroCli === v ? ' activo' : ''), type: 'button', onclick: () => { filtroCli = v; vClientes(); } }, t))),
       el('div', { class: 'fila entre mb' }, el('span', { class: 'sutil' }, 'Ordenar por'), orden),
-      lista);
+      lista, esDueno() ? planillaClientes() : el('span'));
     pintarLista();
+  }
+
+  // G118 📊 Planilla única (núcleo CFX_RESPALDO.planilla): crea clientes nuevos con lo que te deben hoy. Los que ya existen NO se tocan
+  // (su saldo es contabilidad: se cambia con movimientos). El servidor valida cada uno (crear_cliente: plan, teléfono, montos).
+  function planillaClientes() {
+    const caja = el('div', { style: 'margin-top:8px' }), aut = el('input', { type: 'checkbox', id: 'autPl' });
+    const d = el('details', { class: 'tarjeta mt' }, el('summary', { style: 'cursor:pointer;font-weight:700' }, '📊 Cargar muchos clientes (planilla)'),
+      el('label', { class: 'check mt', for: 'autPl' }, aut, 'Mis clientes me autorizaron a registrar sus datos.'), caja);
+    const mismo = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+    d.addEventListener('toggle', () => {
+      if (!d.open || caja.dataset.listo || !window.CFX_RESPALDO || !CFX_RESPALDO.planilla) return; caja.dataset.listo = 1;
+      CFX_RESPALDO.planilla(caja, { que: 'clientes', archivo: 'planilla-clientes', max: 300, rubro: (S.neg && S.neg.rubro) || '', clave: 'nombre', soloCrear: true,
+        cols: [{ k: 'nombre', t: 'Nombre', req: true, max: 60, al: /^(cliente|nombre y apellido)/ }, { k: 'telefono', t: 'Teléfono', tipo: 'telefono', al: /^(celular|whatsapp|fono)/, ayuda: '+56 9 y 8 números' },
+          { k: 'saldo', t: 'Debe hoy', tipo: 'plata', tope: 50000000, al: /^(deuda|saldo|debe)/, ayuda: 'lo que te debe hoy, sin $ ni puntos (vacío = 0)' }, { k: 'apodo', t: 'Apodo', max: 40 }, { k: 'nota', t: 'Nota', max: 200 }],
+        ejemplos: [{ nombre: 'María González', telefono: '+56 9 1234 5678', saldo: 15000, apodo: 'Vecina del 3', nota: '' }, { nombre: 'Pedro Soto', telefono: '912345679', saldo: 0, apodo: '', nota: 'Paga los viernes' }],
+        existe: (f) => S.clientes.some((c) => mismo(c.nombre, f.nombre)),
+        guardar: async (filas) => {
+          if (!aut.checked) throw new Error('Marca arriba "Mis clientes me autorizaron"');
+          let creados = 0; const errores = [];
+          for (const f of filas) {
+            try {
+              const r = await rpc('crear_cliente', { p_nombre: f.nombre, p_apodo: f.apodo || null, p_telefono: f.telefono || null, p_rut: null, p_nota: f.nota || null, p_limite: null, p_pin: null,
+                p_saldo_inicial: f.saldo || 0, p_forzar: false, p_autorizado: true });
+              if (r && r.duplicado) errores.push({ fila: f._fila, msg: 'ya existe (mismo teléfono)' }); else creados++;
+            } catch (e) { errores.push({ fila: f._fila, msg: LC.traducir(e).message }); if (e.pista === 'PLAN') break; }
+          }
+          local.set('lc-autoriza', true);
+          await cargarClientes();
+          return { creados, actualizados: 0, errores };
+        },
+        listo: (r) => { if (!(r.errores || []).length) { router(); toast('✅ ' + r.creados + ' creados'); } } });
+    });
+    return d;
   }
 
   function filaCliente(c) {
