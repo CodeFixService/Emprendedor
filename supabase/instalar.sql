@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '75'),
+  ('version_bd', '76'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -5112,8 +5112,9 @@ begin
   if length(t) > 1500 then raise exception 'Máximo 1500 letras'; end if;
   if f is not null and (f !~ '^data:image/(webp|jpeg|png);base64,' or length(f) > 400000) then raise exception 'La foto no sirve: usa una captura o foto JPG/PNG'; end if;
   if jsonb_typeof(d) <> 'object' or length(d::text) > 8000 then d := '{}'; end if;
-  if exists (select 1 from public.cfx_fallas where cuenta = u and creado > now() - interval '2 minutes') then raise exception 'Espera 2 minutos antes de enviar otro reporte'; end if;
-  if (select count(*) from public.cfx_fallas where cuenta = u and creado > now() - interval '1 day') >= 3 then raise exception 'Ya enviaste 3 reportes hoy. Mañana puedes enviar más 🙏'; end if;
+  -- G138 (Josué): reportar sin tope chico (antes 3 al día). Solo 1 minuto entre reportes y 30 al día por cuenta, contra el abuso.
+  if exists (select 1 from public.cfx_fallas where cuenta = u and creado > now() - interval '1 minute') then raise exception 'Espera 1 minuto antes de enviar otro reporte'; end if;
+  if (select count(*) from public.cfx_fallas where cuenta = u and creado > now() - interval '1 day') >= 30 then raise exception 'Ya enviaste 30 reportes hoy. Mañana puedes enviar más 🙏'; end if;
   if (select count(*) from public.cfx_fallas where estado in ('nuevo', 'revisando')) >= 500 then raise exception 'Recibimos muchos reportes. Prueba de nuevo mañana 🙏'; end if;
   delete from public.cfx_fallas where estado in ('real', 'no') and resuelto < now() - interval '180 days';
   insert into public.cfx_fallas (cuenta, email, nombre, rol, texto, foto, datos)
