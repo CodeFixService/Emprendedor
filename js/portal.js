@@ -16,9 +16,15 @@
 
   const pintar = (...n) => { vaciar(raiz).append(...n.flat().filter((x) => x != null && x !== false)); window.scrollTo(0, 0); };
   function marcaColor(c) { if (c) LC.aplicarColor(c, false); }
+  let redesL = null;  // G141 a 📱 redes del negocio con ícono (núcleo vitrina.js), se piden 1 vez
   function cabecera(nombre, icono) {
-    return el('div', { class: 'fila mb' }, el('div', { class: 'logo-mini' + (icono ? ' emoji' : ''), style: 'width:44px;height:44px' }, icono || LC.iniciales(nombre)),
-      el('div', { class: 'crece' }, el('div', { class: 'sutil' }, 'Tu cuenta en'), el('strong', { style: 'font-size:1.15em' }, nombre)));
+    const r = el('div', { class: 'mb', hidden: true });
+    if (window.CodeFixVitrina && CodeFixVitrina.redes && codigo) {
+      if (redesL) CodeFixVitrina.redes.publico(r, { respaldo: redesL, titulo: '' });
+      else rpc('cfx_redes_publicas', { p_llave: codigo }).then((L) => { redesL = L || []; CodeFixVitrina.redes.publico(r, { respaldo: redesL, titulo: '' }); }).catch(() => {});
+    }
+    return el('div', null, el('div', { class: 'fila mb' }, el('div', { class: 'logo-mini' + (icono ? ' emoji' : ''), style: 'width:44px;height:44px' }, icono || LC.iniciales(nombre)),
+      el('div', { class: 'crece' }, el('div', { class: 'sutil' }, 'Tu cuenta en'), el('strong', { style: 'font-size:1.15em' }, nombre))), r);
   }
 
   async function iniciar() {
