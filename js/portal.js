@@ -20,8 +20,10 @@
   function cabecera(nombre, icono) {
     const r = el('div', { class: 'mb', hidden: true });
     if (window.CodeFixVitrina && CodeFixVitrina.redes && codigo) {
-      if (redesL) CodeFixVitrina.redes.publico(r, { respaldo: redesL, titulo: '' });
-      else rpc('cfx_redes_publicas', { p_llave: codigo }).then((L) => { redesL = L || []; CodeFixVitrina.redes.publico(r, { respaldo: redesL, titulo: '' }); }).catch(() => {});
+      // G144 d: viejo = el botón "Escribir a…" (se oculta si las redes ya traen WhatsApp; uno solo). Se pinta después de armar la pantalla.
+      const pon = () => setTimeout(() => CodeFixVitrina.redes.publico(r, { respaldo: redesL, titulo: '', viejo: raiz.querySelector('.btn.wsp[data-wa]') }), 0);
+      if (redesL) pon();
+      else rpc('cfx_redes_publicas', { p_llave: codigo }).then((L) => { redesL = L || []; pon(); }).catch(() => {});
     }
     return el('div', null, el('div', { class: 'fila mb' }, el('div', { class: 'logo-mini' + (icono ? ' emoji' : ''), style: 'width:44px;height:44px' }, icono || LC.iniciales(nombre)),
       el('div', { class: 'crece' }, el('div', { class: 'sutil' }, 'Tu cuenta en'), el('strong', { style: 'font-size:1.15em' }, nombre))), r);
@@ -121,7 +123,7 @@
         n.link_pago ? el('button', { class: 'btn primario', type: 'button', onclick: () => abrir(n.link_pago) }, '💳 Pagar ahora') : null,
         el('button', { class: 'btn' + (n.link_pago ? '' : ' primario'), type: 'button', onclick: pagar }, '💸 Pagar por transferencia'),
         el('button', { class: 'btn', type: 'button', onclick: subirComprobante }, '📤 Ya pagué: enviar comprobante')) : null,
-      n.whatsapp ? el('button', { class: 'btn wsp ancho mb', type: 'button', onclick: () => abrir(wa(n.whatsapp, 'Hola ' + n.nombre + ', soy ' + c.nombre + '. ')) }, '💬 Escribir a ' + n.nombre) : null,
+      n.whatsapp ? el('button', { class: 'btn wsp ancho mb', type: 'button', 'data-wa': wa(n.whatsapp, 'Hola ' + n.nombre + ', soy ' + c.nombre + '. '), onclick: () => abrir(wa(n.whatsapp, 'Hola ' + n.nombre + ', soy ' + c.nombre + '. ')) }, '💬 Escribir a ' + n.nombre) : null,
       tarjetaAcuerdo(),
       porConfirmar.length ? el('div', { class: 'tarjeta', style: 'border-color:var(--aviso)' }, el('h2', null, '¿Reconoces estos cargos?'),
         el('p', { class: 'sutil' }, 'Confírmalos para que tu cuenta quede clara. Si alguno no es tuyo, avísale al negocio.'),

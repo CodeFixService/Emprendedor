@@ -55,7 +55,6 @@
         n.whatsapp ? el('button', { class: 'btn-icono', type: 'button', 'aria-label': 'WhatsApp', onclick: () => abrir(wa(n.whatsapp, plantilla(n))) }, '💬') : null,
         null)))) : null;
     const cfgP = r.mrr;
-    pintarUso();
     pintar(el('h2', null, 'Resumen'),
       !r.cron_ok ? el('div', { class: 'banda error' }, '⚠️ Las tareas automáticas no están activas: en Supabase → Database → Extensions enciende pg_cron y pg_net, y vuelve a correr el SQL de actualización.') : null,
       !r.push_ok ? el('div', { class: 'banda aviso' }, '⚠️ Falta generar las claves push.', el('a', { class: 'btn chico', href: '#ajustes/push' }, 'Ir')) : null,
@@ -85,24 +84,10 @@
       op1('🙂 En Free y usando la app', op.free, (n) => (n.activado ? 'Venció su Pro' : 'Terminó su prueba') + ' · entró ' + (n.ultimo_uso ? LC.relativo(n.ultimo_uso.slice(0, 10)) : '—'), (n) => 'Hola ' + n.nombre + ', vi que sigues usando tu billetera 🙌 Si activas Pro tienes cobro a todos de una, recibos, reportes y todo sin límites. ¿Te cuento?'),
       !L(op.quieren_pro).length && !L(op.prueba_termina).length && !L(op.pro_vence).length && !L(op.free).length ? el('div', { class: 'lista' }, el('div', { class: 'vacio' }, 'Sin oportunidades por ahora.')) : null,
       el('button', { class: 'btn primario ancho mb mt', type: 'button', onclick: crearCuenta }, '＋ Crear cuenta para un cliente'),
-      // El uso del servidor (base, archivos, cola) se ve en el Centro de Mando → Resumen (carrusel de servidores). Aquí solo limpiar y respaldar.
-      el('div', { class: 'tarjeta' }, el('h2', null, '🧹 Limpieza y respaldo'), usoDetalle),
+      // G144 a: limpieza y respaldo solo en el Centro de Mando → Apps.
+      el('p', { class: 'sutil' }, '🧹 Limpieza y respaldo: en el Centro de Mando → Apps.'),
       el('button', { class: 'btn ancho mt', type: 'button', onclick: probar }, '🩺 Probar servidor de avisos'),
       null);
-  }
-  const usoDetalle = el('div', { class: 'mt' });
-  async function pintarUso() {
-    const u = await rpc('admin_uso').catch(() => null); if (!u) return;
-    const limpiar = async (que, tx) => { if (!await confirmar('Limpiar', tx, 'Limpiar', 'rojo')) return; try { const n = await conCarga(() => rpc('admin_limpiar', { p_que: que })); toast('Listo ✓ (' + n + ')'); pintarUso(); } catch (e) { error(e); } };
-    vaciar(usoDetalle).append(
-      el('div', { class: 'grid2' }, el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('comprobantes', 'Borra las fotos de comprobantes revisados más antiguas que los días de Ajustes → Reglas.') }, '🧾 Comprobantes viejos'),
-        el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('avisos', 'Borra los avisos leídos de más de 30 días.') }, '🔔 Avisos leídos'),
-        el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('cola', 'Borra la cola de push ya enviada.') }, '📤 Cola de push'),
-        el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('sesiones', 'Borra sesiones vencidas de los links de clientes.') }, '🔗 Sesiones vencidas'),
-        el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('auditoria', 'Borra el registro de cambios de más de 180 días.') }, '📜 Registro antiguo'),
-        el('button', { class: 'btn chico', type: 'button', onclick: () => limpiar('soporte', 'Borra los mensajes de soporte de más de 30 días (también se borran solos).') }, '💬 Soporte antiguo')),
-      el('button', { class: 'btn ancho mt', type: 'button', onclick: async () => { try { CFX_RESPALDO.excel('billetera-admin', await conCarga(() => rpc('cfx_respaldo'))); toast('Respaldo descargado ✓'); } catch (e) { error(e); } } }, '📗 Descargar respaldo (Excel)'),
-      el('p', { class: 'sutil' }, 'Billeteras, pagos de Pro, keys, cupones y registro de cambios. Descárgalo antes de limpiar.'));
   }
   async function probar() {
     try { const r = await conCarga(() => LC.funcion({ accion: 'ping' })); toast(r.ok ? '✅ Función "enviar" v' + r.version + (r.servicio ? '' : ' · falta clave de servicio') : '❌ ' + (r.error || 'Sin respuesta')); }
