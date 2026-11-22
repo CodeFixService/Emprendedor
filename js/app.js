@@ -80,7 +80,7 @@
     S.neg = st.negocio;
     $('#titulo').textContent = S.neg.nombre;
     const logo = vaciar($('#logoNeg'));
-    logo.classList.toggle('emoji', !!S.neg.icono); logo.append(S.neg.icono || iniciales(S.neg.nombre));
+    logo.classList.remove('emoji'); logo.append(iniciales(S.neg.nombre));  // G148: sin ícono
     LC.aplicarColor(S.neg.color);
     const p = st.pendientes || {};
     const nAv = p.avisos || 0; $('#badgeAvisos').textContent = nAv > 9 ? '9+' : nAv; $('#badgeAvisos').classList.toggle('oculto', !nAv);
@@ -1395,7 +1395,7 @@
     const campo = (t, i, a) => el('div', { class: 'campo' }, el('label', null, t), i, a ? el('div', { class: 'ayuda' }, a) : null);
     const premiumBloque = prem() ? el('div', { class: 'tarjeta' }, el('h2', null, '⭐ Tu mensaje de cobro'),
       campo('Mensaje propio', f.plantilla, 'Usa {nombre}, {negocio}, {saldo}, {cuota}, {fecha}, {pago} (link de pago) y {link} (su cuenta). No se aceptan amenazas (lo prohíbe la ley).'),
-      el('a', { class: 'btn chico', href: '#apariencia' }, '🎨 Color e ícono'))
+      el('a', { class: 'btn chico', href: '#apariencia' }, '🎨 Color'))
       : conPro(el('div', { class: 'tarjeta' }, el('h2', null, 'Tu mensaje de cobro'), el('p', { class: 'sutil' }, 'Escribe tu propio mensaje para cobrar por WhatsApp, con tu estilo.')), 'El mensaje de cobro propio es Pro.');
     pintar(el('h2', null, 'Ajustes del negocio'),
       el('div', { class: 'dos-col' },
@@ -1926,7 +1926,7 @@
     };
     const responder = async (x, ok) => { try { await conCarga(() => rpc('conexion_responder', { p_id: x.id, p_aceptar: ok })); toast(ok ? 'Conectados ✓' : 'Solicitud rechazada'); vConexiones(); } catch (e) { error(e); } };
     const cerrar = async (x) => { if (await confirmar('Cancelar solicitud', '¿Cancelar la solicitud a ' + x.nombre + '?', 'Cancelar solicitud', 'rojo')) { try { await rpc('conexion_cerrar', { p_id: x.id }); vConexiones(); } catch (e) { error(e); } } };
-    const avatarCon = (x) => el('div', { class: 'avatar' + (x.icono ? ' emoji' : ''), style: x.icono ? '' : 'background:' + colorDe(x.nombre) }, x.icono || iniciales(x.nombre));
+    const avatarCon = (x) => avatar(x.nombre);  // G148: letra del nombre (sin ícono)
     const pct = d.limite ? Math.min(100, Math.round(d.usadas * 100 / d.limite)) : 0;
     pintar(el('h2', null, '🤝 Billeteras conectadas'), explica,
       !d.pro ? el('div', { class: 'banda aviso' }, el('span', null, '⏸️ Tus conexiones están en pausa: puedes verlas y confirmar, pero no anotar. Activa Pro para seguir.'), el('a', { class: 'btn chico', href: '#plan' }, 'Ver')) : null,
@@ -1998,7 +1998,7 @@
     const porConfirmar = d.movs.filter((x) => x.estado === 'pendiente' && !x.mio);
     pintar(
       el('div', { class: 'fila mb' }, el('a', { class: 'btn-icono', href: '#conexiones', style: 'text-decoration:none', 'aria-label': 'Volver' }, '←'),
-        el('div', { class: 'avatar' + (d.icono ? ' emoji' : ''), style: d.icono ? '' : 'background:' + colorDe(d.nombre) }, d.icono || iniciales(d.nombre)), el('h2', { class: 'crece', style: 'margin:0' }, d.nombre)),
+        avatar(d.nombre), el('h2', { class: 'crece', style: 'margin:0' }, d.nombre)),
       el('div', { class: 'tarjeta centro' }, el('div', { class: 'sutil' }, d.saldo > 0 ? d.nombre + ' te debe' : d.saldo < 0 ? 'Le debes a ' + d.nombre : 'Cuenta entre ustedes'),
         el('div', { class: 'saldo-gigante ' + (d.saldo > 0 ? 'verde' : d.saldo < 0 ? 'rojo' : 'verde') }, d.saldo ? pesos(Math.abs(d.saldo)) : 'Al día ✓'),
         el('div', { class: 'sutil' }, 'Solo cuenta lo confirmado por los dos.')),

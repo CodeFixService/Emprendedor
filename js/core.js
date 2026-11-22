@@ -1,7 +1,7 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.21.122';
+  const VERSION = '1.21.123';
   const BD = 80; // versión de la base de datos que necesita esta versión de la app
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
@@ -52,7 +52,7 @@
     if (d === 0) return 'hoy'; if (d === 1) return 'mañana'; if (d === -1) return 'ayer';
     return d > 0 ? 'en ' + d + ' días' : 'hace ' + (-d) + ' días';
   }
-  const iniciales = (n) => (n || '?').trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
+  const iniciales = (n) => ((n || '?').trim().charAt(0) || '?').toUpperCase();  // G148: solo la letra del nombre
   const COLORES = ['#059669', '#2563eb', '#7c3aed', '#db2777', '#ea580c', '#0d9488', '#4f46e5', '#b45309'];
   const colorDe = (s) => { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return COLORES[h % COLORES.length]; };
   // Colores del tema (los mismos que acepta el servidor) e íconos de perfil: emojis, sin subir imágenes.
