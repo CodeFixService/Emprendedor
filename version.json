@@ -1,6 +1,6 @@
 {
-  "version": "1.21.121",
+  "version": "1.21.122",
   "bd": 80,
   "funcion": "1.4.2",
-  "notas": "🛒 G146 (núcleo 3.41): el ↑ (subir) ya no queda bajo el menú de abajo cuando el menú vuelve a aparecer. · 🛡️ G144 (núcleo 3.40): sin botón \"Panel de administración\" ni limpieza dentro de las apps (todo en el CM → Apps) · ❤️ favorito rojo y redondo · contadores e íconos redondos = círculo perfecto · 🎤 y ⬜ ahora son íconos de línea · 💬 el WhatsApp del registro pasa solo a 📱 Mis redes (uno solo; el botón antiguo se oculta) · 🧹 archivos internos fuera de la página publicada."
+  "notas": "📱 G147 (núcleo 3.42): texto \"Síguenos\" con tus redes listo para QR y afiches. · 🛒 G146 (núcleo 3.41): el ↑ (subir) ya no queda bajo el menú de abajo cuando el menú vuelve a aparecer. · 🛡️ G144 (núcleo 3.40): sin botón \"Panel de administración\" ni limpieza dentro de las apps (todo en el CM → Apps) · ❤️ favorito rojo y redondo · contadores e íconos redondos = círculo perfecto · 🎤 y ⬜ ahora son íconos de línea · 💬 el WhatsApp del registro pasa solo a 📱 Mis redes (uno solo; el botón antiguo se oculta) · 🧹 archivos internos fuera de la página publicada."
 }
