@@ -1,6 +1,6 @@
 {
-  "version": "1.21.124",
+  "version": "1.21.125",
   "bd": 80,
   "funcion": "1.4.2",
-  "notas": "🙂 G148 (núcleo 3.43): los perfiles ya no usan ícono: sale tu foto o, si no tienes, la primera letra de tu nombre. · 📱 G147 (núcleo 3.42): texto \"Síguenos\" con tus redes listo para QR y afiches. · 🛒 G146 (núcleo 3.41): el ↑ (subir) ya no queda bajo el menú de abajo cuando el menú vuelve a aparecer. · 🛡️ G144 (núcleo 3.40): sin botón \"Panel de administración\" ni limpieza dentro de las apps (todo en el CM → Apps) · ❤️ favorito rojo y redondo · contadores e íconos redondos = círculo perfecto · 🎤 y ⬜ ahora son íconos de línea · 💬 el WhatsApp del registro pasa solo a 📱 Mis redes (uno solo; el botón antiguo se oculta) · 🧹 archivos internos fuera de la página publicada."
+  "notas": "📌 G150 (núcleo 3.45): los títulos ya no se quedan fijos arriba: bajan con la página, normal."
 }
