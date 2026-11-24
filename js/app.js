@@ -1528,7 +1528,9 @@
       try { await rpc('borrar_avisos', { p_id: id }); vAvisos(); } catch (e) { error(e); }
     };
     pintar(el('div', { class: 'fila mb' }, el('h2', { style: 'margin:0', class: 'crece' }, 'Avisos'), (data || []).length ? el('button', { class: 'btn chico', type: 'button', onclick: (e) => quitar(e, null) }, 'Borrar todos') : null),
-      el('div', { class: 'lista' }, (data || []).length ? data.map((n) => el('a', { class: 'item', href: (n.url || '').replace(/^app\//, '') || '#inicio' },
+      el('div', { class: 'lista' }, (data || []).length ? data.map((n) => el('a', { class: 'item', href: (n.url || '').replace(/^app\//, '') || '#inicio',
+      // G154: 🔄 versión / 💬 soporte / sin destino → lo abre el núcleo (ventana con la versión, chat, texto); lo demás va a su pantalla.
+      onclick: (e) => { const C = window.CFX_AYUDA; if (!e.defaultPrevented && C && C.tocarAviso && C.tocarAviso({ titulo: n.titulo, cuerpo: n.cuerpo, fecha: n.creado, url: n.url })) e.preventDefault(); } },
       el('span', null, n.leido ? '•' : '🔵'), el('div', { class: 'crece' }, el('div', { class: 'nom', style: 'white-space:normal' }, n.titulo), n.cuerpo ? el('div', { class: 'sub', style: 'white-space:normal' }, n.cuerpo) : null),
       el('span', { class: 'sutil' }, fechaCorta(n.creado)), el('button', { class: 'btn-icono', type: 'button', 'aria-label': 'Borrar aviso', onclick: (e) => quitar(e, n.id) }, '✕'))) : el('div', { class: 'vacio' }, el('span', { class: 'ico' }, '🔔'), 'Sin avisos.')),
       (data || []).length ? el('p', { class: 'sutil' }, 'Los avisos se borran solos a los 30 días.') : null);
