@@ -1,6 +1,6 @@
 {
-  "version": "1.21.127",
+  "version": "1.21.128",
   "bd": 80,
   "funcion": "1.4.2",
-  "notas": "🎨 G152: en Mi perfil → Personalizar ya puedes elegir cualquier color (el Ámbar daba error). La base se actualiza sola a v81."
+  "notas": "📣 G152 (núcleo 3.47): la tarjeta \"Activa los avisos\" ahora aparece debajo de la cabecera, dentro de la pantalla, y ya no encima del título."
 }
