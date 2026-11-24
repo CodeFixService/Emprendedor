@@ -101,7 +101,8 @@ self.addEventListener('push', (e) => {
 
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
-  const url = (e.notification.data && e.notification.data.url) || self.registration.scope;
+  // G151 🔔 Un enlace relativo ('app/#plan') se resuelve desde la raíz; antes new URL(relativo) fallaba y no abría nada.
+  const url = new URL(((e.notification.data && e.notification.data.url) || './').replace(/^\//, ''), self.registration.scope).href;
   e.waitUntil((async () => {
     const lista = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const destino = new URL(url);
