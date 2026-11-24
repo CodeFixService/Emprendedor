@@ -1672,6 +1672,8 @@
           varG != null ? el('div', { class: 't' }, (varG > 0 ? '▲ ' : '▼ ') + Math.abs(varG) + '% vs mes anterior') : null)),
       el('div', { class: 'grid2 mb' },
         el('a', { class: 'btn verde', href: '#anotar/ingreso' }, '＋ Ingreso'), el('a', { class: 'btn rojo', href: '#anotar/gasto' }, '－ Gasto')),
+      // G156: el cierre de caja también directo aquí (antes solo desde Más).
+      esMesActual ? el('a', { class: 'btn ancho mb', href: '#cierre', style: 'text-decoration:none' }, '💵 Cierre de caja' + (mod('cierre_caja') ? '' : ' 🧩')) : null,
       tarjetaMetas(rc),
       el('div', { class: 'dos-col' },
         el('div', { class: 'tarjeta' }, el('h2', null, '¿En qué se fue la plata?'),
@@ -1725,33 +1727,38 @@
     try { await conCarga(() => rpc('anular_caja', { p_id: k.id, p_motivo: mot })); toast('Anulado ✓'); router(true); } catch (e) { error(e); }
   }
 
-  async function gestionarCategorias() {
+  // G156: desde Anotar (o = { tipo, alCambiar }) la categoría nueva aparece y queda elegida al instante, sin recargar.
+  async function gestionarCategorias(o) {
+    o = o && o.alCambiar ? o : {};
     const { data } = await sb.from('categorias').select('*').order('tipo').order('nombre');
     const tipo = el('select', null, el('option', { value: 'gasto' }, 'Gasto'), el('option', { value: 'ingreso' }, 'Ingreso'));
+    if (o.tipo) tipo.value = o.tipo;
     const nom = el('input', { maxlength: 24, placeholder: 'Ej: Bencina camioneta' });
     const r = await dialogo('Tus categorías', el('div', null,
       el('p', { class: 'sutil' }, 'Además de las categorías de siempre, puedes crear las tuyas (' + (S.st.limites.categorias ? 'hasta ' + S.st.limites.categorias : 'sin límite') + ').'),
       el('div', { class: 'lista' }, (data || []).length ? data.map((c) => el('div', { class: 'item', style: 'cursor:default' }, el('span', { class: 'crece' }, (c.tipo === 'gasto' ? '🔴 ' : '🟢 ') + c.nombre),
-        el('button', { class: 'btn-icono', type: 'button', 'aria-label': 'Borrar', onclick: async () => { await rpc('borrar_categoria', { p_id: c.id }).catch(error); document.querySelector('.velo').remove(); gestionarCategorias(); } }, '🗑️')))
+        el('button', { class: 'btn-icono', type: 'button', 'aria-label': 'Borrar', onclick: async () => { await rpc('borrar_categoria', { p_id: c.id }).catch(error); document.querySelector('.velo').remove(); if (o.alCambiar) await o.alCambiar(); gestionarCategorias(o); } }, '🗑️')))
         : el('div', { class: 'vacio' }, 'Aún no creas categorías propias.')),
       el('h3', null, 'Nueva'), el('div', { class: 'grid2' }, tipo, nom)),
     [{ texto: 'Cerrar', valor: null }, { texto: 'Agregar', clase: 'primario', valor: true }]);
     if (!r) return;
-    try { await conCarga(() => rpc('guardar_categoria', { p_tipo: tipo.value, p_nombre: nom.value })); toast('Categoría creada ✓'); gestionarCategorias(); } catch (e) { error(e); }
+    try { await conCarga(() => rpc('guardar_categoria', { p_tipo: tipo.value, p_nombre: nom.value })); toast('Categoría creada ✓'); if (o.alCambiar) await o.alCambiar(tipo.value === o.tipo ? btrimNom(nom.value) : null); else gestionarCategorias(); } catch (e) { error(e); }
   }
 
+  const btrimNom = (v) => String(v || '').trim().replace(/\s+/g, ' ');
   async function formCaja(tipo) {
     let monto = '', cat = '', medio = 'efectivo', fecha = '';
-    const cats = await categoriasDe(tipo);
+    let cats = await categoriasDe(tipo);
     const pantalla = el('div', { class: 'pantalla-monto ' + (tipo === 'ingreso' ? 'abono' : 'fiado') });
     const chips = el('div', { class: 'chips', style: 'flex-wrap:wrap' });
-    const medios = el('div', { class: 'chips' });
+    const medios = el('div', { class: 'medios-ico' }); // G156: ícono arriba y texto abajo, los 4 caben sin cortarse
     const descIn = el('input', { maxlength: 120, placeholder: 'Detalle (opcional)' });
     const pintarTodo = () => {
       pantalla.textContent = monto ? pesos(Number(monto)) : '$0';
       vaciar(chips); cats.forEach((c) => chips.append(el('button', { type: 'button', class: 'chip' + (cat === c.nombre ? ' activo' : ''), onclick: () => { cat = c.nombre; pintarTodo(); } }, c.nombre)));
-      chips.append(el('button', { type: 'button', class: 'chip', onclick: gestionarCategorias }, '＋ Nueva'));
-      vaciar(medios); MEDIOS.forEach(([v, t]) => medios.append(el('button', { type: 'button', class: 'chip' + (medio === v ? ' activo' : ''), onclick: () => { medio = v; pintarTodo(); } }, t)));
+      chips.append(el('button', { type: 'button', class: 'chip', onclick: () => gestionarCategorias({ tipo, alCambiar: async (n) => { cats = await categoriasDe(tipo); if (n && cats.some((c) => c.nombre === n)) cat = n; else if (!cats.some((c) => c.nombre === cat)) cat = ''; pintarTodo(); } }) }, '＋ Nueva'));
+      vaciar(medios); MEDIOS.forEach(([v, t]) => { const i = t.indexOf(' '), ico = i > 0 ? t.slice(0, i) : '➕', txt = i > 0 ? t.slice(i + 1) : t;
+        medios.append(el('button', { type: 'button', class: 'chip medio' + (medio === v ? ' activo' : ''), 'aria-pressed': String(medio === v), onclick: () => { medio = v; pintarTodo(); } }, el('span', { class: 'medio-i' }, ico), el('span', null, txt))); });
     };
     const tecla = (k) => {
       if (k === '⌫') monto = monto.slice(0, -1); else if (k === 'C') monto = '';

@@ -386,3 +386,7 @@ table.uso td.r { text-align: right; font-variant-numeric: tabular-nums; }
 /* Listas tipo menú (Mi cuenta, portal): cada fila separada con su línea, aunque el núcleo le dé estilo de botón */
 .lista > .item { border-style: solid !important; border-width: 0 0 1px 0 !important; border-color: var(--borde) !important; border-radius: 0 !important; box-shadow: none !important; min-height: 52px; margin: 0 !important; background: none !important; justify-content: flex-start !important; }
 .lista > .item:last-child { border-bottom-width: 0 !important; }
+/* G156: medios de pago (Anotar) con el ícono arriba y el texto abajo: los 4 caben enteros a 320 px */
+.medios-ico { display: flex; gap: 6px; }
+.medios-ico .chip.medio { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 8px 4px; border-radius: 14px; white-space: normal; text-align: center; line-height: 1.15; font-size: .8em; }
+.medios-ico .medio-i { font-size: 1.35em; line-height: 1; }
