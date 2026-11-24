@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '80'),
+  ('version_bd', '81'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -73,7 +73,7 @@ create table if not exists public.negocios (
   pin_activo boolean not null default true,
   saldo_a_favor boolean not null default false,
   logo_url text,
-  color text check (color is null or color in ('#059669','#2563eb','#7c3aed','#db2777','#ea580c','#0d9488','#4f46e5','#334155')),
+  color text check (color is null or color ~ '^#[0-9a-f]{6}$'),
   plantilla_propia text check (plantilla_propia is null or char_length(plantilla_propia) <= 500),
   premium_hasta timestamptz,
   en_prueba boolean not null default false,
@@ -457,6 +457,16 @@ do $$ begin
     insert into privado.config values ('migracion_v9', '1');
   end if;
 end $$;
+-- G152 🎨 El color del negocio acepta toda la paleta (la de la Libreta y la del núcleo): antes solo 8 colores y el Ámbar fallaba.
+do $$ begin
+  if exists (select 1 from pg_constraint where conname = 'negocios_color_check' and conrelid = 'public.negocios'::regclass
+             and pg_get_constraintdef(oid) not like '%~%') then
+    alter table public.negocios drop constraint negocios_color_check;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'negocios_color_check' and conrelid = 'public.negocios'::regclass) then
+    alter table public.negocios add constraint negocios_color_check check (color is null or color ~ '^#[0-9a-f]{6}$');
+  end if;
+end $$;
 
 -- Conexión entre dos billeteras (siempre a < b). Cada una solo ve el nombre y el ícono de la otra, y la cuenta entre ambas.
 create table if not exists public.conexiones (
@@ -494,7 +504,9 @@ create or replace function privado.hoy() returns date language sql stable as
   $$ select (now() at time zone 'America/Santiago')::date $$;
 
 create or replace function privado.colores() returns text[] language sql immutable as $$
-  select array['#059669','#2563eb','#4f46e5','#7c3aed','#db2777','#e11d48','#ea580c','#d97706','#0d9488','#0284c7','#92400e','#334155']
+  -- Paleta de la Libreta (LC.TEMAS) + la del núcleo (ayuda.js) que no estaba.
+  select array['#059669','#2563eb','#4f46e5','#7c3aed','#db2777','#e11d48','#ea580c','#d97706','#0d9488','#0284c7','#92400e','#334155',
+               '#dc2626','#16a34a','#0891b2','#111827']
 $$;
 
 create or replace function privado.norm(t text) returns text language sql immutable as $$
