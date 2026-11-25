@@ -1,7 +1,7 @@
 /* Libreta de Cobros · herramientas comunes (todas las pantallas). Requiere js/config.js y vendor/supabase.js. */
 (function (global) {
   'use strict';
-  const VERSION = '1.21.137';
+  const VERSION = '1.21.138';
   const BD = 84; // versión de la base de datos que necesita esta versión de la app
   const C = global.LC_CONFIG;
   const RAIZ = new URL('../', document.currentScript.src).href; // carpeta raíz de la app (termina en /)
@@ -119,8 +119,10 @@
     if (hex) {
       const n = parseInt(hex.slice(1), 16), k = 0.82;
       const os = '#' + [n >> 16, (n >> 8) & 255, n & 255].map((x) => Math.round(x * k).toString(16).padStart(2, '0')).join('');
-      r.setProperty('--marca', hex); r.setProperty('--marca-2', os);
-    } else { r.removeProperty('--marca'); r.removeProperty('--marca-2'); }
+      // 🐞 Billetera #4/#11: también --brand (el núcleo lo pone al abrir desde cfx-brand y manda sobre --marca: si no se cambia, vuelve el color viejo).
+      const l = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+      r.setProperty('--marca', hex); r.setProperty('--marca-2', os); r.setProperty('--brand', hex); r.setProperty('--brand-ink', l > 0.62 ? '#0f172a' : '#ffffff');
+    } else { r.removeProperty('--marca'); r.removeProperty('--marca-2'); r.removeProperty('--brand'); r.removeProperty('--brand-ink'); }
     if (guardar !== false) local.set('lc-color', hex);
   }
   const norm = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
