@@ -25,3 +25,6 @@
 
 ## 🐞 G156 (1.21.132)
 - Anotar: ＋ Nueva categoría → gestionarCategorias({ tipo, alCambiar }) la deja elegida sin recargar · medios de pago `.medios-ico` (ícono arriba, texto abajo) · Caja: botón 💵 Cierre de caja (#cierre) del mes actual. Prueba: SaaS/pruebas/g156.js.
+
+## 🔁 G162 (1.21.137 · bd 84, núcleo 3.56)
+- Más → 🔁 Cobros recurrentes (#recurrentes, vRecurrentes) = núcleo recurrente.js con S.clientes (nombre + WhatsApp, sin cuenta) y S.productos. Módulo 'suscripciones' en cfx_modulos_app · gancho cfx_negocio_nombre_app (negocios.nombre). Prueba g162b.js.
