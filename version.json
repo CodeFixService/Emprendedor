@@ -1,6 +1,6 @@
 {
-  "version": "1.21.138",
-  "bd": 84,
+  "version": "1.21.139",
+  "bd": 85,
   "funcion": "1.4.2",
-  "notas": "🐞 Túnel: el color de la app ahora sí queda (barra, + y botones) al elegirlo y al recargar · un solo botón ↺ de fábrica con aire arriba (núcleo 3.57)."
+  "notas": "🐞 G165 (núcleo 3.58): el color de la app ahora sí queda (barra, + y botones) al elegirlo y al recargar · un solo botón ↺ de fábrica con aire arriba. 🧩 G163 (núcleo 3.57): en 🧩 Módulos, lo que todavía no funciona se ve 🔜 deshabilitado con su nota (no se compra ni se prueba). Lo que ya tienes sigue a la vista."
 }
