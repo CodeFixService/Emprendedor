@@ -17,7 +17,7 @@ grant usage on schema privado to authenticated;
 -- ---------- Configuración interna ----------
 create table if not exists privado.config (clave text primary key, valor text not null);
 insert into privado.config values
-  ('version_bd', '86'),
+  ('version_bd', '87'),
   ('admin_email', 'juanjosuecastilloloyola@gmail.com'),
   ('url_proyecto', 'https://zbgfvxsqajtixjzxoxeu.supabase.co'),
   ('zona', 'America/Santiago'),
@@ -10134,6 +10134,8 @@ create table if not exists public.cierres_caja (
   creado timestamptz not null default now(),
   unique (negocio, dia)
 );
+-- G171: 💸 lo que sacaste al cerrar (depósito/transferencia al banco). No toca el balance; el día siguiente parte con contado − retiro.
+alter table public.cierres_caja add column if not exists retiro int not null default 0 check (retiro between 0 and 99999999);
 alter table public.cierres_caja enable row level security;
 revoke all on public.cierres_caja from anon, authenticated;
 -- Lo que entró y salió en efectivo ese día (los montos salen de la base, no de la pantalla).
@@ -10143,7 +10145,9 @@ language sql stable security definer set search_path = public, pg_temp as $$
     'ventas', (select coalesce(sum(monto), 0) from public.caja where negocio = p_neg and tipo = 'ingreso' and medio = 'efectivo' and anulado_at is null and (fecha at time zone 'America/Santiago')::date = p_dia),
     'abonos', (select coalesce(sum(monto), 0) from public.movimientos where negocio = p_neg and tipo = 'abono' and medio = 'efectivo' and anulado_at is null and (fecha at time zone 'America/Santiago')::date = p_dia),
     'gastos', (select coalesce(sum(monto), 0) from public.caja where negocio = p_neg and tipo = 'gasto' and medio = 'efectivo' and anulado_at is null and (fecha at time zone 'America/Santiago')::date = p_dia),
-    'otros', (select coalesce(sum(monto), 0) from public.caja where negocio = p_neg and tipo = 'ingreso' and medio <> 'efectivo' and anulado_at is null and (fecha at time zone 'America/Santiago')::date = p_dia))
+    'otros', (select coalesce(sum(monto), 0) from public.caja where negocio = p_neg and tipo = 'ingreso' and medio <> 'efectivo' and anulado_at is null and (fecha at time zone 'America/Santiago')::date = p_dia),
+    'otros_abonos', (select coalesce(sum(monto), 0) from public.movimientos where negocio = p_neg and tipo = 'abono' and medio <> 'efectivo' and anulado_at is null and (fecha at time zone 'America/Santiago')::date = p_dia),
+    'otros_gastos', (select coalesce(sum(monto), 0) from public.caja where negocio = p_neg and tipo = 'gasto' and medio <> 'efectivo' and anulado_at is null and (fecha at time zone 'America/Santiago')::date = p_dia))
 $$;
 create or replace function public.cierre_ver(p_dia date) returns jsonb
 language plpgsql security definer set search_path = public, pg_temp as $$
@@ -10152,13 +10156,14 @@ begin
   perform privado.modulo_o_error('cierre_caja');
   if d > privado.hoy() or d < privado.hoy() - 62 then raise exception 'Elige un día de los últimos 2 meses'; end if;
   e := privado.efectivo_dia(n, d);
-  select contado into ant from public.cierres_caja where negocio = n and dia < d order by dia desc limit 1;
+  select contado - coalesce(retiro, 0) into ant from public.cierres_caja where negocio = n and dia < d order by dia desc limit 1;
   return e || jsonb_build_object('dia', d, 'inicial_sugerido', coalesce(ant, 0),
     'cierre', (select to_jsonb(c) from public.cierres_caja c where c.negocio = n and c.dia = d),
-    'historial', coalesce((select jsonb_agg(jsonb_build_object('dia', dia, 'esperado', esperado, 'contado', contado, 'diferencia', diferencia, 'nota', nota) order by dia desc)
+    'historial', coalesce((select jsonb_agg(jsonb_build_object('dia', dia, 'esperado', esperado, 'contado', contado, 'diferencia', diferencia, 'nota', nota, 'retiro', retiro) order by dia desc)
       from (select * from public.cierres_caja where negocio = n order by dia desc limit 30) h), '[]'));
 end $$;
-create or replace function public.cierre_guardar(p_dia date, p_inicial int, p_contado int, p_nota text) returns jsonb
+drop function if exists public.cierre_guardar(date, int, int, text); -- G171: + p_retiro (las apps viejas llaman sin él)
+create or replace function public.cierre_guardar(p_dia date, p_inicial int, p_contado int, p_nota text, p_retiro int default 0) returns jsonb
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare n uuid := privado.exigir(); d date := coalesce(p_dia, privado.hoy()); e jsonb; esp int; r public.cierres_caja;
 begin
@@ -10166,12 +10171,13 @@ begin
   if d > privado.hoy() or d < privado.hoy() - 62 then raise exception 'Elige un día de los últimos 2 meses'; end if;
   if coalesce(p_inicial, -1) not between 0 and 99999999 then raise exception 'Efectivo inicial no válido'; end if;
   if coalesce(p_contado, -1) not between 0 and 99999999 then raise exception 'Escribe cuánto efectivo contaste'; end if;
+  if coalesce(p_retiro, 0) not between 0 and p_contado then raise exception 'Lo que sacaste no puede ser más que lo que contaste'; end if;
   e := privado.efectivo_dia(n, d);
   esp := p_inicial + (e ->> 'ventas')::int + (e ->> 'abonos')::int - (e ->> 'gastos')::int;
-  insert into public.cierres_caja (negocio, dia, inicial, esperado, contado, diferencia, nota, creado_por)
-  values (n, d, p_inicial, esp, p_contado, p_contado - esp, left(coalesce(p_nota, ''), 200), auth.uid())
+  insert into public.cierres_caja (negocio, dia, inicial, esperado, contado, diferencia, nota, creado_por, retiro)
+  values (n, d, p_inicial, esp, p_contado, p_contado - esp, left(coalesce(p_nota, ''), 200), auth.uid(), coalesce(p_retiro, 0))
   on conflict (negocio, dia) do update set inicial = excluded.inicial, esperado = excluded.esperado, contado = excluded.contado,
-    diferencia = excluded.diferencia, nota = excluded.nota, creado_por = excluded.creado_por, creado = now()
+    diferencia = excluded.diferencia, nota = excluded.nota, creado_por = excluded.creado_por, retiro = excluded.retiro, creado = now()
   returning * into r;
   if r.diferencia <> 0 and privado.mi_rol() <> 'dueno' then
     perform privado.avisar_usuario((select dueno from public.negocios where id = n), '🧮 Cierre de caja con diferencia',
@@ -10227,9 +10233,9 @@ exception when others then raise notice 'cron: %', sqlerrm;
 end $$;
 
 revoke all on function public.cpp_lista(), public.cpp_guardar(uuid, text, text, int, date), public.cpp_borrar(uuid), public.cpp_pagar(uuid, text), public.cpp_pronto(),
-  privado.efectivo_dia(uuid, date), public.cierre_ver(date), public.cierre_guardar(date, int, int, text), privado.avisar_vencimientos(), public.aviso_vence_estado() from public, anon, authenticated;
+  privado.efectivo_dia(uuid, date), public.cierre_ver(date), public.cierre_guardar(date, int, int, text, int), privado.avisar_vencimientos(), public.aviso_vence_estado() from public, anon, authenticated;
 grant execute on function public.cpp_lista(), public.cpp_guardar(uuid, text, text, int, date), public.cpp_borrar(uuid), public.cpp_pagar(uuid, text), public.cpp_pronto(),
-  public.cierre_ver(date), public.cierre_guardar(date, int, int, text), public.aviso_vence_estado() to authenticated;
+  public.cierre_ver(date), public.cierre_guardar(date, int, int, text, int), public.aviso_vence_estado() to authenticated;
 
 -- Al correr este SQL la versión de la app queda liberada al tiro: todos ven "Actualizar" (al publicar una versión nueva, sube este número).
 update public.ajustes set version_liberada = '1.10.0' where id = 1 and case when version_liberada ~ '^\d+(\.\d+)*$'

@@ -1,6 +1,6 @@
 {
-  "version": "1.21.142",
-  "bd": 86,
+  "version": "1.21.143",
+  "bd": 87,
   "funcion": "1.4.2",
-  "notas": "📱 G164 (núcleo 3.62): tu cuenta se usa en máximo 3 equipos a la vez (el tope lo fija CodeFix). Si entras en uno más, eliges cuál cerrar. Ves y cierras tus equipos en Mi perfil → Avanzado → 📱 Mis equipos."
+  "notas": "💵 G171: Cierre de caja más claro. Explica que cerrar NO cambia tu balance, muestra aparte lo de transferencia/tarjeta y deja anotar 💸 lo que sacaste al banco al cerrar (botón \"Lo saqué todo\"): mañana partes con lo que quedó."
 }

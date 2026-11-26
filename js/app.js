@@ -2181,25 +2181,43 @@
     const ini = el('input', { id: 'ccIni', type: 'number', inputmode: 'numeric', min: 0, value: c ? c.inicial : x.inicial_sugerido });
     const con = el('input', { id: 'ccCont', type: 'number', inputmode: 'numeric', min: 0, value: c ? c.contado : '', placeholder: 'Lo que hay en la caja' });
     const nota = el('input', { id: 'ccNota', maxlength: 200, value: c ? c.nota : '', placeholder: 'Ej: faltó cambio' });
+    // G171: 💸 lo que sacaste al cerrar (transferencia/depósito al banco). No toca el balance: mañana partes con contado − retiro.
+    const ret = el('input', { id: 'ccRet', type: 'number', inputmode: 'numeric', min: 0, value: c && c.retiro ? c.retiro : '', placeholder: '0' });
+    const queda = el('strong', { id: 'ccQueda', style: 'white-space:nowrap' });
     const esp = el('strong', { id: 'ccEsp', style: 'white-space:nowrap' }), dif = el('div', { id: 'ccDif', class: 'mt' });
     const calc = () => { const e = (Math.round(+ini.value) || 0) + x.ventas + x.abonos - x.gastos; esp.textContent = pesos(e);
+      queda.textContent = pesos(Math.max(0, (Math.round(+con.value) || 0) - (Math.round(+ret.value) || 0)));
       if (con.value === '') { vaciar(dif); return; } const df = Math.round(+con.value) - e;
       vaciar(dif).append(el('div', { class: 'banda ' + (df === 0 ? 'info' : 'error') }, df === 0 ? '✅ Cuadra perfecto' : (df > 0 ? '⬆️ Sobran ' : '⬇️ Faltan ') + pesos(Math.abs(df)))); };
-    ini.oninput = calc; con.oninput = calc;
+    ini.oninput = calc; con.oninput = calc; ret.oninput = calc;
+    const dEnt = (x.otros || 0) + (x.otros_abonos || 0), dSal = x.otros_gastos || 0, sinEf = !x.ventas && !x.abonos && !x.gastos;
     const fecha = el('input', { id: 'ccDia', type: 'date', value: d, max: hoyISO(), onchange: (e) => { if (e.target.value) location.hash = 'cierre/' + e.target.value; } });
     const lin = (t, v, cl) => el('div', { class: 'fila entre', style: 'gap:8px' }, el('span', null, t), el('strong', { class: cl || '', style: 'white-space:nowrap' }, v));
     const cmp = (t, i) => el('div', { class: 'campo' }, el('label', { for: i.id }, t), i);
-    pintar(el('h2', null, '💵 Cierre de caja'), el('p', { class: 'sutil' }, 'Cuenta el efectivo al cerrar y ve al tiro si cuadra.'), cmp('Día', fecha),
+    pintar(el('h2', null, '💵 Cierre de caja'), el('p', { class: 'sutil' }, 'Cuenta el efectivo al cerrar y ve al tiro si cuadra.'),
+      el('details', { class: 'mb', id: 'ccComo' }, el('summary', null, '❓ ¿Cómo se usa?'), el('div', { class: 'sutil' },
+        el('p', null, '✅ Cerrar caja NO cambia tu balance: solo anota cuánto efectivo contaste.'),
+        el('p', null, '📲 Lo que entra por transferencia o tarjeta va directo a tu cuenta: se muestra aparte y no se cuenta.'),
+        el('p', null, '💸 Si al cerrar depositas o transfieres el efectivo al banco, anótalo en "Lo que sacaste". Mañana partes con lo que quedó.'))),
+      cmp('Día', fecha),
+      sinEf ? el('div', { class: 'banda info mb', id: 'ccSinEf' }, 'Hoy no hubo efectivo. Si todo fue por transferencia, pon 0 en lo que contaste y cierra.') : null,
       el('div', { class: 'tarjeta' }, cmp('💵 Efectivo con que partiste', ini), lin('➕ Ventas en efectivo', pesos(x.ventas), 'verde'), lin('➕ Abonos en efectivo', pesos(x.abonos), 'verde'),
         lin('➖ Gastos en efectivo', pesos(x.gastos), 'rojo'), el('hr'), el('div', { class: 'fila entre', style: 'gap:8px' }, el('span', null, 'Debería haber'), esp),
-        x.otros ? el('div', { class: 'sutil' }, '(+ ' + pesos(x.otros) + ' que entró por transferencia o tarjeta, no está en la caja)') : null),
-      el('div', { class: 'tarjeta' }, cmp('🧮 Efectivo que contaste', con), cmp('Nota (opcional)', nota), dif,
+      ),
+      dEnt || dSal ? el('div', { class: 'tarjeta', id: 'ccDigital' }, el('div', { class: 'nom mb' }, '📲 Transferencia y tarjeta (no se cuenta)'),
+        lin('➕ Entró', pesos(dEnt), 'verde'), lin('➖ Salió', pesos(dSal), 'rojo'), el('hr'), lin('Neto del día en tu cuenta', pesos(dEnt - dSal))) : null,
+      el('div', { class: 'tarjeta' }, cmp('🧮 Efectivo que contaste', con), dif,
+        cmp('💸 Lo que sacaste al cerrar (banco/transferencia)', ret),
+        el('button', { class: 'btn ancho', type: 'button', id: 'ccTodo', onclick: () => { ret.value = con.value || 0; calc(); } }, '💸 Lo saqué todo'),
+        el('div', { class: 'fila entre mt mb', style: 'gap:8px' }, el('span', null, 'Queda en caja para mañana'), queda),
+        cmp('Nota (opcional)', nota),
         el('button', { class: 'btn primario mt', type: 'button', id: 'ccGuardar', style: 'width:100%', onclick: async () => {
           if (con.value === '') { toast('Escribe cuánto efectivo contaste', { error: true }); return; }
-          try { const r = await conCarga(() => rpc('cierre_guardar', { p_dia: d, p_inicial: Math.round(+ini.value) || 0, p_contado: Math.round(+con.value), p_nota: nota.value.trim() }));
+          const rt = Math.round(+ret.value) || 0; if (rt > Math.round(+con.value)) { toast('Lo que sacaste no puede ser más que lo que contaste', { error: true }); return; }
+          try { const r = await conCarga(() => rpc('cierre_guardar', { p_dia: d, p_inicial: Math.round(+ini.value) || 0, p_contado: Math.round(+con.value), p_nota: nota.value.trim(), p_retiro: rt }));
             toast(r.diferencia === 0 ? '✅ Caja cerrada: cuadra' : '💾 Cierre guardado con diferencia de ' + pesos(Math.abs(r.diferencia))); vCierre(d); } catch (e) { error(e); } } }, c ? '💾 Volver a cerrar' : '🔒 Cerrar caja')),
       x.historial.length ? el('details', { class: 'mt' }, el('summary', null, '📅 Cierres anteriores (' + x.historial.length + ')'), el('div', { class: 'lista' }, x.historial.map((h) => el('a', { class: 'item', href: '#cierre/' + h.dia },
-        el('div', { class: 'crece' }, el('div', { class: 'nom' }, fechaLarga(h.dia)), el('div', { class: 'sub' }, 'Contado ' + pesos(h.contado) + (h.nota ? ' · ' + h.nota : ''))),
+        el('div', { class: 'crece' }, el('div', { class: 'nom' }, fechaLarga(h.dia)), el('div', { class: 'sub' }, 'Contado ' + pesos(h.contado) + (h.retiro ? ' · 💸 sacaste ' + pesos(h.retiro) : '') + (h.nota ? ' · ' + h.nota : ''))),
         el('span', { class: 'tag ' + (h.diferencia === 0 ? 'verde' : 'rojo') }, h.diferencia === 0 ? '✓' : (h.diferencia > 0 ? '+' : '−') + pesos(Math.abs(h.diferencia))))))) : null);
     calc();
   }

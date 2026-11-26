@@ -2,6 +2,8 @@
 
 (Mapa completo pendiente: G42j.)
 
+- G171 (1.21.143 · bd 87): 💵 Cierre de caja → cierres_caja.retiro (💸 lo que sacaste al banco; no toca el balance) · cierre_guardar(p_dia,p_inicial,p_contado,p_nota,p_retiro default 0) · efectivo_dia + otros_abonos/otros_gastos (tarjeta 📲 aparte) · #ccComo #ccSinEf #ccDigital #ccRet #ccTodo #ccQueda. Prueba: SaaS/pruebas/g171.js.
+
 - G95 (1.21.82 · bd 56): la billetera parte FREE (crear_negocio sin prueba) · 🎁 Probar Pro (núcleo) → cfx_pro_prueba_app = prueba_hasta (estado 'prueba') · privado.pruebas_usadas → cfx_pruebas_usadas · 🐞 cfx_negocio_dueno_app (el dueño ya puede probar/comprar módulos) · landing: "Partes gratis". Prueba: SaaS/pruebas/g95.js.
 - G99 a (1.21.86 · bd 60 · enviar 1.4.1): ⚡ aviso instantáneo de Mercado Pago (núcleo): cfx_mp_aviso_url_app = privado.config url_proyecto + /functions/v1/enviar · enviar atiende ?cfx_mp=. Prueba: SaaS/pruebas/g99.js.
 
