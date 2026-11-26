@@ -28,3 +28,6 @@
 
 ## 🔁 G162 (1.21.137 · bd 84, núcleo 3.56)
 - Más → 🔁 Cobros recurrentes (#recurrentes, vRecurrentes) = núcleo recurrente.js con S.clientes (nombre + WhatsApp, sin cuenta) y S.productos. Módulo 'suscripciones' en cfx_modulos_app · gancho cfx_negocio_nombre_app (negocios.nombre). Prueba g162b.js.
+
+## 📱 G164 (1.21.142 · bd 86, núcleo 3.62)
+- Máx. equipos por cuenta (tope del CM → Control → 📱 Equipos, por defecto 3): núcleo equipos.js en el <head> + sql/equipos.sql (bloque núcleo de instalar.sql). Sin código propio de la app. Mi perfil → Avanzado → 📱 Mis equipos. Prueba SaaS/pruebas/g164.js.
