@@ -1,6 +1,6 @@
 {
-  "version": "1.21.143",
+  "version": "1.21.144",
   "bd": 87,
   "funcion": "1.4.2",
-  "notas": "💵 G171: Cierre de caja más claro. Explica que cerrar NO cambia tu balance, muestra aparte lo de transferencia/tarjeta y deja anotar 💸 lo que sacaste al banco al cerrar (botón \"Lo saqué todo\"): mañana partes con lo que quedó."
+  "notas": "🎨 G172 (núcleo 3.63): al cambiar tus colores o el modo claro/oscuro, la barra del celular (hora y batería) toma el mismo color de arriba de la pantalla. Ya no quedan franjas de otro color."
 }
